@@ -1,0 +1,22 @@
+appId: host.exp.Exponent
+---
+# B0 — sample mode (port 8082): Welcome -> Login -> OTP screen.
+# (Expo Go scopes storage per project, not per port, so onboarding is already seen.)
+- launchApp
+- openLink: "exp://localhost:8082"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 240000
+- takeScreenshot: b0-02-welcome-sample
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Welcome Back.*"
+    timeout: 15000
+- tapOn: "e.g. 98XXXXXXXX"
+- inputText: "9812345678"
+- takeScreenshot: b0-03-login-filled
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+- takeScreenshot: b0-04-otp-sample

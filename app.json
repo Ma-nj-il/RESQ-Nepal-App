@@ -1,25 +1,57 @@
 {
   "expo": {
-    "name": "resq-nepal-mobile",
+    "name": "RESQ Nepal",
     "slug": "resq-nepal-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.resq.nepal",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "RESQ Nepal uses your location to find nearby ambulances and set your pickup point."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#E53935"
       },
-      "predictiveBackGestureEnabled": false
+      "package": "com.resq.nepal",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#E53935",
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RESQ Nepal uses your location to find nearby ambulances and set your pickup point."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RESQ Nepal accesses your photos only when you choose a profile picture.",
+          "cameraPermission": "RESQ Nepal uses the camera only to take a profile picture.",
+          "microphonePermission": false
+        }
+      ]
+    ]
   }
 }

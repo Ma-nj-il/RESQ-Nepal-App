@@ -1,0 +1,107 @@
+appId: host.exp.Exponent
+---
+# B1 — sample mode (port 8082): full journey OTP -> personal info -> location
+# permission -> Home, then the three bottom-nav destinations and the Safety alert.
+# (Storage is scoped per project in Expo Go, so onboarding is already seen.)
+- launchApp
+- openLink: "exp://localhost:8082"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 240000
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Welcome Back.*"
+    timeout: 15000
+- tapOn: "e.g. 98XXXXXXXX"
+- inputText: "9812345678"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+# Sample mode: any 4 digits -> clearly-labelled sample alert -> local sample path.
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- extendedWaitUntil:
+    visible: ".*not verified and no account is created.*"
+    timeout: 15000
+- takeScreenshot: b1-01-sample-alert
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Fill Personal Info.*"
+    timeout: 15000
+- takeScreenshot: b1-02-personal-info
+- tapOn: "Enter your full name"
+- inputText: "QA Sample User"
+- pressKey: Enter
+- tapOn: "Enter your email"
+- inputText: "qa.sample@resq.test"
+- pressKey: Enter
+- tapOn: "Select gender, ▼"
+- extendedWaitUntil:
+    visible: ".*Male.*"
+    timeout: 10000
+- tapOn: "Female"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Maybe Later.*"
+    timeout: 20000
+- takeScreenshot: b1-03-location-permission
+- tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: ".*Let's travel together.*"
+    timeout: 20000
+- takeScreenshot: b1-04-home
+# Bottom navigation destinations.
+- tapOn: ".*Ambulances"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: b1-05-ambulances
+- tapOn: "←"
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: ".*Activity"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: b1-06-activity
+- swipe:
+    start: "1%,50%"
+    end: "90%,50%"
+- extendedWaitUntil:
+    visible: ".*Let's travel together!.*"
+    timeout: 20000
+# In case the Expo Go developer menu opened, close it.
+- runFlow:
+    when:
+      visible: ".*Go home.*"
+    commands:
+      - tapOn: "Close"
+# Honest safety alert (point-tap left of the Expo Go floating gear).
+- tapOn:
+    point: "78%,12%"
+- extendedWaitUntil:
+    visible: ".*not available in this build.*"
+    timeout: 15000
+- takeScreenshot: b1-08-safety-alert
+- tapOn: "OK"
+- tapOn: ".*Account"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: b1-07-account
+# Sign out (sample mode): scroll to Logout, confirm -> back to Welcome.
+- scrollUntilVisible:
+    element:
+      text: "Logout"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Logout"
+- extendedWaitUntil:
+    visible: ".*Sure you want to log out.*"
+    timeout: 15000
+- takeScreenshot: b1-09-logout-alert
+- tapOn: "Yes, Logout"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 20000
+- takeScreenshot: b1-10-signed-out

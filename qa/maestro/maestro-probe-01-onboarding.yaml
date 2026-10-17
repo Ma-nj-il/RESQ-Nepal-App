@@ -1,0 +1,37 @@
+appId: host.exp.Exponent
+---
+# Probe: first-run onboarding -> welcome, on the hosted-config dev server.
+- launchApp:
+    clearState: true
+- openLink: "exp://localhost:8081"
+# Expo Go shows a one-time "developer menu" intro sheet after clearState.
+- runFlow:
+    when:
+      visible: ".*This is the developer menu.*"
+    commands:
+      - tapOn: "Continue"
+# The drawer stays open after the intro — close it before continuing.
+- runFlow:
+    when:
+      visible: ".*Go home.*"
+    commands:
+      - tapOn: "Close"
+- extendedWaitUntil:
+    visible: ".*hassle-free ambulance booking solution.*"
+    timeout: 180000
+- takeScreenshot: probe-01-onboarding
+- assertVisible: ".*Skip.*"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Find nearby ambulances tailored to your needs.*"
+    timeout: 20000
+- takeScreenshot: probe-02-slide2
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Enjoy a seamless emergency transport experience.*"
+    timeout: 20000
+- tapOn: "Let's Get Started"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 20000
+- takeScreenshot: probe-03-welcome

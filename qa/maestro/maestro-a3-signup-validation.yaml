@@ -1,0 +1,47 @@
+appId: host.exp.Exponent
+---
+# A3 — hosted-config mode: sign-up validation + OTP screen with the phone provider
+# disabled (no SMS can be sent) + wrong code must not advance.
+- launchApp
+- openLink: "exp://localhost:8081"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 120000
+- tapOn: "Sign up"
+- extendedWaitUntil:
+    visible: ".*Join Nepal Today.*"
+    timeout: 20000
+- takeScreenshot: a3-01-signup
+# Press "Sign up" with empty form (disabled) — must stay on this screen.
+- tapOn: "Sign up"
+- assertVisible: ".*Join Nepal Today.*"
+# Type an invalid-format number — button stays disabled, must not navigate.
+- tapOn: "98XXXXXXXX"
+- inputText: "1234567890"
+- tapOn: "Sign up"
+- assertVisible: ".*Join Nepal Today.*"
+- takeScreenshot: a3-02-invalid-phone-blocked
+- eraseText: 10
+- inputText: "9800000000"
+- tapOn: ".*I agree to RESQ Nepal Terms.*"
+- takeScreenshot: a3-03-valid-form
+- tapOn: "Sign up"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*Unsupported phone provider.*"
+    timeout: 20000
+- takeScreenshot: a3-04-otp-blocked-send
+# Enter 4 wrong digits — verification must fail and the screen must NOT advance.
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- extendedWaitUntil:
+    visible: ".*code has expired.*|.*code is not correct.*|.*Too many attempts.*|.*Verification failed.*"
+    timeout: 20000
+- takeScreenshot: a3-05-wrong-code-no-advance
+- assertVisible: ".*Enter OTP Code.*"
+- assertNotVisible: ".*Fill Personal Info.*"
+- assertNotVisible: ".*Let's travel together.*"

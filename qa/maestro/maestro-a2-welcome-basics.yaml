@@ -1,0 +1,35 @@
+appId: host.exp.Exponent
+---
+# A2 — hosted-config mode: onboarding persistence, honest social alert, legal screens.
+- launchApp
+- openLink: "exp://localhost:8081"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 120000
+- assertNotVisible: ".*hassle-free ambulance booking solution.*"
+- takeScreenshot: a2-01-welcome-persisted
+- tapOn: ".*Continue with Google"
+- extendedWaitUntil:
+    visible: ".*not available in this build.*"
+    timeout: 15000
+- takeScreenshot: a2-02-social-alert
+- tapOn: "OK"
+- tapOn: "Privacy Policy"
+- extendedWaitUntil:
+    visible: ".*Draft.*this document.*"
+    timeout: 15000
+- takeScreenshot: a2-03-privacy
+- tapOn: "←"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 15000
+- tapOn: "Terms of Service"
+- extendedWaitUntil:
+    visible: ".*Draft.*these terms.*"
+    timeout: 15000
+- takeScreenshot: a2-04-terms
+- tapOn: "←"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 15000
+- takeScreenshot: a2-05-back-to-welcome

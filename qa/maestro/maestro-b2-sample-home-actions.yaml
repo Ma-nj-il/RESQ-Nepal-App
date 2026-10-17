@@ -1,0 +1,67 @@
+appId: host.exp.Exponent
+---
+# B2 — sample mode (port 8082): additional Home primary actions after sign-in:
+# saved-place card -> LocationSearch, the ☰ menu notice, typed pickup -> list, Book Now.
+- launchApp
+- openLink: "exp://localhost:8082"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 240000
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Welcome Back.*"
+    timeout: 15000
+- tapOn: "e.g. 98XXXXXXXX"
+- inputText: "9812345678"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- extendedWaitUntil:
+    visible: ".*not verified and no account is created.*"
+    timeout: 15000
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Fill Personal Info.*"
+    timeout: 15000
+- tapOn: "Enter your full name"
+- inputText: "QA Sample User"
+- pressKey: Enter
+- tapOn: "Enter your email"
+- inputText: "qa.sample@resq.test"
+- pressKey: Enter
+- tapOn: "Select gender, ▼"
+- extendedWaitUntil:
+    visible: ".*Male.*"
+    timeout: 10000
+- tapOn: "Female"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Maybe Later.*"
+    timeout: 20000
+- tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: ".*Let's travel together.*"
+    timeout: 20000
+# 1) Saved-place card -> LocationSearch
+- tapOn: ".*Choose a saved place.*"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: b2-01-location-search
+- swipe:
+    start: "1%,50%"
+    end: "90%,50%"
+- extendedWaitUntil:
+    visible: ".*Let's travel together.*"
+    timeout: 20000
+# 2) ☰ menu notice
+- tapOn: "☰"
+- extendedWaitUntil:
+    visible: ".*navigation menu is not part of this build.*"
+    timeout: 10000
+- takeScreenshot: b2-02-menu-alert
+- tapOn: "OK"
