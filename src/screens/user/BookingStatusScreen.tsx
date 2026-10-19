@@ -1,41 +1,128 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Animated,
+  Linking,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
-import { Button, Card,  Avatar } from '../../components/ui';
-import { bookingsService, isSupabaseConfigured } from '../../services/database';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { colors, spacing, typography, radii } from '../../constants/theme';
+import { Button, Card, Avatar, Badge } from '../../components/ui';
+import { TripTimeline } from '../../components/booking/TripTimeline';
+import { MapCanvas } from '../../components/map/MapCanvas';
+import { SearchRadar } from '../../components/booking/SearchRadar';
+import { BOOKING_TIMELINE_STEPS } from '../../constants/bookingTimeline';
+import { bookingsService, isSupabaseConfigured, assignedCrewService } from '../../services/database';
+import type { AssignedCrew } from '../../services/database/assignedCrew';
+import { SERVICE_CATEGORIES } from '../../constants/serviceCategories';
+import { useBookingStore } from '../../store/bookingStore';
+import { isDemoMode } from '../../utils/demoMode';
+import { openNativeDialer } from '../../utils/dialer';
 import { Booking, BookingStatus } from '../../types';
 
-const STATUS_STEPS: { key: BookingStatus; label: string; icon: string }[] = [
-  { key: 'pending', label: 'Submitted', icon: '📝' },
-  { key: 'assigned', label: 'Assigned', icon: '👤' },
-  { key: 'arriving', label: 'Arriving', icon: '🚑' },
-  { key: 'arrived', label: 'Arrived', icon: '📍' },
-  { key: 'started', label: 'Started', icon: '🏥' },
-  { key: 'completed', label: 'Completed', icon: '✅' },
-];
+const STATUS_STEPS = BOOKING_TIMELINE_STEPS;
+
+const STATUS_INFO: Record<
+  BookingStatus,
+  { title: string; message: string; icon: string; tone: 'progress' | 'success' | 'danger' | 'neutral' }
+> = {
+  draft: {
+    title: 'Draft booking',
+    message: 'This booking has not been submitted yet.',
+    icon: '📝',
+    tone: 'neutral',
+  },
+  pending: {
+    title: 'Searching for driver…',
+    message:
+      'Your request is with verified ambulance crews. The assigned crew appears here as soon as one accepts.',
+    icon: '✚',
+    tone: 'progress',
+  },
+  assigned: {
+    title: 'Booking confirmed',
+    message: 'Your ambulance is on the way.',
+    icon: '✓',
+    tone: 'success',
+  },
+  arriving: {
+    title: 'Ambulance is on the way',
+    message: 'The crew is on the way to your pickup location.',
+    icon: '🚑',
+    tone: 'progress',
+  },
+  arrived: {
+    title: 'Ambulance arrived',
+    message: 'The crew is at your pickup point.',
+    icon: '📍',
+    tone: 'progress',
+  },
+  started: {
+    title: 'Trip in progress',
+    message: 'You are on the way to the destination hospital.',
+    icon: '🏥',
+    tone: 'progress',
+  },
+  completed: {
+    title: 'Trip completed',
+    message: 'The trip is complete. You can rate the service or book another ambulance.',
+    icon: '✅',
+    tone: 'success',
+  },
+  cancelled: {
+    title: 'Booking cancelled',
+    message: 'This request was cancelled — no ambulance is coming for it.',
+    icon: '🚫',
+    tone: 'danger',
+  },
+  rejected: {
+    title: 'No ambulance available',
+    message:
+      'No crew accepted this request. This usually means every nearby ambulance is busy. Try again, or call the nearest hospital directly if this is life-threatening.',
+    icon: '⚠️',
+    tone: 'danger',
+  },
+};
 
 const POLL_INTERVAL_MS = 8000;
+
+/**
+ * Fictional crew used only in the demo/sample walkthrough so the assigned
+ * stage can be reviewed without a real assignment. It is never written to
+ * the database, the plate is not a real registration, and the card labels it
+ * as a sample.
+ */
+const DEMO_CREW_SAMPLE = {
+  name: 'Sample crew',
+};
 
 const BookingStatusScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const isFocused = useIsFocused();
   const bookingData = route.params?.bookingData;
   const bookingId: string | undefined = route.params?.bookingId;
+  const { pickup, destination } = useBookingStore();
 
-  const isLiveBooking = Boolean(bookingId && isSupabaseConfigured);
+  const demoRun = isDemoMode();
+  const isLiveBooking = Boolean(bookingId && isSupabaseConfigured && !demoRun);
 
   const [currentStatus, setCurrentStatus] = useState<BookingStatus>('pending');
   const [booking, setBooking] = useState<Booking | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [crew, setCrew] = useState<AssignedCrew | null>(null);
 
-  // When a real booking exists, poll its status from the database.
+  // Live booking: poll the real row while this screen is focused so the UI
+  // always reflects the database without a background polling loop.
   useEffect(() => {
-    if (!isLiveBooking || !bookingId) {
-      return;
-    }
+    if (!isLiveBooking || !bookingId || !isFocused) return;
     let active = true;
 
     const refresh = async () => {
@@ -46,9 +133,7 @@ const BookingStatusScreen: React.FC = () => {
         setCurrentStatus(record.status);
         setStatusError(null);
       } catch {
-        if (active) {
-          setStatusError('Could not refresh booking status. Retrying automatically...');
-        }
+        if (active) setStatusError('Could not refresh the booking status. Retrying automatically…');
       }
     };
 
@@ -58,15 +143,36 @@ const BookingStatusScreen: React.FC = () => {
       active = false;
       clearInterval(interval);
     };
-  }, [bookingId, isLiveBooking]);
+  }, [bookingId, isFocused, isLiveBooking]);
 
-  // Without a database, walk through the statuses slowly so the flow is
-  // reviewable. This is clearly labelled as sample mode in the UI.
+  // Assigned crew — resolved only for the authenticated patient's own booking
+  // through the reviewed service (which re-checks ownership server-side). If
+  // the current policies do not expose the crew rows, the card shows neutral
+  // fallbacks instead of inventing a driver or plate.
   useEffect(() => {
-    if (isLiveBooking) return;
+    if (!isLiveBooking || !bookingId) return;
+    if (!booking?.driver_id && !booking?.ambulance_id) return;
+    let active = true;
+    (async () => {
+      try {
+        const result = await assignedCrewService.getForBooking(bookingId);
+        if (active) setCrew(result);
+      } catch {
+        if (active) setCrew(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isLiveBooking, bookingId, booking?.driver_id, booking?.ambulance_id]);
+
+  // Sample/demo: walk through the statuses slowly so the flow is reviewable
+  // while this screen is focused. Clearly labelled below — never presented as
+  // a real match.
+  useEffect(() => {
+    if (isLiveBooking || !isFocused) return;
     const statusFlow: BookingStatus[] = ['pending', 'assigned', 'arriving', 'arrived', 'started', 'completed'];
     let currentIndex = 0;
-
     const interval = setInterval(() => {
       if (currentIndex < statusFlow.length - 1) {
         currentIndex++;
@@ -75,22 +181,67 @@ const BookingStatusScreen: React.FC = () => {
         clearInterval(interval);
       }
     }, 10000);
-
     return () => clearInterval(interval);
-  }, [isLiveBooking]);
+  }, [isFocused, isLiveBooking]);
 
-  const getCurrentStepIndex = () => {
-    return STATUS_STEPS.findIndex((s) => s.key === currentStatus);
-  };
+  const currentIndex = STATUS_STEPS.findIndex((s) => s.key === currentStatus);
+  const isFailed = currentStatus === 'rejected';
+  const info = STATUS_INFO[currentStatus];
+
+  const canCancel = ['pending', 'assigned'].includes(currentStatus);
+  const canTrack = ['assigned', 'arriving', 'arrived', 'started'].includes(currentStatus);
+  // The crew's contact number is only shared while the trip is operationally
+  // active (see supabase/patches/assigned_crew_visibility.sql), so the call
+  // action appears in exactly that window. Demo always shows it with a
+  // no-call explanation.
+  const canCallDriver = !isLiveBooking || canTrack;
+  const isCompleted = currentStatus === 'completed';
+  const isCancelled = currentStatus === 'cancelled';
+
+  const category = SERVICE_CATEGORIES[(bookingData?.ambulance?.category ?? 'basic') as 'basic' | 'icu'];
+  const hasDriverAssigned = isLiveBooking
+    ? Boolean(booking?.driver_id)
+    : ['assigned', 'arriving', 'arrived', 'started', 'completed'].includes(currentStatus);
+
+  // Real fare data only: rate-card estimate from the confirmation step, the
+  // database estimate, or a "pending" label. Never a made-up number.
+  const fareValue: number | null = (() => {
+    if (booking?.final_fare != null) return Number(booking.final_fare);
+    if (booking?.estimated_fare != null) return Number(booking.estimated_fare);
+    if (bookingData?.totalFare != null) return Number(bookingData.totalFare);
+    return null;
+  })();
+
+  // Real coordinates only — the booking row when it exists, the in-progress
+  // selection otherwise. Without coordinates no map is shown at all.
+  const mapPickup =
+    booking?.pickup_lat != null && booking?.pickup_lng != null
+      ? { lat: Number(booking.pickup_lat), lng: Number(booking.pickup_lng) }
+      : pickup && pickup.lat != null && pickup.lng != null
+        ? { lat: pickup.lat, lng: pickup.lng }
+        : null;
+  const mapDestination =
+    booking?.dest_lat != null && booking?.dest_lng != null
+      ? { lat: Number(booking.dest_lat), lng: Number(booking.dest_lng) }
+      : destination && destination.lat != null && destination.lng != null
+        ? { lat: destination.lat, lng: destination.lng }
+        : null;
+
+  // Addresses shown in Trip Details — the stored booking row first, then the
+  // in-progress selection. Nothing is invented when both are missing.
+  const tripPickupAddress = booking?.pickup_address || pickup?.address || null;
+  const tripDestinationAddress = booking?.destination_address || destination?.address || null;
 
   const handleCancelBooking = () => {
     Alert.alert(
-      'Cancel Booking',
-      'Are you sure you want to cancel this booking? Cancellation fees may apply.',
+      'Cancel this request?',
+      isLiveBooking
+        ? 'The ambulance crews will no longer see this request.'
+        : 'This cancels the sample request in this demo walkthrough.',
       [
-        { text: 'No', style: 'cancel' },
+        { text: 'Keep it', style: 'cancel' },
         {
-          text: 'Yes, Cancel',
+          text: 'Yes, cancel',
           style: 'destructive',
           onPress: async () => {
             if (isLiveBooking && bookingId) {
@@ -98,64 +249,151 @@ const BookingStatusScreen: React.FC = () => {
               try {
                 await bookingsService.updateStatus(bookingId, 'cancelled');
                 setCurrentStatus('cancelled');
-                Alert.alert('Booking Cancelled', 'Your booking has been cancelled.');
               } catch {
                 Alert.alert(
-                  'Cancellation Failed',
-                  'Could not cancel the booking. Check your connection and try again, or call the dispatch line.'
+                  'Cancellation failed',
+                  'Could not cancel the booking. Check your connection and try again, or call the dispatch line.',
                 );
               } finally {
                 setCancelling(false);
               }
             } else {
               setCurrentStatus('cancelled');
-              Alert.alert(
-                'Booking Cancelled',
-                'Sample booking cancelled. (No database is configured, so nothing was stored.)'
-              );
             }
           },
         },
-      ]
+      ],
     );
   };
 
   const handleTrackLive = () => {
-    if (isLiveBooking && bookingId) {
+    if (bookingId && isSupabaseConfigured && !demoRun) {
       navigation.navigate('TripTracking', { bookingId });
       return;
     }
-    Alert.alert(
-      'Live Tracking',
-      'Live tracking follows a real booking. Configure the database and create a booking to track it here.'
-    );
+    if (demoRun || !isSupabaseConfigured) {
+      Alert.alert(
+        'Demo walkthrough',
+        'Live driver tracking needs a real booking created against the database. In demo mode the request stays on this device.',
+      );
+      return;
+    }
+    Alert.alert('Live tracking', 'Tracking becomes available once the booking row exists in the database.');
   };
 
-  const handleCallDriver = () => {
-    Alert.alert(
-      'Call Driver',
-      'Driver contact details are shared when a driver is assigned to your booking. In-app calling is not part of this build.'
-    );
+  const handleCallDriver = async () => {
+    if (!isLiveBooking) {
+      Alert.alert(
+        'Demo walkthrough',
+        'No call is placed in the demo — nothing is dialled and no real crew is attached. With a real assignment this button opens your phone’s dialer with the crew’s contact number.',
+      );
+      return;
+    }
+    // The number is only handed to the native dialer — it is never rendered
+    // as text and never logged.
+    const result = await openNativeDialer(crew?.driverPhone ?? null, (url) => Linking.openURL(url));
+    if (result === 'invalid') {
+      Alert.alert(
+        'Driver contact is currently unavailable',
+        'The assigned crew’s contact number has not been shared with this app yet. If dispatch gave you a number, use your phone app to call it.',
+      );
+    } else if (result === 'failed') {
+      Alert.alert(
+        'Could not open the dialer',
+        'Your device could not open the phone dialer. Try again or call from your phone app.',
+      );
+    }
   };
 
-  const currentStepIndex = getCurrentStepIndex();
-  const canCancel = ['pending', 'assigned'].includes(currentStatus);
-  const canTrack = ['started', 'arrived'].includes(currentStatus);
-  const isCompleted = currentStatus === 'completed';
-  const isCancelled = currentStatus === 'cancelled';
+  const handleRetry = () => {
+    navigation.navigate('AmbulanceList');
+  };
 
-  // With a live booking the driver card appears once a driver row is
-  // actually attached to the booking; in sample mode it follows the
-  // example timeline.
-  const hasDriverAssigned = isLiveBooking
-    ? Boolean(booking?.driver_id)
-    : currentStepIndex >= 1;
-
-  return (
+  return currentStatus === 'pending' ? (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      <View style={styles.searchMapArea}>
+        <MapCanvas
+          pickup={mapPickup}
+          pickupLabel={tripPickupAddress || undefined}
+          style={styles.mapFill}
+        />
+        <SearchRadar active={isFocused} />
+        <View style={styles.searchTopBar}>
+          <TouchableOpacity
+            style={styles.searchBackButton}
+            onPress={() => navigation.navigate('Home')}
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
+          >
+            <Text style={styles.backArrow}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.searchTitlePill}>
+            <Text style={styles.searchTitleText}>Booking Status</Text>
+          </View>
+          <View style={styles.searchTopSpacer} />
+        </View>
+      </View>
+
+      <View style={styles.searchSheet}>
+        <View style={styles.handleBar} />
+
+        <View style={styles.searchStatusRow}>
+          <View style={styles.searchStatusIcon}>
+            <Text style={styles.searchStatusGlyph}>✚</Text>
+          </View>
+          <View style={styles.searchStatusCopy}>
+            <Text style={styles.searchStatusTitle}>
+              {isLiveBooking ? 'Searching for driver…' : 'Finding an ambulance…'}
+            </Text>
+            <Text style={styles.searchStatusMessage}>
+              {isLiveBooking
+                ? 'Your request is visible to verified crews. The assigned crew appears as soon as one accepts.'
+                : 'Demo search — no dispatch server is contacted and no real ambulance is requested.'}
+            </Text>
+          </View>
+        </View>
+
+        {(tripPickupAddress || tripDestinationAddress) && (
+          <View style={styles.searchRouteRow}>
+            <View style={styles.searchRouteRail}>
+              <View style={[styles.routeDot, { backgroundColor: colors.success }]} />
+              <View style={styles.searchRouteLine} />
+              <View style={[styles.routeDot, { backgroundColor: colors.primary }]} />
+            </View>
+            <View style={styles.searchRouteCopy}>
+              <Text style={styles.searchRouteText} numberOfLines={1}>
+                {tripPickupAddress || 'Pickup location'}
+              </Text>
+              <Text style={styles.searchRouteText} numberOfLines={1}>
+                {tripDestinationAddress || 'Destination'}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.searchProgressPill}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.searchProgressText}>This may take a few moments…</Text>
+        </View>
+        <Text style={styles.searchMapNote}>Radar is illustrative — not live GPS.</Text>
+
+        {statusError ? <Text style={styles.searchError}>{statusError}</Text> : null}
+
+        <Button
+          title="Cancel request"
+          onPress={handleCancelBooking}
+          variant="outline"
+          fullWidth
+          loading={cancelling}
+          disabled={cancelling}
+          style={styles.searchCancelButton}
+        />
+      </View>
+    </SafeAreaView>
+  ) : (
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Home')}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Booking Status</Text>
@@ -163,236 +401,303 @@ const BookingStatusScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
-        {/* Sample mode / live status notices */}
-        {!isLiveBooking && (
-          <Card style={styles.sampleCard} elevation="sm">
-            <Text style={styles.sampleText}>
-              ⚠️ Sample mode — this booking was not saved to a database. Status changes here are
-              example data.
-            </Text>
-          </Card>
-        )}
-
-        {statusError && (
-          <Card style={styles.sampleCard} elevation="sm">
-            <Text style={styles.sampleText}>{statusError}</Text>
-          </Card>
-        )}
-
-        {/* Status Timeline */}
-        <Card style={styles.timelineCard} elevation="md">
-          <Text style={styles.sectionTitle}>Booking Progress</Text>
-          <View style={styles.timeline}>
-            {STATUS_STEPS.map((step, index) => {
-              const isCompleted = index < currentStepIndex;
-              const isCurrent = index === currentStepIndex;
-              const isCancelled = currentStatus === 'cancelled' && index === 0;
-
-              return (
-                <View key={step.key} style={styles.timelineItem}>
-                  <View style={styles.timelineLeft}>
-                    <View
-                      style={[
-                        styles.timelineIcon,
-                        isCompleted && styles.timelineIconCompleted,
-                        isCurrent && styles.timelineIconCurrent,
-                        isCancelled && styles.timelineIconCancelled,
-                      ]}
-                    >
-                      <Text style={styles.timelineEmoji}>
-                        {isCompleted ? '✓' : step.icon}
-                      </Text>
-                    </View>
-                    {index < STATUS_STEPS.length - 1 && (
-                      <View
-                        style={[
-                          styles.timelineLine,
-                          index < currentStepIndex && styles.timelineLineCompleted,
-                        ]}
-                      />
-                    )}
-                  </View>
-                  <View style={styles.timelineContent}>
-                    <Text
-                      style={[
-                        styles.timelineLabel,
-                        isCurrent && styles.timelineLabelCurrent,
-                        isCompleted && styles.timelineLabelCompleted,
-                      ]}
-                    >
-                      {step.label}
-                    </Text>
-                    {isCurrent && (
-                      <Text style={styles.timelineStatus}>
-                        {isCancelled ? 'Booking cancelled' : 'In progress...'}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </Card>
-
-        {/* Driver Info (when assigned) */}
-        {hasDriverAssigned && !isCancelled && (
-          <Card style={styles.driverCard} elevation="md">
-            <Text style={styles.sectionTitle}>Driver Information</Text>
-            <View style={styles.driverRow}>
-              <Avatar name={bookingData?.ambulance?.driverName || 'ResQ'} size="lg" />
-              <View style={styles.driverInfo}>
-                <Text style={styles.driverName}>
-                  {bookingData?.ambulance?.driverName || 'Driver assigned'}
-                </Text>
-                {bookingData?.ambulance?.driverRating ? (
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.star}>★</Text>
-                    <Text style={styles.ratingText}>
-                      {bookingData.ambulance.driverRating}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.vehicleInfo}>
-                    Contact details are shared by dispatch
-                  </Text>
-                )}
-                <Text style={styles.vehicleInfo}>
-                  {bookingData?.ambulance?.model ??
-                    (bookingData?.ambulance?.category === 'icu'
-                      ? 'ICU Ambulance'
-                      : 'Basic Ambulance')}
-                  {bookingData?.ambulance?.plate_number
-                    ? ` • ${bookingData.ambulance.plate_number}`
-                    : ''}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.driverActions}>
-              <TouchableOpacity style={styles.callButton} onPress={handleCallDriver}>
-                <Text style={styles.callIcon}>📞</Text>
-                <Text style={styles.callText}>Call</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.messageButton}
-                onPress={() =>
-                  Alert.alert(
-                    'Message Driver',
-                    'In-app messaging is not part of this build. Your driver will coordinate by phone once assigned.'
-                  )
-                }
+        {/* State hero — confirmed stages show a filled green check. */}
+        <Card style={styles.heroCard} elevation="md">
+          <View style={styles.heroRow}>
+            <Animated.View
+              style={[
+                styles.heroIconWrap,
+                info.tone === 'success' && styles.heroIconSuccess,
+                info.tone === 'danger' && styles.heroIconDanger,
+                info.tone === 'progress' && styles.heroIconProgress,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.heroIcon,
+                  info.tone === 'success' && styles.heroIconGlyphSuccess,
+                ]}
               >
-                <Text style={styles.messageIcon}>💬</Text>
-                <Text style={styles.messageText}>Message</Text>
-              </TouchableOpacity>
+                {info.tone === 'success' ? '✓' : info.icon}
+              </Text>
+            </Animated.View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroTitle}>
+                {!isLiveBooking ? 'Sample: ' : ''}
+                {info.title}
+              </Text>
+              <Text style={styles.heroMessage}>
+                {!isLiveBooking
+                  ? 'Demo walkthrough only — no real crew, vehicle or trip state is attached.'
+                  : info.message}
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* Assigned crew — driver, vehicle and actions in the reference's
+            composition. Real data only; the demo state is clearly labelled. */}
+        {hasDriverAssigned && !isCancelled && !isFailed && (
+          <Card style={styles.card} elevation="md">
+            <View style={styles.crewHeader}>
+              <Text style={styles.crewTitle}>{isLiveBooking ? 'Assigned crew' : 'Sample crew state'}</Text>
+              {!isLiveBooking && <Badge label="SAMPLE" variant="info" />}
+            </View>
+
+            {isLiveBooking ? (
+              <>
+                <View style={styles.driverRow}>
+                  <Avatar
+                    name={crew?.driverName || 'RESQ crew'}
+                    uri={crew?.driverAvatarUrl ?? undefined}
+                    size="lg"
+                  />
+                  <View style={styles.driverInfo}>
+                    <View style={styles.driverNameRow}>
+                      <Text style={styles.driverName} numberOfLines={1}>
+                        {crew?.driverName || 'Assigned ambulance crew'}
+                      </Text>
+                      {crew?.driverVerified === true && (
+                        <Badge label="VERIFIED" variant="success" />
+                      )}
+                    </View>
+                    <Text style={styles.driverMeta}>Driver</Text>
+                  </View>
+                </View>
+
+                <View style={styles.vehicleRow}>
+                  <View style={styles.vehicleIconWrap}>
+                    <Text style={styles.vehicleIcon}>🚑</Text>
+                  </View>
+                  <View style={styles.vehicleInfo}>
+                    {crew?.plateNumber ? (
+                      <>
+                        <Text style={styles.vehiclePlate}>{crew.plateNumber}</Text>
+                        <Text style={styles.vehicleMeta}>Ambulance vehicle</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.vehicleMetaStrong}>Assigned vehicle</Text>
+                        <Text style={styles.vehicleMeta}>
+                          Registration details are not shared with your account yet.
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                  <Badge label={`Type: ${category.badge}`} variant="info" />
+                </View>
+
+                <View style={styles.actionRow}>
+                  {canCallDriver && (
+                    <Button
+                      title="Call Driver"
+                      onPress={() => void handleCallDriver()}
+                      size="sm"
+                      style={styles.actionButton}
+                      icon={<Text style={styles.callIcon}>📞</Text>}
+                    />
+                  )}
+                  {canTrack && (
+                    <Button
+                      title="Track Ambulance"
+                      onPress={handleTrackLive}
+                      variant="secondary"
+                      size="sm"
+                      style={styles.actionButton}
+                      icon={<Text style={styles.callIcon}>📍</Text>}
+                    />
+                  )}
+                </View>
+
+                {canCallDriver && (
+                  <View style={styles.footnoteBlock}>
+                    <Text style={styles.footnote}>ⓘ Driver’s phone number is not shown in the app.</Text>
+                    <Text style={styles.footnote}>
+                      ⓘ “Call Driver” opens your phone’s dialer to place the call.
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.driverRow}>
+                  <Avatar name={DEMO_CREW_SAMPLE.name} size="lg" />
+                  <View style={styles.driverInfo}>
+                    <Text style={styles.driverName} numberOfLines={1}>
+                      {DEMO_CREW_SAMPLE.name}
+                    </Text>
+                    <Text style={styles.driverMeta}>Demo placeholder</Text>
+                  </View>
+                </View>
+
+                <View style={styles.vehicleRow}>
+                  <View style={styles.vehicleIconWrap}>
+                    <Text style={styles.vehicleIcon}>🚑</Text>
+                  </View>
+                  <View style={styles.vehicleInfo}>
+                    <Text style={styles.vehiclePlate}>Vehicle not assigned</Text>
+                    <Text style={styles.vehicleMeta}>Demo walkthrough</Text>
+                  </View>
+                  <Badge label={`Type: ${category.badge}`} variant="info" />
+                </View>
+
+                <Text style={styles.driverSampleNote}>
+                  Sample state — no real driver, vehicle or registration is attached.
+                </Text>
+
+                <View style={styles.actionRow}>
+                  <Button
+                    title="Call Driver"
+                    onPress={() => void handleCallDriver()}
+                    style={styles.actionButton}
+                    icon={<Text style={styles.callIcon}>📞</Text>}
+                  />
+                  <Button
+                    title="Track Ambulance"
+                    onPress={handleTrackLive}
+                    variant="secondary"
+                    style={styles.actionButton}
+                    icon={<Text style={styles.callIcon}>📍</Text>}
+                  />
+                </View>
+              </>
+            )}
+          </Card>
+        )}
+
+        {/* Trip details — From/To as in the reference's assigned state. The
+            pending/searching state keeps the reference's shorter layout. */}
+        {(hasDriverAssigned || isCancelled || isFailed || currentStatus === 'completed') && (
+          <Card style={styles.card} elevation="md">
+            <Text style={styles.sectionTitle}>Trip Details</Text>
+            <View style={styles.tripRow}>
+              <View style={[styles.tripDotWrap, { backgroundColor: colors.greenLight }]}>
+                <View style={[styles.tripDot, { backgroundColor: colors.success }]} />
+              </View>
+              <View style={styles.tripInfo}>
+                <Text style={styles.tripLabel}>From</Text>
+                <Text style={styles.tripValue} numberOfLines={2}>
+                  {tripPickupAddress || 'Pickup not recorded'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.tripConnector} />
+            <View style={styles.tripRow}>
+              <View style={[styles.tripDotWrap, { backgroundColor: colors.redLight }]}>
+                <View style={[styles.tripDot, { backgroundColor: colors.primary }]} />
+              </View>
+              <View style={styles.tripInfo}>
+                <Text style={styles.tripLabel}>To</Text>
+                <Text style={styles.tripValue} numberOfLines={2}>
+                  {tripDestinationAddress || 'Destination not recorded'}
+                </Text>
+              </View>
             </View>
           </Card>
         )}
 
-        {/* Map Placeholder */}
-        <Card style={styles.mapCard} elevation="md">
-          <Text style={styles.sectionTitle}>Route Map</Text>
-          <View style={styles.mapPlaceholder}>
-            <View style={styles.mapBackground}>
-              <View style={styles.mapGrid}>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <View key={`h-${i}`} style={[styles.gridLine, { top: `${(i + 1) * 16.66}%` }]} />
-                ))}
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <View key={`v-${i}`} style={[styles.gridLineVertical, { left: `${(i + 1) * 25}%` }]} />
-                ))}
-              </View>
-              {/* Route line */}
-              <View style={styles.routeLine} />
-              {/* Pickup marker */}
-              <View style={[styles.mapMarker, styles.mapMarkerPickup]}>
-                <Text style={styles.mapMarkerEmoji}>📍</Text>
-              </View>
-              {/* Destination marker */}
-              <View style={[styles.mapMarker, styles.mapMarkerDest]}>
-                <Text style={styles.mapMarkerEmoji}>🏥</Text>
-              </View>
-              {/* Ambulance marker (when assigned) */}
-              {currentStepIndex >= 1 && !isCancelled && (
-                <View style={styles.ambulanceMarker}>
-                  <Text style={styles.ambulanceEmoji}>🚑</Text>
-                </View>
-              )}
+        {/* Map context — real pickup/destination markers, straight-line only */}
+        {(mapPickup || mapDestination) && (
+          <Card style={styles.mapCard} elevation="sm">
+            <View style={styles.mapWrap}>
+              <MapCanvas
+                pickup={mapPickup}
+                destination={mapDestination}
+                pickupLabel={pickup?.address || booking?.pickup_address}
+                destinationLabel={destination?.address || booking?.destination_address}
+                caption="Pickup and destination — straight-line preview, not live GPS"
+                style={styles.mapFill}
+              />
             </View>
-          </View>
+          </Card>
+        )}
+
+        {/* Honest notices — demo/sample disclosure kept as a small footnote
+            so it stays truthful without competing with the booking status. */}
+        {!isLiveBooking && (
+          <Text style={styles.demoFootnote}>
+            {demoRun
+              ? 'Demo walkthrough — this request stays on this device. Nothing was sent to a dispatch server and no real ambulance is attached.'
+              : 'Sample mode — database not configured. This booking was not saved; status changes are example data.'}
+          </Text>
+        )}
+        {statusError ? (
+          <Card style={styles.noticeCard} elevation="sm">
+            <Text style={styles.noticeText}>{statusError}</Text>
+          </Card>
+        ) : null}
+
+        {/* Timeline */}
+        <Card style={styles.card} elevation="md">
+          <Text style={styles.sectionTitle}>Request progress</Text>
+          <TripTimeline
+            steps={STATUS_STEPS}
+            currentIndex={currentIndex}
+            failed={isFailed}
+            failedLabel="No crew accepted this request."
+          />
         </Card>
 
-        {/* Trip Summary */}
-        <Card style={styles.summaryCard} elevation="md">
-          <Text style={styles.sectionTitle}>Trip Summary</Text>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Pickup</Text>
-            <Text style={styles.summaryValue}>
-              {bookingData?.pickup?.address || 'Current Location'}
+        {/* Route + booking details */}
+        <Card style={styles.card} elevation="md">
+          <Text style={styles.sectionTitle}>Booking details</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Service</Text>
+            <Text style={styles.detailValue}>{category.name}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              {booking?.final_fare != null ? 'Final fare' : fareValue != null ? 'Indicative fare' : 'Fare'}
+            </Text>
+            <Text style={styles.detailValue}>
+              {fareValue != null ? `NPR ${fareValue.toLocaleString('en-IN')}` : 'Confirmed after trip'}
             </Text>
           </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Destination</Text>
-            <Text style={styles.summaryValue}>
-              {bookingData?.destination?.address || 'Not specified'}
-            </Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Patient</Text>
+            <Text style={styles.detailValue}>{bookingData?.patientName || booking?.patient_name || 'Not recorded'}</Text>
           </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Patient</Text>
-            <Text style={styles.summaryValue}>
-              {bookingData?.patientName || 'N/A'}
-            </Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Payment</Text>
-            <Text style={styles.summaryValue}>
-              {bookingData?.paymentMethod?.toUpperCase() || 'WALLET'}
-            </Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryTotalLabel}>Total Fare</Text>
-            <Text style={styles.summaryTotalValue}>
-              NPR {bookingData?.totalFare?.toFixed(0) || '1,500'}
-            </Text>
-          </View>
+          <Badge
+            label={currentStatus.toUpperCase()}
+            variant={isCompleted ? 'success' : isCancelled || isFailed ? 'error' : 'info'}
+            style={styles.statusBadge}
+          />
         </Card>
 
-        {/* Bottom spacing */}
-        <View style={{ height: 120 }} />
+        <View style={{ height: 140 }} />
       </ScrollView>
 
-      {/* Bottom Actions */}
       <View style={styles.bottomBar}>
         {canCancel && (
           <Button
-            title="Cancel Booking"
+            title="Cancel request"
             onPress={handleCancelBooking}
-            variant="danger"
+            variant="outline"
             fullWidth
             loading={cancelling}
             disabled={cancelling}
           />
         )}
-        {canTrack && (
-          <Button
-            title="Track Live"
-            onPress={handleTrackLive}
-            fullWidth
-          />
+        {isFailed && (
+          <Button title="Try again" onPress={handleRetry} fullWidth />
         )}
         {isCompleted && (
-          <Button
-            title="Book Another"
-            onPress={() => navigation.navigate('Home')}
-            fullWidth
-          />
+          <>
+            {bookingId && !demoRun ? (
+              <Button
+                title="Rate this trip"
+                onPress={() => navigation.navigate('Rating', { bookingId })}
+                fullWidth
+              />
+            ) : null}
+            <Button title="Book another ambulance" onPress={() => navigation.navigate('Home')} variant="outline" fullWidth />
+          </>
         )}
         {isCancelled && (
-          <Button
-            title="Book Again"
-            onPress={() => navigation.navigate('Home')}
-            fullWidth
-          />
+          <Button title="Book another ambulance" onPress={() => navigation.navigate('Home')} fullWidth />
+        )}
+        {isFailed && (
+          <Button title="Back to home" onPress={() => navigation.navigate('Home')} variant="ghost" fullWidth />
         )}
       </View>
     </SafeAreaView>
@@ -400,10 +705,7 @@ const BookingStatusScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -413,294 +715,276 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  sampleCard: {
-    backgroundColor: colors.amberLight,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+  backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backArrow: { fontSize: 24, color: colors.text },
+  headerTitle: { ...typography.h3, flex: 1, textAlign: 'center' },
+  headerSpacer: { width: 40 },
+  scrollView: { flex: 1 },
+
+  // Map-first searching state ------------------------------------------------
+  searchMapArea: { flex: 1, position: 'relative' },
+  searchTopBar: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  sampleText: { ...typography.bodySmall, color: colors.warning },
-  backButton: {
-    width: 40,
-    height: 40,
+  searchBackButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backArrow: {
-    fontSize: 24,
-    color: colors.text,
+  searchTitlePill: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  headerTitle: {
-    ...typography.h3,
-    flex: 1,
-    textAlign: 'center',
+  searchTitleText: { ...typography.bodySmall, fontWeight: '700', color: colors.text },
+  searchTopSpacer: { width: 44 },
+  searchSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.xxl,
+    borderTopRightRadius: radii.xxl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
   },
-  headerSpacer: {
+  handleBar: {
     width: 40,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  timelineCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.h4,
-    color: colors.text,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
     marginBottom: spacing.md,
   },
-  timeline: {
-    paddingLeft: spacing.sm,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
-  },
-  timelineLeft: {
+  searchStatusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  searchStatusIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.redLight,
     alignItems: 'center',
-    marginRight: spacing.md,
+    justifyContent: 'center',
   },
-  timelineIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  searchStatusGlyph: { fontSize: 22, fontWeight: '800', color: colors.primary },
+  searchStatusCopy: { flex: 1 },
+  searchStatusTitle: { ...typography.h3, color: colors.primary },
+  searchStatusMessage: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 19,
+  },
+  searchRouteRow: {
+    flexDirection: 'row',
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  searchRouteRail: { width: 18, alignItems: 'center', paddingTop: 5 },
+  searchRouteLine: { height: 14, width: 2, backgroundColor: colors.border, marginVertical: 3 },
+  searchRouteCopy: { flex: 1, marginLeft: spacing.sm, gap: 7 },
+  searchRouteText: { ...typography.bodySmall, color: colors.text },
+  searchProgressPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.input,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.md,
+  },
+  searchProgressText: { ...typography.caption, color: colors.textSecondary },
+  searchMapNote: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
+    marginLeft: spacing.xs,
+  },
+  searchError: {
+    ...typography.caption,
+    color: colors.warning,
+    backgroundColor: colors.amberLight,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  searchCancelButton: { marginTop: spacing.md },
+  routeDot: { width: 8, height: 8, borderRadius: 4 },
+
+  heroCard: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  heroIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.input,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timelineIconCompleted: {
-    backgroundColor: colors.success,
-  },
-  timelineIconCurrent: {
-    backgroundColor: colors.primary,
-  },
-  timelineIconCancelled: {
-    backgroundColor: colors.error,
-  },
-  timelineEmoji: {
-    fontSize: 16,
-  },
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: colors.border,
-    marginVertical: 2,
-  },
-  timelineLineCompleted: {
-    backgroundColor: colors.success,
-  },
-  timelineContent: {
-    flex: 1,
-    paddingTop: spacing.xs,
-  },
-  timelineLabel: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  timelineLabelCurrent: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  timelineLabelCompleted: {
-    color: colors.success,
-  },
-  timelineStatus: {
-    ...typography.caption,
-    color: colors.primary,
-    marginTop: 2,
-  },
-  driverCard: {
+  heroIconProgress: { backgroundColor: colors.redLight },
+  heroIconSuccess: { backgroundColor: colors.success },
+  heroIconDanger: { backgroundColor: colors.redLight },
+  heroIcon: { fontSize: 26 },
+  heroIconGlyphPending: { color: colors.primary, fontWeight: '800' },
+  heroIconGlyphSuccess: { color: colors.surface, fontWeight: '800' },
+  heroTextWrap: { flex: 1 },
+  heroTitle: { ...typography.h3, color: colors.text },
+  heroTitlePending: { color: colors.primary },
+  heroMessage: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 20 },
+  searchingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  searchingText: { ...typography.caption, color: colors.textSecondary },
+
+  noticeCard: {
     marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.amberLight,
   },
-  driverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  driverInfo: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  driverName: {
-    ...typography.h4,
-    color: colors.text,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  star: {
-    fontSize: 14,
-    color: colors.warning,
-  },
-  ratingText: {
-    ...typography.bodySmall,
-    color: colors.text,
-    marginLeft: 4,
-  },
-  vehicleInfo: {
+  noticeText: { ...typography.bodySmall, color: colors.warning },
+  demoFootnote: {
     ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
+    color: colors.textTertiary,
+    lineHeight: 16,
+    marginHorizontal: spacing.xl,
+    marginTop: spacing.md,
   },
-  driverActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  callButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.greenLight,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    gap: spacing.sm,
-  },
-  callIcon: {
-    fontSize: 16,
-  },
-  callText: {
-    ...typography.bodySmall,
-    color: colors.success,
-    fontWeight: '600',
-  },
-  messageButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.blueLight,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    gap: spacing.sm,
-  },
-  messageIcon: {
-    fontSize: 16,
-  },
-  messageText: {
-    ...typography.bodySmall,
-    color: colors.info,
-    fontWeight: '600',
-  },
+
   mapCard: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-  },
-  mapPlaceholder: {
-    height: 200,
-    borderRadius: radii.md,
+    padding: 0,
     overflow: 'hidden',
   },
-  mapBackground: {
-    flex: 1,
-    backgroundColor: '#E8E4DE',
-    position: 'relative',
+  mapWrap: { height: 150 },
+  mapFill: { flex: 1 },
+
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
-  mapGrid: {
-    ...StyleSheet.absoluteFill,
+  previewTitle: { marginBottom: 0 },
+  offerStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    backgroundColor: colors.input,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
   },
-  gridLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  gridLineVertical: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  routeLine: {
-    position: 'absolute',
-    top: '30%',
-    left: '20%',
-    width: '60%',
-    height: 3,
-    backgroundColor: colors.primary,
-    borderRadius: 2,
-  },
-  mapMarker: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  stepperButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.full,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.sm,
   },
-  mapMarkerPickup: {
-    top: '25%',
-    left: '15%',
+  stepperDisabled: { opacity: 0.4 },
+  stepperButtonText: { fontSize: 22, color: colors.textSecondary, lineHeight: 26 },
+  offerValueWrap: { flex: 1, alignItems: 'center' },
+  offerValue: { ...typography.h4, color: colors.text },
+  offerCaption: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  previewNote: { ...typography.caption, color: colors.textSecondary, lineHeight: 16 },
+
+  card: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
+  sectionTitle: { ...typography.h4, color: colors.text, marginBottom: spacing.md },
+
+  crewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
-  mapMarkerDest: {
-    top: '60%',
-    right: '15%',
+  crewTitle: { ...typography.h4, color: colors.text },
+  driverRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  driverInfo: { flex: 1, marginLeft: spacing.md },
+  driverNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  driverName: { ...typography.h4, color: colors.text, flexShrink: 1 },
+  driverMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  driverSampleNote: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginBottom: spacing.md,
   },
-  mapMarkerEmoji: {
-    fontSize: 16,
+  callIcon: { fontSize: 16 },
+
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  ambulanceMarker: {
-    position: 'absolute',
-    top: '40%',
-    left: '45%',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
+  vehicleIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.redLight,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.md,
   },
-  ambulanceEmoji: {
-    fontSize: 18,
+  vehicleIcon: { fontSize: 18 },
+  vehicleInfo: { flex: 1 },
+  vehiclePlate: { fontSize: 15, fontWeight: '700', color: colors.text, letterSpacing: 0.5 },
+  vehicleMetaStrong: { fontSize: 15, fontWeight: '600', color: colors.text },
+  vehicleMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+
+  actionRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  actionButton: { flex: 1, paddingHorizontal: spacing.xs },
+  footnoteBlock: { marginTop: spacing.md },
+  footnote: { ...typography.caption, color: colors.textTertiary, marginTop: 2 },
+
+  tripRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  tripDotWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  summaryCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+  tripDot: { width: 12, height: 12, borderRadius: 6 },
+  tripInfo: { flex: 1 },
+  tripLabel: { ...typography.caption, color: colors.textTertiary },
+  tripValue: { ...typography.bodySmall, color: colors.text, fontWeight: '600', marginTop: 1 },
+  tripConnector: {
+    width: 2,
+    height: 14,
+    backgroundColor: colors.border,
+    marginLeft: 16,
+    marginVertical: 2,
   },
-  summaryRow: {
+
+  detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.sm,
   },
-  summaryLabel: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  summaryValue: {
-    ...typography.body,
-    color: colors.text,
-    flex: 1,
-    textAlign: 'right',
-    marginLeft: spacing.md,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.sm,
-  },
-  summaryTotalLabel: {
-    ...typography.h4,
-    color: colors.text,
-  },
-  summaryTotalValue: {
-    ...typography.h3,
-    color: colors.primary,
-  },
+  detailLabel: { ...typography.body, color: colors.textSecondary },
+  detailValue: { ...typography.body, color: colors.text, flex: 1, textAlign: 'right', marginLeft: spacing.md },
+  statusBadge: { marginTop: spacing.md },
+
   bottomBar: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    gap: spacing.sm,
   },
 });
 

@@ -36,12 +36,12 @@ const TipScreen: React.FC = () => {
     Alert.alert(
       'Tipping Not Available Yet',
       `The NPR ${amount} tip was not charged. Tip payments require a payment provider integration — see docs/known-limitations.md.`,
-      [{ text: 'OK', onPress: () => navigation.navigate('Activity') }],
+      [{ text: 'OK', onPress: () => navigation.popTo('Activity') }],
     );
   };
 
   const handleSkip = () => {
-    navigation.navigate('Activity');
+    navigation.popTo('Activity');
   };
 
   const currentAmount = selectedAmount || parseFloat(customAmount) || 0;

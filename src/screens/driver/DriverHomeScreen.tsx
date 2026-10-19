@@ -10,40 +10,46 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Button, Card,  Toggle } from '../../components/ui';
-import { colors, spacing, typography, radii} from '../../constants/theme';
+import { Badge, Button, Card, Toggle } from '../../components/ui';
+import { MapCanvas } from '../../components/map/MapCanvas';
+import { colors, spacing, typography, radii } from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
-import { Driver, Ambulance} from '../../types';
+import { useDriverDemoStore } from '../../store/driverDemoStore';
+import { Driver, Ambulance } from '../../types';
 import { driversService, bookingsService, ambulancesService, isSupabaseConfigured } from '../../services/database';
+import { locationService } from '../../services/location/locationService';
+import { isDemoMode } from '../../utils/demoMode';
 
 type TabKey = 'home' | 'requests' | 'earnings' | 'profile';
 
-// Development sample shown ONLY when Supabase is not configured, so the
-// driver-mode UI is reviewable without a database. It is clearly labelled
-// in the interface and is never presented as live data.
-const SAMPLE_DRIVER: Driver = {
-  id: 'sample-driver',
-  user_id: 'sample-user',
-  license_number: 'DL-2024-78542',
-  license_expiry: '2027-06-15',
+// Fictional driver identity used ONLY by the Driver Mode demo walkthrough
+// (demo builds or a build without Supabase credentials). Every screen that
+// shows it labels it as sample data, nothing is ever written to a database,
+// and the plate is not a real registration. The patient-side demo uses the
+// same fictional crew so both sides tell one consistent story.
+const WALKTHROUGH_DRIVER: Driver = {
+  id: 'walkthrough-driver',
+  user_id: 'walkthrough-user',
+  license_number: 'WALKTHROUGH-LIC',
+  license_expiry: '2030-12-31',
   status: 'verified',
-  rating: 4.8,
-  total_rides: 1247,
-  verified_at: '2024-01-15',
-  created_at: '2024-01-10',
+  rating: 0,
+  total_rides: 0,
+  verified_at: '2026-01-01',
+  created_at: '2026-01-01',
 };
 
-const SAMPLE_AMBULANCE: Ambulance = {
-  id: 'sample-ambulance',
-  driver_id: 'sample-driver',
+const WALKTHROUGH_AMBULANCE: Ambulance = {
+  id: 'walkthrough-ambulance',
+  driver_id: 'walkthrough-driver',
   category: 'icu',
-  plate_number: 'BA 2 PA 4521',
-  model: 'Force Traveller Ambulance',
+  plate_number: 'BA 2 KHA 4321',
+  model: 'Force Traveller',
   color: 'White',
   status: 'available',
   equipment: ['Oxygen', 'Stretcher', 'Ventilator', 'Defibrillator', 'First Aid Kit'],
-  hospital_affiliation: 'Norvic International Hospital',
-  created_at: '2024-01-12',
+  hospital_affiliation: 'Walkthrough sample',
+  created_at: '2026-01-01',
 };
 
 const DriverHomeScreen: React.FC = () => {
@@ -61,24 +67,74 @@ const DriverHomeScreen: React.FC = () => {
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayTrips, setTodayTrips] = useState(0);
 
+  // Demo walkthrough runs only in demo/sample builds (never production) and
+  // is fully in-memory: sample requests come from the isolated store, and
+  // the online toggle never touches real availability.
+  const walkthrough = isDemoMode() || !isSupabaseConfigured;
+  const demoRequests = useDriverDemoStore((s) => s.requests);
+  const demoCompletedTrips = useDriverDemoStore((s) => s.completedTrips);
+  const demoOnline = useDriverDemoStore((s) => s.isOnline);
+  const setDemoOnline = useDriverDemoStore((s) => s.setOnline);
+
+  // Walkthrough availability is session state in the demo store so it
+  // survives navigation; real mode uses the local state it always had.
+  const online = walkthrough ? demoOnline : isOnline;
+
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>(
+    'loading',
+  );
+
+  const incomingRequests = walkthrough ? demoRequests.length : incomingCount;
+
   useEffect(() => {
     loadDriverData();
     // Load exactly once on mount — loadDriverData reads fresh state internally.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The dashboard map shows the device's own position only when the OS
+  // actually provides one — never a simulated feed, and never a claim of
+  // live trip tracking.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const granted = await locationService.requestPermission();
+        if (!granted) {
+          if (!cancelled) setLocationState('unavailable');
+          return;
+        }
+        const point = await locationService.getCurrentLocation();
+        if (cancelled) return;
+        if (point) {
+          setMyLocation(point);
+          setLocationState('ready');
+        } else {
+          setLocationState('unavailable');
+        }
+      } catch {
+        if (!cancelled) setLocationState('unavailable');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function loadDriverData() {
     setLoading(true);
     setError(null);
     try {
-      if (!isSupabaseConfigured) {
-        // No database configured — show clearly-labelled sample mode.
-        setUsingSampleData(true);
-        setDriver(SAMPLE_DRIVER);
-        setAmbulance(SAMPLE_AMBULANCE);
-        setIncomingCount(3);
-        setTodayEarnings(4250);
-        setTodayTrips(12);
+      if (isDemoMode() || !isSupabaseConfigured) {
+        // Walkthrough mode — fictional sample data so the whole driver
+        // journey is reviewable without touching the database. Every screen
+        // labels it as sample data.
+        setUsingSampleData(!isDemoMode());
+        setDriver(WALKTHROUGH_DRIVER);
+        setAmbulance(WALKTHROUGH_AMBULANCE);
+        setTodayEarnings(0);
+        setTodayTrips(0);
         return;
       }
 
@@ -125,6 +181,12 @@ const DriverHomeScreen: React.FC = () => {
   }
 
   const handleOnlineChange = async (value: boolean) => {
+    if (walkthrough) {
+      // Walkthrough availability is session state in the demo store — it
+      // never changes a real ambulance status and survives navigation.
+      setDemoOnline(value);
+      return;
+    }
     setIsOnline(value);
     if (!isSupabaseConfigured || !ambulance) return;
     const nextStatus = value ? ('available' as const) : ('offline' as const);
@@ -143,6 +205,10 @@ const DriverHomeScreen: React.FC = () => {
 
   const handleGoOnline = () => {
     void handleOnlineChange(true);
+  };
+
+  const handleRestartWalkthrough = () => {
+    useDriverDemoStore.getState().restart();
   };
 
   const handleHamburgerPress = () => {
@@ -186,9 +252,9 @@ const DriverHomeScreen: React.FC = () => {
             >
               {tab.label}
             </Text>
-            {tab.key === 'requests' && incomingCount > 0 && (
+            {tab.key === 'requests' && incomingRequests > 0 && (
               <View style={styles.badgeDot}>
-                <Text style={styles.badgeDotText}>{incomingCount}</Text>
+                <Text style={styles.badgeDotText}>{incomingRequests}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -253,28 +319,35 @@ const DriverHomeScreen: React.FC = () => {
         <TouchableOpacity onPress={handleHamburgerPress} style={styles.menuButton}>
           <Text style={styles.menuIcon}>☰</Text>
         </TouchableOpacity>
-        <View style={styles.driverBadge}>
-          <Text style={styles.driverBadgeText}>🚨 Driver Mode</Text>
+        <View style={styles.driverBadgeRow}>
+          <View style={styles.driverBadge}>
+            <Text style={styles.driverBadgeText}>🚨 Driver Mode</Text>
+          </View>
+          {walkthrough && <Badge label="DEMO" variant="info" />}
         </View>
         <View style={styles.onlineIndicator}>
           <View
             style={[
               styles.onlineDot,
-              { backgroundColor: isOnline ? colors.success : colors.offline },
+              { backgroundColor: online ? colors.success : colors.offline },
             ]}
           />
         </View>
       </View>
 
-      {/* Map Placeholder */}
+      {/* Position map — the device's own GPS only, never a simulated feed */}
       <View style={styles.mapContainer}>
-        <View style={styles.mapPlaceholder}>
-          <Text style={styles.mapIcon}>🗺️</Text>
-          <Text style={styles.mapText}>Map View</Text>
-          <Text style={styles.mapSubtext}>
-            {isOnline ? 'Showing nearby requests...' : 'Go online to see requests'}
-          </Text>
-        </View>
+        <MapCanvas
+          current={myLocation}
+          currentLabel="Your position"
+          caption={
+            locationState === 'ready'
+              ? "Your position from this device's GPS"
+              : locationState === 'loading'
+              ? 'Checking your location…'
+              : 'Location unavailable — showing the Kathmandu default view'
+          }
+        />
       </View>
 
       {/* Content */}
@@ -293,8 +366,8 @@ const DriverHomeScreen: React.FC = () => {
         {usingSampleData && (
           <Card elevation="sm" style={styles.sampleCard}>
             <Text style={styles.sampleText}>
-              ⚠️ Sample mode — database not configured. Showing example driver data. Add Supabase
-              credentials in .env to load real records.
+              ⚠️ Sample build — database not configured. Showing example driver data. Add
+              Supabase credentials in .env to load real records.
             </Text>
           </Card>
         )}
@@ -319,24 +392,28 @@ const DriverHomeScreen: React.FC = () => {
         <Card elevation="sm" style={styles.toggleCard}>
           <View style={styles.toggleHeader}>
             <Text style={styles.toggleTitle}>
-              {isOnline ? "You're Online" : "You're Offline"}
+              {online ? "You're Online" : "You're Offline"}
             </Text>
-            <Toggle value={isOnline} onValueChange={handleOnlineChange} />
+            <Toggle value={online} onValueChange={handleOnlineChange} />
           </View>
           <Text style={styles.toggleSubtitle}>
-            {isOnline
-              ? 'You will receive booking requests from nearby patients.'
+            {online
+              ? walkthrough
+                ? 'Walkthrough open — sample requests are listed below. No real patient is notified.'
+                : 'You will receive booking requests from nearby patients.'
+              : walkthrough
+              ? 'Go online to open the walkthrough and see the sample requests.'
               : 'Go online to start receiving booking requests.'}
           </Text>
         </Card>
 
         {/* Online Status Card */}
-        {isOnline ? (
+        {online ? (
           <Card elevation="sm" style={styles.statusCard}>
             <View style={styles.statusRow}>
               <View style={styles.statusLeft}>
                 <Text style={styles.statusLabel}>Incoming Requests</Text>
-                <Text style={styles.statusValue}>{incomingCount}</Text>
+                <Text style={styles.statusValue}>{incomingRequests}</Text>
               </View>
               <Button
                 title="View"
@@ -360,26 +437,55 @@ const DriverHomeScreen: React.FC = () => {
           </Card>
         )}
 
+        {/* Walkthrough controls — demo/sample builds only */}
+        {walkthrough && (
+          <Card elevation="sm" style={styles.walkthroughCard}>
+            <Text style={styles.walkthroughTitle}>Driver walkthrough</Text>
+            <Text style={styles.walkthroughText}>
+              Sample requests and a sample trip for trying Driver Mode end-to-end. Nothing is
+              saved and no real patient or driver is involved.
+            </Text>
+            <Button
+              title="Restart walkthrough"
+              variant="outline"
+              size="sm"
+              fullWidth
+              onPress={handleRestartWalkthrough}
+              style={styles.walkthroughButton}
+            />
+          </Card>
+        )}
+
         {/* Earnings Summary */}
         <Text style={styles.sectionTitle}>Today&apos;s Summary</Text>
         <View style={styles.earningsGrid}>
           <Card elevation="sm" style={styles.earningsCard}>
             <Text style={styles.earningsLabel}>Earnings</Text>
             <Text style={styles.earningsValue}>
-              NPR {todayEarnings.toLocaleString('en-IN')}
+              NPR {walkthrough ? '0' : todayEarnings.toLocaleString('en-IN')}
             </Text>
-            <Text style={styles.earningsSubtext}>from completed trips</Text>
+            <Text style={styles.earningsSubtext}>
+              {walkthrough ? 'walkthrough — no real earnings' : 'from completed trips'}
+            </Text>
           </Card>
           <Card elevation="sm" style={styles.earningsCard}>
             <Text style={styles.earningsLabel}>Trips</Text>
-            <Text style={styles.earningsValue}>{todayTrips}</Text>
-            <Text style={styles.earningsSubtext}>completed today</Text>
+            <Text style={styles.earningsValue}>
+              {walkthrough ? demoCompletedTrips : todayTrips}
+            </Text>
+            <Text style={styles.earningsSubtext}>
+              {walkthrough ? 'walkthrough trips completed' : 'completed today'}
+            </Text>
           </Card>
           <Card elevation="sm" style={styles.earningsCard}>
             <Text style={styles.earningsLabel}>Rating</Text>
-            <Text style={styles.earningsValue}>★ {driver?.rating ?? 0}</Text>
+            <Text style={styles.earningsValue}>
+              {walkthrough ? '—' : `★ ${driver?.rating ?? 0}`}
+            </Text>
             <Text style={styles.earningsSubtext}>
-              {(driver?.total_rides ?? 0).toLocaleString('en-IN')} rides
+              {walkthrough
+                ? 'available after real trips'
+                : `${(driver?.total_rides ?? 0).toLocaleString('en-IN')} rides`}
             </Text>
           </Card>
         </View>
@@ -400,6 +506,7 @@ const DriverHomeScreen: React.FC = () => {
                     : ''}
                 </Text>
               </View>
+              {walkthrough && <Badge label="SAMPLE" variant="info" />}
               <Button
                 title="Manage"
                 variant="outline"
@@ -496,6 +603,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
+  driverBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   onlineIndicator: {
     width: 40,
     height: 40,
@@ -510,24 +622,6 @@ const styles = StyleSheet.create({
   mapContainer: {
     height: 180,
     backgroundColor: '#E8EAF6',
-  },
-  mapPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapIcon: {
-    fontSize: 40,
-    marginBottom: spacing.sm,
-  },
-  mapText: {
-    ...typography.h3,
-    color: colors.text,
-  },
-  mapSubtext: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
   },
   content: {
     flex: 1,
@@ -560,6 +654,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   sampleText: { ...typography.bodySmall, color: colors.warning },
+  walkthroughCard: {
+    marginBottom: spacing.lg,
+  },
+  walkthroughTitle: { ...typography.body, fontWeight: '600' },
+  walkthroughText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  walkthroughButton: { marginTop: spacing.md },
   verifyCard: {
     backgroundColor: colors.amberLight,
     marginBottom: spacing.lg,

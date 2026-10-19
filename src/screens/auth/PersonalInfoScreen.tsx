@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radii } from '../../constants/theme';
 import { Button, Input } from '../../components/ui';
+import { DocumentUploadCard } from '../../components/identity';
 import { useAuthStore } from '../../store/authStore';
 import { profilesService } from '../../services/database/profiles';
+import {
+  identityApplicationsService,
+  identityDocumentsService,
+  IdentityServiceError,
+} from '../../services/database';
 import { isSupabaseConfigured } from '../../services/database/client';
+import { isDemoMode } from '../../utils/demoMode';
+import type { IdentityDocument } from '../../types';
+import { applicationStatusPresentation, pickCurrentDocument } from '../../utils/identity';
 
 interface PersonalInfoScreenProps {
   navigation: any;
@@ -30,7 +39,41 @@ const PersonalInfoScreen: React.FC<PersonalInfoScreenProps> = ({ navigation, rou
   const [selectedGender, setSelectedGender] = useState('');
   const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [citizenshipNumber, setCitizenshipNumber] = useState(user?.citizenship_number ?? '');
   const [saving, setSaving] = useState(false);
+  const [documents, setDocuments] = useState<IdentityDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentBusy, setDocumentBusy] = useState(false);
+
+  const requiresIdentity = isSupabaseConfigured && !isDemoMode();
+  const userId = user?.id;
+  const citizenshipDocument = pickCurrentDocument(documents, 'CITIZENSHIP');
+
+  const loadDocuments = useCallback(async () => {
+    if (!requiresIdentity || !userId) return;
+    setDocumentsLoading(true);
+    try {
+      const loaded = await identityDocumentsService.listDocuments();
+      setDocuments(loaded);
+    } catch (error) {
+      // A missing migration is surfaced where the document is uploaded; this
+      // screen stays usable and never pretends a document exists.
+      if (error instanceof IdentityServiceError) {
+        setDocuments([]);
+      }
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [requiresIdentity, userId]);
+
+  useEffect(() => {
+    // Defer by a tick so the effect does not synchronously set loading state
+    // during mount (React's effect guidance).
+    const timer = setTimeout(() => {
+      void loadDocuments();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadDocuments]);
 
   const handleBack = () => {
     navigation.goBack();
@@ -40,6 +83,36 @@ const PersonalInfoScreen: React.FC<PersonalInfoScreenProps> = ({ navigation, rou
     const dob = dateOfBirth.trim();
     if (dob && !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
       Alert.alert('Check date of birth', 'Please enter your date of birth as YYYY-MM-DD.');
+      return;
+    }
+    if (requiresIdentity && !citizenshipNumber.trim()) {
+      Alert.alert(
+        'Citizenship number required',
+        'Enter the citizenship number printed on your certificate before continuing.',
+      );
+      return;
+    }
+    if (requiresIdentity && !citizenshipDocument) {
+      Alert.alert(
+        'Citizenship document required',
+        'Upload a photo of your citizenship document before submitting your registration.',
+      );
+      return;
+    }
+    if (isDemoMode()) {
+      // Demo mode — keep the typed details local only; nothing is written to
+      // Supabase, no document is uploaded and no real account is created.
+      setUser({
+        id: 'demo-user',
+        full_name: fullName.trim(),
+        email: email.trim(),
+        phone: phone || '',
+        citizenship_number: citizenshipNumber.trim() || undefined,
+        mode: 'user',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      navigation.navigate('LocationPermission');
       return;
     }
     if (!isSupabaseConfigured) {
@@ -54,6 +127,7 @@ const PersonalInfoScreen: React.FC<PersonalInfoScreenProps> = ({ navigation, rou
       return;
     }
     setSaving(true);
+    let profileSaved = false;
     try {
       // Persist the details collected here to the signed-in user's profile.
       const updated = await profilesService.update(userId, {
@@ -61,11 +135,55 @@ const PersonalInfoScreen: React.FC<PersonalInfoScreenProps> = ({ navigation, rou
         email: email.trim(),
         ...(selectedGender ? { gender: selectedGender } : {}),
         ...(dob ? { date_of_birth: dob } : {}),
+        citizenship_number: citizenshipNumber.trim(),
       });
       setUser(updated);
-      navigation.navigate('LocationPermission');
-    } catch {
-      Alert.alert('Could not save your details', 'Please check your connection and try again.');
+      profileSaved = true;
+
+      try {
+        const application = await identityApplicationsService.submitApplication('USER');
+        const statusLabel = applicationStatusPresentation(application.status).label;
+        Alert.alert(
+          'Application recorded',
+          `Your citizenship details were saved.\n\nReference: ${application.reference_id}\nStatus: ${statusLabel}.`,
+          [
+            {
+              text: 'View status',
+              onPress: () => navigation.navigate('ApplicationStatus', { type: 'USER' }),
+            },
+            {
+              text: 'Continue',
+              onPress: () => navigation.navigate('LocationPermission'),
+            },
+          ],
+          { cancelable: false },
+        );
+        return;
+      } catch (submissionError) {
+        const message =
+          submissionError instanceof IdentityServiceError
+            ? submissionError.userMessage
+            : 'Your details were saved, but the application could not be submitted.';
+        Alert.alert('Details saved — not submitted', message, [
+          {
+            text: 'View status',
+            onPress: () => navigation.navigate('ApplicationStatus', { type: 'USER' }),
+          },
+          {
+            text: 'Continue',
+            onPress: () => navigation.navigate('LocationPermission'),
+          },
+        ]);
+        return;
+      }
+    } catch (error) {
+      const message =
+        error instanceof IdentityServiceError
+          ? error.userMessage
+          : profileSaved
+            ? 'Your profile was saved, but the document record could not be updated.'
+            : 'Please check your connection and try again.';
+      Alert.alert('Could not save your details', message);
     } finally {
       setSaving(false);
     }
@@ -74,11 +192,18 @@ const PersonalInfoScreen: React.FC<PersonalInfoScreenProps> = ({ navigation, rou
   const handleAvatarPress = () => {
     Alert.alert(
       'Profile photo',
-      'Uploading a profile photo is not available in this build — file storage is not configured yet. You can add a photo once storage is enabled.',
+      'Uploading a profile photo is not available in this build. Identity documents are uploaded separately and stored privately.',
     );
   };
 
-  const isFormValid = fullName.trim() && email.trim() && selectedGender;
+  const isFormValid = Boolean(
+    fullName.trim() &&
+      email.trim() &&
+      selectedGender &&
+      (!requiresIdentity || (citizenshipNumber.trim() && citizenshipDocument)) &&
+      !documentsLoading &&
+      !documentBusy,
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -175,6 +300,64 @@ const PersonalInfoScreen: React.FC<PersonalInfoScreenProps> = ({ navigation, rou
             keyboardType="number-pad"
             maxLength={10}
           />
+
+          {/* Citizenship number + document — required for a real account.
+              Demo/sample mode keeps the honest local walkthrough and never
+              pretends a document was uploaded. */}
+          <Input
+            label="Citizenship Number"
+            value={citizenshipNumber}
+            onChangeText={setCitizenshipNumber}
+            placeholder={requiresIdentity ? 'As printed on your certificate' : 'Optional in demo mode'}
+            autoCapitalize="characters"
+            editable={requiresIdentity}
+          />
+
+          {requiresIdentity ? (
+            <>
+              {documentsLoading ? (
+                <View style={styles.documentLoading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.documentLoadingText}>Checking uploaded documents…</Text>
+                </View>
+              ) : (
+                <DocumentUploadCard
+                  documentType="CITIZENSHIP"
+                  existing={citizenshipDocument}
+                  required
+                  onUploaded={(document) => {
+                    setDocuments((current) => [
+                      document,
+                      ...current.filter((item) => item.id !== document.id),
+                    ]);
+                  }}
+                  onRemoved={(document) => {
+                    setDocuments((current) =>
+                      current.map((item) =>
+                        item.id === document.id ? { ...item, upload_status: 'REMOVED' } : item,
+                      ),
+                    );
+                  }}
+                  onBusyChange={setDocumentBusy}
+                />
+              )}
+              <View style={styles.identityNote}>
+                <Text style={styles.identityNoteText}>
+                  Required for a patient account. The document is stored in a private bucket and
+                  is only used for registration review. Uploading it does not verify your identity
+                  automatically.
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.identityNote}>
+              <Text style={styles.identityNoteText}>
+                {isDemoMode()
+                  ? 'Demo mode — no identity document is uploaded, no application is created and nothing is sent to the database.'
+                  : 'Sample mode — the database is not configured, so no identity document is uploaded and no application is created.'}
+              </Text>
+            </View>
+          )}
         </ScrollView>
 
         {/* Continue Button */}
@@ -213,7 +396,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxxl,
   },
   heading: {
     ...typography.h2,
@@ -301,6 +484,27 @@ const styles = StyleSheet.create({
   dropdownOptionText: {
     ...typography.body,
     color: colors.text,
+  },
+  documentLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  documentLoadingText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  identityNote: {
+    backgroundColor: colors.blueLight,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  identityNoteText: {
+    ...typography.caption,
+    color: colors.text,
+    lineHeight: 18,
   },
   footer: {
     paddingHorizontal: spacing.xl,

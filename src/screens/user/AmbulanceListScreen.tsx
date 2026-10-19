@@ -1,622 +1,440 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
-import { Badge, Button, EmptyState, Avatar, Card } from '../../components/ui';
+import { Button, Badge } from '../../components/ui';
+import { MapCanvas } from '../../components/map/MapCanvas';
+import { RouteSummary } from '../../components/booking/RouteSummary';
+import { ServiceCategoryCard } from '../../components/booking/ServiceCategoryCard';
+import { SERVICE_CATEGORY_LIST, ServiceCategory } from '../../constants/serviceCategories';
+import { estimateFare, startingPrice } from '../../constants/fares';
 import { ambulancesService } from '../../services/database/ambulances';
 import { isSupabaseConfigured } from '../../services/database/client';
-import { FARE_RATE_CARD } from '../../constants/fares';
-import { Ambulance} from '../../types';
+import { useBookingStore } from '../../store/bookingStore';
+import { isDemoMode } from '../../utils/demoMode';
+import { buildCategoryOption } from '../../utils/categoryOption';
+import { formatKm, straightLineKm } from '../../utils/geo';
+import { Ambulance, AmbulanceStatus } from '../../types';
 
-interface AmbulanceWithDriver extends Ambulance {
-  driverName?: string;
-  driverRating?: number;
-  driverTotalRides?: number;
-  price?: number;
-  seatsAvailable?: number;
+export interface AmbulanceOption extends Ambulance {
+  /** True when the row comes from the labelled demo/sample list. */
+  isSample?: boolean;
+  /** True when the option represents a whole service category, not a vehicle. */
+  isCategoryOption?: boolean;
 }
 
-const MOCK_AMBULANCES: AmbulanceWithDriver[] = [
+/**
+ * Labelled demo vehicles. Shown only in demo mode or when no database is
+ * configured — never mixed with real rows. No driver names, ratings or plate
+ * numbers are attached to sample entries.
+ */
+const SAMPLE_VEHICLES: AmbulanceOption[] = [
   {
-    id: '1',
-    driver_id: 'd1',
+    id: 'demo-basic',
+    driver_id: '',
     category: 'basic',
-    plate_number: 'BA 2 PA 1234',
-    model: 'Toyota Hiace',
+    plate_number: '',
+    model: 'Toyota Hiace (sample)',
     color: 'White',
     status: 'available',
     equipment: ['Stretcher', 'Oxygen Cylinder', 'First Aid Kit'],
-    hospital_affiliation: 'Grande Hospital',
-    driverName: 'Ram Bahadur',
-    driverRating: 4.8,
-    driverTotalRides: 342,
-    price: 1500,
-    seatsAvailable: 3,
-    created_at: '2024-01-01',
+    created_at: '',
+    isSample: true,
   },
   {
-    id: '2',
-    driver_id: 'd2',
+    id: 'demo-icu',
+    driver_id: '',
     category: 'icu',
-    plate_number: 'BA 5 PA 5678',
-    model: 'Force Traveller',
+    plate_number: '',
+    model: 'Force Traveller (sample)',
     color: 'White',
     status: 'available',
     equipment: ['Stretcher', 'Oxygen Cylinder', 'Ventilator', 'Defibrillator', 'Cardiac Monitor'],
-    hospital_affiliation: 'Norvic Hospital',
-    driverName: 'Sita Sharma',
-    driverRating: 4.9,
-    driverTotalRides: 567,
-    price: 3500,
-    seatsAvailable: 2,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '3',
-    driver_id: 'd3',
-    category: 'basic',
-    plate_number: 'BA 1 PA 9012',
-    model: 'Tata Winger',
-    color: 'White',
-    status: 'available',
-    equipment: ['Stretcher', 'Oxygen Cylinder', 'First Aid Kit'],
-    driverName: 'Hari Prasad',
-    driverRating: 4.5,
-    driverTotalRides: 189,
-    price: 1200,
-    seatsAvailable: 4,
-    created_at: '2024-01-01',
+    created_at: '',
+    isSample: true,
   },
 ];
 
 const AmbulanceListScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const route = useRoute<any>();
+  const { pickup, destination } = useBookingStore();
 
-  const [ambulances, setAmbulances] = useState<AmbulanceWithDriver[]>([]);
+  const [ambulances, setAmbulances] = useState<AmbulanceOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [usingSampleData, setUsingSampleData] = useState(false);
-  const [selectedDate, setSelectedDate] = useState('Today');
-  const [passengers, setPassengers] = useState(1);
-  const [pickupAddress, ] = useState(route.params?.pickupAddress || 'Current Location');
-  const [destinationAddress, ] = useState(route.params?.destinationAddress || '');
 
-  useEffect(() => {
-    fetchAmbulances();
-  }, []);
+  const routeDistanceKm = useMemo(() => {
+    if (pickup?.lat == null || pickup?.lng == null || destination?.lat == null || destination?.lng == null) {
+      return null;
+    }
+    return straightLineKm(
+      { lat: pickup.lat, lng: pickup.lng },
+      { lat: destination.lat, lng: destination.lng },
+    );
+  }, [pickup, destination]);
 
-  async function fetchAmbulances() {
+  const fetchAmbulances = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (!isSupabaseConfigured) {
-        // No database configured — clearly-labelled sample list.
+      if (!isSupabaseConfigured || isDemoMode()) {
+        // No database, or an explicit demo run — clearly-labelled samples.
         setUsingSampleData(true);
-        setAmbulances(MOCK_AMBULANCES);
+        setError(null);
+        setAmbulances(SAMPLE_VEHICLES);
         return;
       }
-
       setUsingSampleData(false);
       const data = await ambulancesService.getAll();
-      // Real rows are shown as stored. Driver identity and ratings are not
-      // fabricated — the app cannot read other users' profiles under RLS,
-      // so driver details are shared after assignment.
-      const withRates = data.map((amb) => ({
-        ...amb,
-        price: FARE_RATE_CARD[amb.category]?.startingPrice,
-      }));
-      setAmbulances(withRates);
+      setAmbulances(data);
+      setError(null);
     } catch {
-      setError('Could not load ambulances. Please try again.');
+      setAmbulances([]);
+      setError('Could not load ambulances. Check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
-  const handleBookNow = (ambulance: AmbulanceWithDriver) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void fetchAmbulances();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchAmbulances]);
+
+  const availableByCategory = useMemo(() => {
+    const count: Record<string, number> = { basic: 0, icu: 0 };
+    for (const item of ambulances) {
+      if (item.status === 'available') count[item.category] = (count[item.category] ?? 0) + 1;
+    }
+    return count;
+  }, [ambulances]);
+
+  const handleSelectVehicle = (ambulance: AmbulanceOption) => {
     navigation.navigate('AmbulanceDetails', { ambulance });
   };
 
-  const handleEditRoute = () => {
-    navigation.navigate('LocationSearch', { mode: 'pickup' });
+  const handleSelectCategory = (category: ServiceCategory) => {
+    navigation.navigate('AmbulanceDetails', { ambulance: buildCategoryOption(category) });
   };
 
-  const getEquipmentIcons = (equipment: string[]) => {
-    const icons: string[] = [];
-    equipment.forEach((item) => {
-      const lower = item.toLowerCase();
-      if (lower.includes('oxygen')) icons.push('🫁');
-      else if (lower.includes('stretcher')) icons.push('🛏️');
-      else if (lower.includes('ventilator')) icons.push('💨');
-      else if (lower.includes('defibrillator')) icons.push('⚡');
-      else if (lower.includes('cardiac') || lower.includes('monitor')) icons.push('💓');
-      else if (lower.includes('first aid')) icons.push('🩹');
-      else icons.push('🏥');
-    });
-    return icons;
-  };
+  const statusLabel = (status: AmbulanceStatus) =>
+    status === 'available' ? 'Available now' : status === 'busy' ? 'Currently on duty' : 'Offline';
 
-  const renderAmbulanceCard = ({ item }: { item: AmbulanceWithDriver }) => (
-    <Card style={styles.ambulanceCard} elevation="md">
-      <TouchableOpacity
-        onPress={() => handleBookNow(item)}
-        activeOpacity={0.8}
-      >
-        {/* Driver / Identity Row */}
-        <View style={styles.driverRow}>
-          {item.driverName ? (
-            <>
-              <Avatar name={item.driverName} size="md" />
-              <View style={styles.driverInfo}>
-                <Text style={styles.driverName}>{item.driverName}</Text>
-                <View style={styles.ratingRow}>
-                  <Text style={styles.star}>★</Text>
-                  <Text style={styles.ratingText}>{item.driverRating}</Text>
-                  <Text style={styles.ridesText}>({item.driverTotalRides} rides)</Text>
-                </View>
-              </View>
-            </>
-          ) : (
-            <>
-              <Avatar name="🚑" size="md" />
-              <View style={styles.driverInfo}>
-                <Text style={styles.driverName}>Verified ambulance</Text>
-                <Text style={styles.ridesText}>Driver details shared after assignment</Text>
-              </View>
-            </>
-          )}
-          <Badge
-            label={item.category === 'icu' ? 'ICU' : 'Basic'}
-            variant={item.category === 'icu' ? 'error' : 'success'}
-          />
-        </View>
-
-        {/* Vehicle Info */}
-        <View style={styles.vehicleRow}>
-          <Text style={styles.vehicleModel}>{item.model}</Text>
-          <Text style={styles.plateNumber}>{item.plate_number}</Text>
-        </View>
-
-        {/* Equipment */}
-        <View style={styles.equipmentRow}>
-          {getEquipmentIcons(item.equipment).map((icon, idx) => (
-            <Text key={idx} style={styles.equipmentIcon}>{icon}</Text>
-          ))}
-          <Text style={styles.equipmentText}>
-            {item.equipment.slice(0, 3).join(', ')}
-            {item.equipment.length > 3 ? ` +${item.equipment.length - 3} more` : ''}
-          </Text>
-        </View>
-
-        {/* Fare & Availability */}
-        <View style={styles.priceRow}>
-          <View>
-            <Text style={styles.priceLabel}>Indicative fare</Text>
-            <Text style={styles.price}>NPR {item.price?.toLocaleString()}</Text>
-          </View>
-          <View style={styles.seatsInfo}>
-            <Text style={styles.seatsText}>
-              {item.status === 'available' ? 'Available now' : item.status === 'busy' ? 'Currently on duty' : 'Offline'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Book Now Button */}
-        <Button
-          title="Book Now"
-          onPress={() => handleBookNow(item)}
-          fullWidth
-          style={styles.bookButton}
-        />
-      </TouchableOpacity>
-    </Card>
-  );
+  const routeReady = Boolean(pickup && destination);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Available Ambulances</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Route Summary */}
-        <View style={styles.routeCard}>
-          <View style={styles.routeRow}>
-            <View style={[styles.routeDot, styles.routeDotGreen]} />
-            <Text style={styles.routeText} numberOfLines={1}>{pickupAddress}</Text>
-          </View>
-          <View style={styles.routeLine} />
-          <View style={styles.routeRow}>
-            <View style={[styles.routeDot, styles.routeDotRed]} />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {destinationAddress || 'Add destination'}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.editButton} onPress={handleEditRoute}>
-            <Text style={styles.editText}>Edit</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Date & Passenger Selector */}
-        <View style={styles.selectorRow}>
-          <View style={styles.selectorCard}>
-            <Text style={styles.selectorLabel}>Date</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {['Today', 'Tomorrow', 'Oct 18', 'Oct 19', 'Oct 20'].map((date) => (
-                <TouchableOpacity
-                  key={date}
-                  style={[styles.dateChip, selectedDate === date && styles.dateChipActive]}
-                  onPress={() => setSelectedDate(date)}
-                >
-                  <Text style={[styles.dateChipText, selectedDate === date && styles.dateChipTextActive]}>
-                    {date}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-          <View style={styles.selectorCard}>
-            <Text style={styles.selectorLabel}>Passengers</Text>
-            <View style={styles.passengerSelector}>
-              <TouchableOpacity
-                style={styles.passengerButton}
-                onPress={() => setPassengers(Math.max(1, passengers - 1))}
-              >
-                <Text style={styles.passengerButtonText}>−</Text>
-              </TouchableOpacity>
-              <Text style={styles.passengerCount}>{passengers}</Text>
-              <TouchableOpacity
-                style={styles.passengerButton}
-                onPress={() => setPassengers(Math.min(6, passengers + 1))}
-              >
-                <Text style={styles.passengerButtonText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Find Ambulances Button */}
-        <Button
-          title="Find Ambulances"
-          onPress={fetchAmbulances}
-          fullWidth
-          size="lg"
-          style={styles.findButton}
+      <View style={styles.mapArea}>
+        <MapCanvas
+          pickup={pickup && pickup.lat != null && pickup.lng != null ? { lat: pickup.lat, lng: pickup.lng } : null}
+          destination={
+            destination && destination.lat != null && destination.lng != null
+              ? { lat: destination.lat, lng: destination.lng }
+              : null
+          }
+          caption={routeDistanceKm ? `Straight-line · ${formatKm(routeDistanceKm)}` : undefined}
+          style={styles.map}
         />
 
-        {/* Results */}
-        {usingSampleData && (
-          <View style={styles.sampleBanner}>
-            <Text style={styles.sampleBannerText}>
-              ⚠️ Sample mode — database not configured. Showing example ambulances.
-            </Text>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Text style={styles.backArrow}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.titlePill}>
+            <Text style={styles.titleText}>Choose ambulance</Text>
           </View>
-        )}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={fetchAmbulances}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh available ambulances"
+          >
+            <Text style={styles.refreshIcon}>⟳</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
-        {error && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{error}</Text>
-            <Button title="Retry" variant="outline" size="sm" onPress={fetchAmbulances} />
-          </View>
-        )}
+      <View style={styles.sheetWrap}>
+          <ScrollView
+            style={styles.sheet}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.handleBar} />
 
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Finding available ambulances...</Text>
-          </View>
-        ) : ambulances.length === 0 ? (
-          <EmptyState
-            icon="🚑"
-            title="No ambulances available"
-            message="Try again later or change your location"
-          />
-        ) : (
-          <View style={styles.listContainer}>
-            <Text style={styles.resultsCount}>
-              {ambulances.length} ambulance{ambulances.length > 1 ? 's' : ''} available
-            </Text>
-            {ambulances.map((ambulance) => (
-              <View key={ambulance.id}>
-                {renderAmbulanceCard({ item: ambulance })}
+            <RouteSummary
+              pickup={pickup}
+              destination={destination}
+              onEditPickup={() => navigation.navigate('LocationSearch', { mode: 'pickup' })}
+              onEditDestination={() => navigation.navigate('LocationSearch', { mode: 'destination' })}
+              meta={routeDistanceKm ? `Approx. ${formatKm(routeDistanceKm)} straight line between the two points` : null}
+            />
+
+            {!routeReady && (
+              <View style={styles.hintCard}>
+                <Text style={styles.hintText}>
+                  Set the pickup and destination to see an indicative fare. You can still request a
+                  service without them, but the crew will call to confirm.
+                </Text>
               </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+            )}
+
+            {usingSampleData && (
+              <Text style={styles.demoNote}>
+                {isDemoMode()
+                  ? 'Demo mode — sample ambulances, no real drivers are attached.'
+                  : 'Sample mode — database not configured. Showing example ambulances.'}
+              </Text>
+            )}
+
+            {error ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>{error}</Text>
+                <Button title="Retry" variant="outline" size="sm" onPress={fetchAmbulances} />
+              </View>
+            ) : null}
+
+            <Text style={[styles.sectionTitle, styles.sectionTitleFirst]}>Book by service</Text>
+            <Text style={styles.sectionNote}>
+              {usingSampleData
+                ? 'Demo availability — real requests depend on the live fleet.'
+                : Object.values(availableByCategory).some((n) => n > 0)
+                  ? 'Fare estimate uses the straight-line distance between your two points.'
+                  : 'No verified ambulance is listed as available right now; requests are queued for the next crew that comes online.'}
+            </Text>
+
+            {SERVICE_CATEGORY_LIST.map((category) => {
+              const count = availableByCategory[category.key] ?? 0;
+              const availability =
+                count > 0
+                  ? usingSampleData
+                    ? `${count} sample vehicle${count === 1 ? '' : 's'}`
+                    : `${count} listed as available`
+                  : usingSampleData
+                    ? 'Sample availability — demo only'
+                    : 'None listed as available right now';
+              return (
+                <ServiceCategoryCard
+                  key={category.key}
+                  category={category}
+                  estimate={estimateFare(category.key, routeDistanceKm)}
+                  startingPrice={startingPrice(category.key)}
+                  availability={availability}
+                  available={count > 0 || usingSampleData}
+                  onPress={() => handleSelectCategory(category)}
+                />
+              );
+            })}
+
+            {isLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingText}>Looking for available ambulances…</Text>
+              </View>
+            ) : ambulances.length > 0 ? (
+              <>
+                <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>
+                  {usingSampleData ? 'Sample vehicles' : 'Ambulances listed as available'}
+                </Text>
+                {ambulances.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.vehicleCard}
+                    onPress={() => handleSelectVehicle(item)}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.model || 'Ambulance'}, ${
+                      item.isSample ? 'sample vehicle, availability not confirmed' : statusLabel(item.status)
+                    }`}
+                  >
+                    <View style={styles.vehicleIconWrap}>
+                      <Text style={styles.vehicleIcon}>🚑</Text>
+                    </View>
+                    <View style={styles.vehicleInfo}>
+                      <View style={styles.vehicleTitleRow}>
+                        <Text style={styles.vehicleModel} numberOfLines={1}>
+                          {item.model || 'Ambulance'}
+                        </Text>
+                        <Badge
+                          label={item.category === 'icu' ? 'ICU' : 'Basic'}
+                          variant={item.category === 'icu' ? 'error' : 'success'}
+                        />
+                      </View>
+                      <Text style={styles.vehicleMeta} numberOfLines={1}>
+                        {item.isSample
+                          ? 'Sample vehicle — availability not confirmed'
+                          : `${statusLabel(item.status)}${item.plate_number ? ` · ${item.plate_number}` : ''}`}
+                      </Text>
+                      <Text style={styles.vehicleEquipment} numberOfLines={1}>
+                        {item.equipment.slice(0, 3).join(' · ')}
+                        {item.equipment.length > 3 ? ` +${item.equipment.length - 3}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={styles.chevron}>›</Text>
+                  </TouchableOpacity>
+                ))}
+              </>
+            ) : !error ? (
+              <Text style={styles.emptyNote}>
+                No verified ambulance is listed right now. You can still send a request — it becomes
+                visible to ambulance crews as soon as one is online.
+              </Text>
+            ) : null}
+
+            <Text style={styles.disclaimer}>
+              RESQ Nepal never shows invented vehicles or arrival times. What you see here is the
+              live database — or a clearly-labelled sample.
+            </Text>
+          </ScrollView>
+        </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backArrow: {
-    fontSize: 24,
-    color: colors.text,
-  },
-  headerTitle: {
-    ...typography.h3,
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  routeCard: {
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    ...shadows.sm,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  routeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  routeDotGreen: {
-    backgroundColor: colors.success,
-  },
-  routeDotRed: {
-    backgroundColor: colors.primary,
-  },
-  routeLine: {
-    width: 2,
-    height: 16,
-    backgroundColor: colors.border,
-    marginLeft: 4,
-    marginVertical: 2,
-  },
-  routeText: {
-    ...typography.body,
-    color: colors.text,
-    flex: 1,
-  },
-  editButton: {
+  container: { flex: 1, backgroundColor: colors.background },
+  mapArea: { flex: 1, position: 'relative' },
+  map: { ...StyleSheet.absoluteFill },
+
+  topBar: {
     position: 'absolute',
     top: spacing.md,
-    right: spacing.md,
-  },
-  editText: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  selectorRow: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    gap: spacing.md,
-  },
-  selectorCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  selectorLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  dateChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.input,
-    marginRight: spacing.sm,
-  },
-  dateChipActive: {
-    backgroundColor: colors.primary,
-  },
-  dateChipText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  dateChipTextActive: {
-    color: colors.surface,
-  },
-  passengerSelector: {
+    left: spacing.lg,
+    right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    justifyContent: 'space-between',
   },
-  passengerButton: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.full,
-    backgroundColor: colors.input,
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    ...shadows.md,
   },
-  passengerButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
+  backArrow: { fontSize: 22, color: colors.text },
+  refreshIcon: { fontSize: 20, color: colors.text },
+  titlePill: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    ...shadows.md,
   },
-  passengerCount: {
-    ...typography.h4,
-    color: colors.text,
-    minWidth: 24,
-    textAlign: 'center',
+  titleText: { ...typography.bodySmall, fontWeight: '700', color: colors.text },
+
+  // The sheet is a normal flex column sibling of the map. The height cap must
+  // live here (percentage of the definite-height screen), NOT on the ScrollView:
+  // a percentage maxHeight on a child of an auto-height wrapper is resolved
+  // twice by Yoga (72% x 72%) and silently clips the sheet content.
+  sheetWrap: {
+    marginTop: -spacing.lg,
+    height: '64%',
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.xxl,
+    borderTopRightRadius: radii.xxl,
+    ...shadows.lg,
   },
-  findButton: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+  sheet: { flex: 1 },
+  sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
   },
-  sampleBanner: {
+
+  hintCard: {
     backgroundColor: colors.amberLight,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
-  sampleBannerText: {
-    ...typography.bodySmall,
-    color: colors.warning,
+  hintText: { ...typography.bodySmall, color: colors.warning },
+
+  demoNote: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    lineHeight: 16,
+    marginTop: spacing.sm,
   },
   errorBanner: {
     backgroundColor: colors.redLight,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  errorBannerText: { ...typography.bodySmall, color: colors.error },
+  loadingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
   },
-  errorBannerText: {
-    ...typography.bodySmall,
-    color: colors.error,
+  loadingText: { ...typography.bodySmall, color: colors.textSecondary },
+
+  sectionTitle: { ...typography.h4, color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
+  sectionTitleFirst: { marginTop: spacing.sm },
+  sectionTitleSpaced: { marginTop: spacing.lg },
+  sectionNote: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md },
+
+  vehicleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     marginBottom: spacing.sm,
-    textAlign: 'center',
+    backgroundColor: colors.surface,
   },
-  loadingContainer: {
+  vehicleIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: radii.md,
+    backgroundColor: colors.input,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xxxl,
-    gap: spacing.md,
+    marginRight: spacing.md,
   },
-  loadingText: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  listContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl,
-  },
-  resultsCount: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  ambulanceCard: {
-    marginBottom: spacing.md,
-  },
-  driverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  driverInfo: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  driverName: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  star: {
-    fontSize: 14,
-    color: colors.warning,
-  },
-  ratingText: {
-    ...typography.bodySmall,
-    color: colors.text,
-    marginLeft: 2,
-  },
-  ridesText: {
-    ...typography.caption,
-    color: colors.textTertiary,
-    marginLeft: 4,
-  },
-  vehicleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  vehicleModel: {
-    ...typography.h4,
-    color: colors.text,
-  },
-  plateNumber: {
+  vehicleIcon: { fontSize: 24 },
+  vehicleInfo: { flex: 1 },
+  vehicleTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  vehicleModel: { ...typography.body, fontWeight: '600', color: colors.text, flexShrink: 1 },
+  vehicleMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  vehicleEquipment: { ...typography.caption, color: colors.textTertiary, marginTop: 1 },
+  chevron: { fontSize: 22, color: colors.textTertiary, marginLeft: spacing.sm },
+
+  emptyNote: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     backgroundColor: colors.input,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
-  },
-  equipmentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  equipmentIcon: {
-    fontSize: 16,
-  },
-  equipmentText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  priceLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  price: {
-    ...typography.h3,
-    color: colors.primary,
-  },
-  seatsInfo: {
-    backgroundColor: colors.greenLight,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.sm,
-  },
-  seatsText: {
-    ...typography.caption,
-    color: colors.success,
-    fontWeight: '600',
-  },
-  bookButton: {
+    borderRadius: radii.md,
+    padding: spacing.md,
     marginTop: spacing.sm,
   },
+  disclaimer: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.md },
 });
 
 export default AmbulanceListScreen;

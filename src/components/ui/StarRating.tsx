@@ -19,6 +19,9 @@ export const StarRating: React.FC<StarRatingProps> = ({ rating, onRate, size = '
           onPress={() => !readonly && onRate?.(star)}
           disabled={readonly}
           style={styles.star}
+          accessibilityRole="button"
+          accessibilityLabel={`${star} star${star === 1 ? '' : 's'}`}
+          accessibilityState={{ selected: star <= rating }}
         >
           <Text style={{ fontSize: starSize, color: star <= rating ? colors.warning : colors.border }}>
             ★

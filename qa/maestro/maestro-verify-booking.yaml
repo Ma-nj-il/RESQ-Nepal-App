@@ -1,0 +1,126 @@
+appId: host.exp.Exponent
+---
+# UI-refinement verification — booking journey (A), self-contained.
+# Launches Expo Go, signs in via demo OTP, then walks the compact booking flow:
+# Home (route preview + category) -> searching (animated radar) -> assigned.
+# Preconditions: demo dev server on 8081, Expo Go installed.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-verify-booking.yaml
+- launchApp
+- openLink: "exp://127.0.0.1:8081"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 120000
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Welcome Back.*"
+    timeout: 20000
+- tapOn: "e.g. 98XXXXXXXX"
+- eraseText
+- inputText: "9812345678"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- extendedWaitUntil:
+    visible: ".*Fill Personal Info.*"
+    timeout: 30000
+- tapOn: "Enter your full name"
+- eraseText
+- inputText: "QA Demo User"
+- pressKey: Enter
+- tapOn: "Enter your email"
+- eraseText
+- inputText: "qa.demo@resq.test"
+- pressKey: Enter
+- tapOn: "Select gender, ▼"
+- extendedWaitUntil:
+    visible: ".*Male.*"
+    timeout: 10000
+- tapOn: "Female"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Enable Location.*"
+    timeout: 30000
+- tapOn: "Maybe Later"
+- assertVisible: ".*Find Ambulance.*"
+- takeScreenshot: ui-01-home
+# Simulator GPS can be flaky — if the pickup did not auto-fill, set it here.
+- tapOn:
+    text: ".*Tap to set pickup location.*"
+    optional: true
+- tapOn:
+    text: ".*Bir Hospital.*"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+# ── Destination search: pick a real hospital from the database ──────────────
+- tapOn: ".*Tap to search hospital or destination.*"
+- extendedWaitUntil:
+    visible: ".*Search hospital or destination.*"
+    timeout: 20000
+- extendedWaitUntil:
+    visible: ".*Norvic.*"
+    timeout: 30000
+- takeScreenshot: ui-02-location-search
+- tapOn:
+    text: ".*Norvic.*"
+    index: 0
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- takeScreenshot: ui-03-home-route
+# ── Compact category cards: both states are visible and selectable ──────────
+- scrollUntilVisible:
+    element:
+      text: ".*For critical patients requiring emergency or ICU support.*"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- takeScreenshot: ui-04-home-patient-selected
+- tapOn: ".*For critical patients requiring emergency or ICU support.*"
+- takeScreenshot: ui-04b-home-icu-selected
+- tapOn: ".*Transport for routine hospital visits and patient transfers.*"
+- takeScreenshot: ui-04c-home-patient-selected-again
+# ── Primary action goes straight to the map-first search state ──────────────
+- tapOn: ".*Find Ambulance.*"
+- extendedWaitUntil:
+    visible: ".*Booking Status.*"
+    timeout: 30000
+- takeScreenshot: ui-05-searching
+# The searching screen must offer cancellation while the radar runs.
+- assertVisible: ".*Cancel request.*"
+- assertVisible: ".*not live GPS.*"
+- assertNotVisible: ".*Payment Method.*"
+# ── Demo timeline: assigned state (clearly labelled sample, no fake plate) ──
+- extendedWaitUntil:
+    visible: ".*Track Ambulance.*"
+    timeout: 40000
+- takeScreenshot: ui-06-status-assigned
+- tapOn: ".*Track Ambulance.*"
+- extendedWaitUntil:
+    visible: ".*Demo walkthrough.*"
+    timeout: 15000
+- tapOn: "OK"
+- assertVisible: ".*Sample crew state.*"
+- assertVisible: ".*no real driver, vehicle or registration.*"
+# No contact number is ever rendered as text; on real bookings the number is
+# only handed to the native dialer.
+- assertNotVisible: '.*\+977.*'
+- takeScreenshot: ui-07-assigned-crew
+- tapOn: ".*Call Driver.*"
+- extendedWaitUntil:
+    visible: ".*No call is placed in the demo.*"
+    timeout: 10000
+- tapOn: "OK"
+# ── Back to Home ────────────────────────────────────────────────────────────
+- tapOn:
+    text: "←"
+    index: 0
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000

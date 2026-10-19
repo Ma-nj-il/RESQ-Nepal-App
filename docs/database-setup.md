@@ -34,6 +34,31 @@ This creates: `profiles`, `hospitals`, `drivers`, `driver_verifications`, `ambul
 > immediately with an explicit **"RESQ Nepal schema conflict"** message instead of
 > failing halfway with a confusing column error. Fix options: see §10.
 
+### 3.1 Identity-registration migrations (required for signup documents)
+
+The base schema above does **not** include the identity tables or private Storage bucket. Apply the
+forward-only migrations in this order:
+
+1. `supabase/migrations/20261019_identity_registration.sql`
+2. `supabase/migrations/20261019_identity_storage.sql`
+
+Paste each file into **SQL Editor → New query → Run**. Do not edit an applied migration; add a new
+forward migration instead.
+
+These create:
+
+- `profiles.citizenship_number`
+- `identity_documents` (private metadata only — no image bytes or Base64)
+- `registration_applications`
+- owner/approval triggers, constraints, indexes and RLS
+- the `submit_identity_application(text)` RPC
+- the private `identity-documents` bucket with Storage RLS policies
+
+> **Deployment gate:** these migrations have been verified only in a disposable local PostgreSQL
+> container. They are **not applied to the hosted project** in this workspace. Apply them to a
+> hosted project only with explicit owner approval; see
+> `docs/identity-registration-status-implementation.md` §7.
+
 ## 4. Configure authentication
 
 Dashboard → **Authentication → Providers**:
@@ -91,6 +116,23 @@ surfaces a "database not configured" state instead of pretending to be connected
 3. Complete personal info → a row appears in **Table Editor → profiles**.
 4. Create a booking → a row appears in **bookings**, and the status change is logged in
    **booking_status_history**.
+5. If the identity migrations are applied, complete citizenship capture → the private image exists
+   under `identity-documents/<account-uuid>/…`, an `identity_documents` row is `UPLOADED`, and a
+   `registration_applications` row is `PENDING_VERIFICATION` after submission.
+6. Query your own application from the app's **Application Status** screen. A query from another
+   account must return nothing (RLS).
+
+### Verify the identity migration locally (no hosted project)
+
+Docker is required:
+
+```bash
+./qa/sql/verify_identity_registration.sh
+```
+
+This starts a disposable PostgreSQL 16 container on port 55432, applies the schema and both
+migrations twice (idempotency), then executes RLS/RPC/constraint assertions. It never reads the
+hosted project credentials.
 
 ## 7. Promoting a driver (admin-only operation)
 
@@ -105,6 +147,11 @@ where user_id = 'THE-USER-UUID';
 
 Optionally insert a matching `ambulances` row for that driver.
 
+The identity trigger mirrors this existing approval source into
+`registration_applications`: `drivers.status = 'verified'` → application `APPROVED`;
+`drivers.status = 'rejected'` → application `REJECTED`. Do not create a second driver-approval
+column or update the application status independently of `drivers.status`.
+
 ## 8. Row Level Security summary
 
 | Table | Read | Write |
@@ -118,6 +165,9 @@ Optionally insert a matching `ambulances` row for that driver.
 | `trip_locations` | Involved parties | Assigned driver only |
 | `ratings` | Involved parties | Passenger's own booking, matched to its recorded driver |
 | `notifications` / `saved_places` / `support_requests` | Own rows | Own rows |
+| `identity_documents` | Own rows only | Own rows only (`UPLOADED`/`REMOVED` metadata; owner trigger enforced) |
+| `registration_applications` | Own rows only | Submitted via RPC only; status mirrored from `drivers.status` |
+| `storage.objects` (`identity-documents`) | Own UID folder only | Own UID folder only; bucket is private |
 | `hospitals` | Everyone | Admin only (no client policy) |
 
 ## 9. Limitations of the client-only model
@@ -163,8 +213,21 @@ Expected when a client tries to change `status`, `rating`, `total_rides`, `verif
 `rejection_reason` on `drivers` — including a driver trying to verify themselves. Admins verify
 drivers with the SQL in §7.
 
+### `Identity registration is not enabled on this database yet`
+
+The identity migrations (§3.1) have not been applied to the connected Supabase project. The app shows
+this error rather than pretending the data was saved. Apply the migrations with owner approval and
+retry; do not work around it with public Storage or client-side approval.
+
+### `Your session has expired. Please sign in again.`
+
+The Supabase session is no longer valid. Use **Sign in again** on the Application Status screen and
+re-authenticate. This is the expected auth-isolation path, not a reason to bypass RLS.
+
 ### Other expected errors
 
 - `only verified drivers can accept bookings` — the account has no verified `drivers` row yet (§7).
 - `booking is no longer available` — another driver accepted the same request first; this is the
   `accept_booking()` race guard working as intended.
+- `citizenship number is already registered` / duplicate licence/plate — a unique identity constraint
+  rejected a duplicate. Use the correct existing record; do not delete other accounts' rows.

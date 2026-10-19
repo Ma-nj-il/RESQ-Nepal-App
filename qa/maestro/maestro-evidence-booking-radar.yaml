@@ -1,0 +1,20 @@
+appId: host.exp.Exponent
+---
+# Evidence probe — animated search radar (demo server on 8081).
+# Preconditions: signed in, Home showing a pickup + destination.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-evidence-booking-radar.yaml
+- tapOn: ".*Find Ambulance.*"
+- extendedWaitUntil:
+    visible: ".*Booking Status.*"
+    timeout: 30000
+- assertVisible: ".*Cancel request.*"
+- takeScreenshot: after-searching-radar-a
+- waitForAnimationToEnd:
+    timeout: 1200
+- takeScreenshot: after-searching-radar-b
+- tapOn:
+    text: "←"
+    index: 0
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000

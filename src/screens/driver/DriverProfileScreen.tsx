@@ -11,6 +11,7 @@ import { Button, Card, Header, Avatar, Badge, StarRating } from '../../component
 import { colors, spacing, typography} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { driversService, isSupabaseConfigured } from '../../services/database';
+import { isDemoMode } from '../../utils/demoMode';
 import { Driver, Ambulance } from '../../types';
 
 // Development sample profile — only shown when Supabase is not configured
@@ -60,7 +61,7 @@ const DriverProfileScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (!isSupabaseConfigured) {
+      if (isDemoMode() || !isSupabaseConfigured) {
         setUsingSampleData(true);
         setDriver(SAMPLE_DRIVER);
         setAmbulance(SAMPLE_AMBULANCE);
@@ -150,7 +151,9 @@ const DriverProfileScreen: React.FC = () => {
         {usingSampleData && (
           <Card elevation="sm" style={styles.sampleCard}>
             <Text style={styles.sampleText}>
-              ⚠️ Sample mode — database not configured. Showing an example driver profile.
+              {isDemoMode()
+                ? 'Walkthrough — sample driver profile for this demo session. Nothing here is a real record.'
+                : '⚠️ Sample build — database not configured. Showing an example driver profile.'}
             </Text>
           </Card>
         )}
@@ -242,6 +245,15 @@ const DriverProfileScreen: React.FC = () => {
             </View>
           </Card>
         )}
+
+        {/* Application status — read-only; approval remains a backend action. */}
+        <Button
+          title="View Application Status"
+          variant="outline"
+          fullWidth
+          onPress={() => navigation.navigate('ApplicationStatus', { type: 'DRIVER' })}
+          style={styles.editButton}
+        />
 
         {/* Edit Profile Button */}
         <Button

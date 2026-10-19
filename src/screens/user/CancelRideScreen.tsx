@@ -43,7 +43,7 @@ const CancelRideScreen: React.FC = () => {
       setLoading(true);
       await bookingsService.cancel(bookingId);
       setBookingStatus('cancelled');
-      navigation.navigate('Activity');
+      navigation.popTo('Activity');
     } catch {
       setError('Failed to cancel ride. Please try again.');
       setLoading(false);

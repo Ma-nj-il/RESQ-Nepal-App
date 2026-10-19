@@ -9,3 +9,4 @@ export { EmptyState } from './EmptyState';
 export { LoadingOverlay } from './LoadingOverlay';
 export { BottomSheet } from './BottomSheet';
 export { StarRating } from './StarRating';
+export { BottomTabBar } from './BottomTabBar';

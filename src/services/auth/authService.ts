@@ -110,10 +110,10 @@ export const authService = {
     };
   },
 
-  onAuthStateChange(callback: (userId: string | null) => void) {
+  onAuthStateChange(callback: (event: string, userId: string | null) => void) {
     if (!isSupabaseConfigured) return { unsubscribe: () => {} };
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      callback(session?.user?.id ?? null);
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      callback(event, session?.user?.id ?? null);
     });
     return data.subscription;
   },

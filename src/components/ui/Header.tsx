@@ -13,7 +13,13 @@ export const Header: React.FC<HeaderProps> = ({ title, onBack, rightElement, sho
   return (
     <View style={styles.container}>
       {showBack && onBack ? (
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        >
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
       ) : <View style={styles.placeholder} />}

@@ -1,65 +1,82 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button, Card } from '../../components/ui';
-import { colors, spacing, typography, radii} from '../../constants/theme';
+import { MapCanvas } from '../../components/map/MapCanvas';
+import { colors, spacing, typography, radii } from '../../constants/theme';
 import { useBookingStore } from '../../store/bookingStore';
 import { bookingsService } from '../../services/database/bookings';
+import { isSupabaseConfigured } from '../../services/database/client';
+import { isDemoMode } from '../../utils/demoMode';
 import { Booking } from '../../types';
 
 type RouteParams = {
-  Arrival: { bookingId: string };
+  Arrival: { bookingId?: string; booking?: Booking };
 };
 
-const MOODS = [
-  { emoji: '😡', label: 'Terrible' },
-  { emoji: '😞', label: 'Bad' },
-  { emoji: '😐', label: 'Okay' },
-  { emoji: '😊', label: 'Good' },
-  { emoji: '😄', label: 'Great' },
-];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ArrivalScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const route = useRoute<RouteProp<RouteParams, 'Arrival'>>();
-  const { bookingId } = route.params;
+  const bookingId = route.params?.bookingId;
+  const paramBooking = route.params?.booking;
   const { setBookingStatus } = useBookingStore();
 
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedMood, setSelectedMood] = useState<number | null>(null);
+  const demoRun = isDemoMode();
+  const canPersist = Boolean(
+    bookingId && UUID_RE.test(bookingId) && isSupabaseConfigured && !demoRun,
+  );
+  const canFetch = Boolean(!paramBooking && canPersist && bookingId);
+
+  const [booking, setBooking] = useState<Booking | null>(paramBooking ?? null);
+  const [loading, setLoading] = useState(canFetch);
+  const [error, setError] = useState<string | null>(
+    !paramBooking && !canFetch ? 'No trip summary is available for this booking.' : null,
+  );
   const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
-    const loadBooking = async () => {
+    if (!canFetch || !bookingId) return;
+    let active = true;
+    (async () => {
       try {
-        setLoading(true);
         const data = await bookingsService.getById(bookingId);
+        if (!active) return;
         if (data) {
           setBooking(data);
+          setError(null);
         } else {
           setError('Booking not found');
         }
       } catch {
-        setError('Failed to load trip details');
+        if (active) setError('Failed to load trip details');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
+    })();
+    return () => {
+      active = false;
     };
-    loadBooking();
-  }, [bookingId]);
+  }, [bookingId, canFetch]);
 
-  const handleFinish = async () => {
+  const handleComplete = async () => {
+    // Completing a trip is a database write. It only happens against a real
+    // booking row — demo/sample walkthroughs never touch the database.
+    if (!canPersist || !bookingId) {
+      setBookingStatus('completed');
+      navigation.navigate('Rating', { bookingId, booking: booking ?? undefined });
+      return;
+    }
     try {
       setFinishing(true);
       await bookingsService.updateStatus(bookingId, 'completed');
       setBookingStatus('completed');
       navigation.navigate('Rating', { bookingId });
     } catch {
-      setError('Failed to complete trip');
+      setError('Could not mark the trip as completed. Check your connection and try again.');
       setFinishing(false);
     }
   };
@@ -69,7 +86,7 @@ const ArrivalScreen: React.FC = () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading trip summary...</Text>
+          <Text style={styles.loadingText}>Loading trip summary…</Text>
         </View>
       </SafeAreaView>
     );
@@ -86,103 +103,94 @@ const ArrivalScreen: React.FC = () => {
     );
   }
 
-  const duration = booking.duration_min || 24;
-  const distance = booking.distance_km || 8.5;
-  const avgSpeed = Math.round((distance / (duration / 60)) * 10) / 10;
+  // Only recorded values are shown — nothing is estimated here.
+  const duration = booking.duration_min != null ? Number(booking.duration_min) : null;
+  const distance = booking.distance_km != null ? Number(booking.distance_km) : null;
+  const avgSpeed =
+    duration !== null && distance !== null && duration > 0
+      ? Math.round((distance / (duration / 60)) * 10) / 10
+      : null;
+
+  const pickupPoint =
+    booking.pickup_lat != null && booking.pickup_lng != null
+      ? { lat: Number(booking.pickup_lat), lng: Number(booking.pickup_lng) }
+      : null;
+  const destPoint =
+    booking.dest_lat != null && booking.dest_lng != null
+      ? { lat: Number(booking.dest_lat), lng: Number(booking.dest_lng) }
+      : null;
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Map View with Completed Route */}
+        {/* Completed route */}
         <View style={styles.mapContainer}>
-          <View style={styles.mapPlaceholder}>
-            <View style={styles.routeContainer}>
-              <View style={styles.routeLine} />
-              <View style={styles.routeProgressComplete} />
-              <View style={[styles.mapPin, styles.pickupPin]}>
-                <Text style={styles.pinIcon}>●</Text>
-              </View>
-              <View style={[styles.mapPin, styles.destPin]}>
-                <Text style={styles.pinIcon}>📍</Text>
-              </View>
-              <View style={styles.ambulanceMarker}>
-                <Text style={styles.ambulanceIcon}>🚑</Text>
-              </View>
-            </View>
-            <Text style={styles.mapLabel}>Route Completed</Text>
-          </View>
+          <MapCanvas
+            pickup={pickupPoint}
+            destination={destPoint}
+            caption="Completed trip — straight-line preview"
+            pickupLabel={booking.pickup_address}
+            destinationLabel={booking.destination_address}
+          />
         </View>
 
         {/* Arrival Content */}
         <View style={styles.content}>
-          {/* Red Location Pin */}
           <View style={styles.pinContainer}>
             <Text style={styles.redPin}>📍</Text>
           </View>
 
-          {/* Heading */}
-          <Text style={styles.heading}>You have arrived!</Text>
-
-          {/* Destination Info */}
+          <Text style={styles.heading}>You have arrived</Text>
           <Text style={styles.destinationName}>{booking.destination_address.split(',')[0]}</Text>
           <Text style={styles.destinationAddress}>{booking.destination_address}</Text>
 
-          {/* Trip Stats */}
+          {/* Trip Stats — recorded values only */}
           <Card elevation="md" style={styles.statsCard}>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{duration}</Text>
+                <Text style={styles.statValue}>{duration !== null ? `${Math.round(duration)}` : '—'}</Text>
                 <Text style={styles.statLabel}>Duration (min)</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{distance.toFixed(1)}</Text>
+                <Text style={styles.statValue}>{distance !== null ? distance.toFixed(1) : '—'}</Text>
                 <Text style={styles.statLabel}>Distance (km)</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{avgSpeed}</Text>
-                <Text style={styles.statLabel}>Avg Speed (km/h)</Text>
+                <Text style={styles.statValue}>{avgSpeed !== null ? `${avgSpeed}` : '—'}</Text>
+                <Text style={styles.statLabel}>Avg speed (km/h)</Text>
               </View>
             </View>
+            {(duration === null || distance === null) && (
+              <Text style={styles.statsNote}>
+                Values marked “—” were not recorded for this trip.
+              </Text>
+            )}
           </Card>
 
-          {/* Mood Selector */}
-          <Card elevation="sm" style={styles.moodCard}>
-            <Text style={styles.moodTitle}>How was your mood during this trip?</Text>
-            <View style={styles.moodRow}>
-              {MOODS.map((mood, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.moodButton,
-                    selectedMood === index && styles.moodButtonSelected,
-                  ]}
-                  onPress={() => setSelectedMood(index)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.moodEmoji}>{mood.emoji}</Text>
-                  <Text
-                    style={[
-                      styles.moodLabel,
-                      selectedMood === index && styles.moodLabelSelected,
-                    ]}
-                  >
-                    {mood.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Card>
+          {(!canPersist || demoRun) && (
+            <Text style={styles.noticeText}>
+              {demoRun
+                ? 'Demo mode — nothing was saved for this trip.'
+                : 'Sample mode — this summary is not stored.'}
+            </Text>
+          )}
 
-          {/* Finish Button */}
           <Button
-            title="Finish"
-            onPress={handleFinish}
+            title={canPersist ? 'Complete trip & rate' : 'Rate this trip'}
+            onPress={handleComplete}
             fullWidth
             size="lg"
             loading={finishing}
             style={styles.finishButton}
+          />
+          <Button
+            title="Back to trips"
+            onPress={() => navigation.popTo('Activity')}
+            variant="ghost"
+            fullWidth
+            style={styles.skipButton}
           />
         </View>
       </ScrollView>
@@ -197,53 +205,7 @@ const styles = StyleSheet.create({
   loadingText: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
   errorText: { ...typography.body, color: colors.error, textAlign: 'center' },
 
-  mapContainer: { height: 280 },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: '#E8EAF0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapLabel: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.sm },
-  routeContainer: {
-    width: '70%',
-    height: 160,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  routeLine: {
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    width: '100%',
-  },
-  routeProgressComplete: {
-    height: 4,
-    backgroundColor: colors.success,
-    borderRadius: 2,
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: '100%',
-  },
-  mapPin: {
-    position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickupPin: { left: 0, top: '40%', backgroundColor: colors.green },
-  destPin: { right: 0, top: '40%', backgroundColor: colors.primary },
-  pinIcon: { color: colors.surface, fontSize: 14 },
-  ambulanceMarker: {
-    position: 'absolute',
-    right: '5%',
-    top: '35%',
-    fontSize: 36,
-  },
-  ambulanceIcon: { fontSize: 36 },
+  mapContainer: { height: 260, overflow: 'hidden' },
 
   content: {
     flex: 1,
@@ -273,29 +235,18 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   statItem: { alignItems: 'center', flex: 1 },
   statValue: { ...typography.h2, color: colors.primary },
-  statLabel: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
+  statLabel: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center' },
   statDivider: { width: 1, height: 40, backgroundColor: colors.border },
+  statsNote: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.md, textAlign: 'center' },
 
-  moodCard: { width: '100%', marginBottom: spacing.xl },
-  moodTitle: { ...typography.h4, textAlign: 'center', marginBottom: spacing.lg },
-  moodRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  moodButton: {
-    alignItems: 'center',
-    padding: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    minWidth: 56,
+  noticeText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
   },
-  moodButtonSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.redLight,
-  },
-  moodEmoji: { fontSize: 28, marginBottom: spacing.xs },
-  moodLabel: { ...typography.caption, color: colors.textSecondary },
-  moodLabelSelected: { color: colors.primary, fontWeight: '600' },
-
   finishButton: { marginTop: spacing.sm },
+  skipButton: { marginTop: spacing.sm },
 });
 
 export default ArrivalScreen;

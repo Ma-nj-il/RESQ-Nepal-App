@@ -196,3 +196,83 @@ payments, and complete an interactive QA pass on device builds.
 
 **Explicitly not claimed:** phone-OTP delivery, payments, push, map tiles and
 UI tap-throughs were not tested; performance was not profiled.
+
+## 14. Dev-server bundle hang — root cause & fix (2026-10-18)
+
+**Symptom:** `npx expo start` served the dev manifest and `/status`, but
+`/index.ts.bundle?platform=ios&dev=true` never returned; `expo export` was
+unaffected. Repeated cache clears did not help.
+
+**Reproduced once with captured output:** a fresh server printed
+
+```
+Failed to construct transformer:  Error: Cannot find module 'babel-preset-expo'
+  code: 'MODULE_NOT_FOUND'
+  at Object.getCacheKey (.../@expo/metro-config/build/babel-transformer.js:306:64)
+```
+
+Metro starts listening anyway, so the manifest works while every bundle request
+hangs forever. That is the whole failure mode.
+
+**Root cause:** an untracked, stale `babel.config.js` (mtime Oct 18 17:01) with
+`presets: ['babel-preset-expo']`. npm installs the preset only at
+`node_modules/expo/node_modules/babel-preset-expo`, and `@babel/core` resolves
+presets relative to the project root, so the preset was unresolvable. SDK 58
+projects need no `babel.config.js`: `@expo/metro-config` applies
+`require('expo/internal/babel-preset')` itself when no user config exists.
+
+**Distractor ruled out:** `transform.routerRoot=app` in the manifest bundle URL
+is normal for SDK 58 and harmless here — a 6.9 MB dev bundle compiled and served
+with that exact parameter, and `expo-router` is not installed.
+
+**Fix:** deleted the stale `babel.config.js` (backup kept at
+`/tmp/babel.config.js.legacy-backup`). No other change was needed to make the
+bundle serve. Verified: `iOS Bundled 11659ms index.ts (1265 modules)`, HTTP 200,
+6,968,707 bytes.
+
+**`--dev-client` check:** the stray `npx expo start --dev-client --port 8090`
+process was this project's but the wrong mode — the simulator's launchable app
+is Expo Go, the project has no `expo-dev-client` dependency, and the installed
+`com.resqnepal.app` dev build belongs to another project (MapLibre frameworks,
+`exp+resq-app` scheme). Use plain `expo start`. Also note `--localhost` binds
+`[::1]` only while the manifest advertises `127.0.0.1`; start without it.
+
+**Demo-mode gaps fixed while validating the journey:** `PersonalInfoScreen` and
+`LocationPermissionScreen` required a real Supabase session even with the demo
+flag on; both now keep a local-only demo user (`demo-user`) and continue. The
+demo OTP `1234` path itself was already correct. Real mode is unchanged.
+
+**Verification on iPhone 17 Pro simulator (iOS 26.4, Expo Go 58):** full demo
+journey Welcome → OTP `1234` → Personal Info → Location → Home (demo map) →
+Logout → Welcome, zero Metro errors; screenshots in `docs/demo-evidence/`;
+scripted flow `qa/maestro/maestro-d1-demo-journey.yaml`. Gates after the fix:
+`tsc --noEmit` 0 errors, `expo lint` 0 problems, `expo export --platform ios`
+3.3 MB Hermes bundle.
+
+## 15. A–Z delta addendum (2026-10-18, later rounds)
+
+Two further rounds (UI refinement + A–Z master-prompt delta) changed some statuses above. This
+addendum records the deltas; the full detail, screenshots and test runs live in
+`docs/ui-refinement-report.md` (sections 1–9 and 10) and `docs/ui-refinement-checklist.md`
+(Round 3 section).
+
+| Area | Old status | New status |
+| --- | --- | --- |
+| Menu drawer (top-left ☰) | honest "not available" notice | **PASS** — real drawer screen (profile header → Personal Info, trip counters, 12 destinations, confirmed Log Out, Android back closes) |
+| Saved places | DB service existed, no management UI | **PASS (code + UI)** — Saved Places screen on the real `saved_places` table (create/update/remove, GPS-captured locations); demo never writes |
+| Saved hospitals | not built | **PASS (device-local by design)** — live public-directory search (real rows) + starred snapshot; no `saved_hospitals` table, schema contract documented |
+| Trip counters | not built | **PASS** — one counting rule (total/completed/cancelled/active) shared by the drawer and Account screen |
+| Settings hub / About screen | scattered entries / not built | **PASS** — hub lists only genuinely implemented options; About has an explicit "what this build does not do yet" list and no invented contacts |
+| Driver onboarding | not built | **PASS (draft-only, by design)** — validated form + device draft; submission intentionally absent (no review service exists) and the UI says so |
+| Future API readiness | not specified | `src/services/api/contracts.ts` (typed DTOs) + `docs/future-api-contracts.md` (25 endpoint sketches, auth/authorization rules) |
+| Notifications, account, legal, language, appearance, SOS, rating, receipt | built (previous rounds) | re-verified unchanged in this round |
+
+Verification for the new surfaces: Maestro Flow C (`qa/maestro/maestro-verify-menu-account.yaml`)
+plus re-runs of Flows A and B, all on the iPhone 17 Pro simulator against the demo dev server; gates
+(`tsc --noEmit`, `expo lint`, `expo export --platform ios`) re-run clean. New screenshots
+`ui-23…ui-33` in `docs/ui-refinement-evidence/`.
+
+Still open (documented, unchanged): hosted phone-OTP provider disabled so real sign-in is
+untestable in this environment; `supabase/patches/accept_booking_ownership_guard.sql` validated but
+not deployed; no `saved_hospitals` table; no push provider, partner-onboarding service or document
+storage.

@@ -1,24 +1,29 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
-import { Badge, Button, Avatar, Card } from '../../components/ui';
-import { estimateFare } from '../../constants/fares';
-import { Ambulance } from '../../types';
-
-interface AmbulanceWithDriver extends Ambulance {
-  driverName?: string;
-  driverRating?: number;
-  driverTotalRides?: number;
-  driverPhone?: string;
-  price?: number;
-}
+import { Badge, Button, Card } from '../../components/ui';
+import { estimateFare, startingPrice } from '../../constants/fares';
+import { useBookingStore } from '../../store/bookingStore';
+import { formatKm, straightLineKm } from '../../utils/geo';
+import { AmbulanceOption } from './AmbulanceListScreen';
 
 const AmbulanceDetailsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const ambulance: AmbulanceWithDriver | undefined = route.params?.ambulance;
+  const ambulance: AmbulanceOption | undefined = route.params?.ambulance;
+  const { pickup, destination } = useBookingStore();
+
+  const routeDistanceKm = useMemo(() => {
+    if (pickup?.lat == null || pickup?.lng == null || destination?.lat == null || destination?.lng == null) {
+      return null;
+    }
+    return straightLineKm(
+      { lat: pickup.lat, lng: pickup.lng },
+      { lat: destination.lat, lng: destination.lng },
+    );
+  }, [pickup, destination]);
 
   // No fabricated fallback: without a selected ambulance there is nothing to
   // show, so send the user back to the list instead.
@@ -32,10 +37,10 @@ const AmbulanceDetailsScreen: React.FC = () => {
           <Text style={styles.headerTitle}>Ambulance Details</Text>
           <View style={styles.headerSpacer} />
         </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+        <View style={styles.emptyBox}>
           <Text style={styles.sectionTitle}>No ambulance selected</Text>
-          <Text style={{ ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm }}>
-            Go back and choose an ambulance from the list.
+          <Text style={styles.emptyText}>
+            Go back and choose a service category or an available ambulance.
           </Text>
           <Button
             title="Go Back"
@@ -48,43 +53,13 @@ const AmbulanceDetailsScreen: React.FC = () => {
     );
   }
 
-  const handleBookNow = () => {
+  const isCategoryOption = Boolean(ambulance.isCategoryOption);
+  const fare = estimateFare(ambulance.category, routeDistanceKm);
+  const fromPrice = startingPrice(ambulance.category);
+
+  const handleContinue = () => {
     navigation.navigate('BookingConfirmation', { ambulance });
   };
-
-  const fare = estimateFare(ambulance.category);
-
-  const getEquipmentDetails = (equipment: string[]) => {
-    return equipment.map((item) => {
-      const lower = item.toLowerCase();
-      let icon = '🏥';
-      let description = item;
-
-      if (lower.includes('oxygen')) {
-        icon = '🫁';
-        description = 'Medical-grade oxygen supply';
-      } else if (lower.includes('stretcher')) {
-        icon = '🛏️';
-        description = 'Adjustable patient stretcher';
-      } else if (lower.includes('ventilator')) {
-        icon = '💨';
-        description = 'Emergency ventilator support';
-      } else if (lower.includes('defibrillator')) {
-        icon = '⚡';
-        description = 'AED defibrillator';
-      } else if (lower.includes('cardiac') || lower.includes('monitor')) {
-        icon = '💓';
-        description = 'Cardiac monitoring system';
-      } else if (lower.includes('first aid')) {
-        icon = '🩹';
-        description = 'Complete first aid kit';
-      }
-
-      return { name: item, icon, description };
-    });
-  };
-
-  const equipmentDetails = getEquipmentDetails(ambulance.equipment);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -93,17 +68,23 @@ const AmbulanceDetailsScreen: React.FC = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Ambulance Details</Text>
+        <Text style={styles.headerTitle}>{isCategoryOption ? 'Service Details' : 'Ambulance Details'}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
-        {/* Vehicle Image Placeholder */}
+        {/* Hero */}
         <View style={styles.imageContainer}>
           <View style={styles.imagePlaceholder}>
             <Text style={styles.vehicleEmoji}>🚑</Text>
             <Text style={styles.vehicleModel}>{ambulance.model}</Text>
-            <Text style={styles.vehiclePlate}>{ambulance.plate_number}</Text>
+            {isCategoryOption ? (
+              <Text style={styles.vehiclePlate}>Assigned from the verified fleet after confirmation</Text>
+            ) : (
+              <Text style={styles.vehiclePlate}>
+                {ambulance.plate_number || 'Plate not recorded'}
+              </Text>
+            )}
           </View>
           <Badge
             label={ambulance.category === 'icu' ? 'ICU' : 'Basic'}
@@ -112,94 +93,82 @@ const AmbulanceDetailsScreen: React.FC = () => {
           />
         </View>
 
-        {/* Driver Info Card — only real data is shown. Driver identity is
-            shared with passengers after assignment; when it is not available
-            yet the card says so instead of inventing a driver. */}
-        <Card style={styles.driverCard} elevation="md">
-          <Text style={styles.sectionTitle}>Driver Information</Text>
-          <View style={styles.driverRow}>
-            <Avatar name={ambulance.driverName || 'D'} size="lg" />
-            <View style={styles.driverInfo}>
-              <View style={styles.driverNameRow}>
-                <Text style={styles.driverName}>{ambulance.driverName || 'Driver'}</Text>
-              </View>
-              {ambulance.driverRating != null ? (
-                <View style={styles.ratingRow}>
-                  <Text style={styles.star}>★</Text>
-                  <Text style={styles.ratingText}>{ambulance.driverRating}</Text>
-                  {ambulance.driverTotalRides != null && (
-                    <Text style={styles.ridesText}>({ambulance.driverTotalRides} rides)</Text>
-                  )}
-                </View>
-              ) : (
-                <Text style={styles.ridesText}>Driver details are shared after assignment</Text>
-              )}
-              {ambulance.driverPhone && (
-                <Text style={styles.phoneText}>📞 {ambulance.driverPhone}</Text>
-              )}
-            </View>
-          </View>
-        </Card>
-
-        {/* Equipment List */}
-        <Card style={styles.equipmentCard} elevation="md">
-          <Text style={styles.sectionTitle}>Equipment & Facilities</Text>
-          {equipmentDetails.map((item, index) => (
-            <View key={index} style={styles.equipmentItem}>
-              <Text style={styles.equipmentIcon}>{item.icon}</Text>
-              <View style={styles.equipmentContent}>
-                <Text style={styles.equipmentName}>{item.name}</Text>
-                <Text style={styles.equipmentDescription}>{item.description}</Text>
-              </View>
-            </View>
-          ))}
-        </Card>
-
-        {/* Hospital Affiliation */}
-        {ambulance.hospital_affiliation && (
-          <Card style={styles.hospitalCard} elevation="md">
+        {!isCategoryOption && ambulance.hospital_affiliation ? (
+          <Card style={styles.card} elevation="md">
             <Text style={styles.sectionTitle}>Hospital Affiliation</Text>
             <View style={styles.hospitalRow}>
               <Text style={styles.hospitalIcon}>🏥</Text>
               <Text style={styles.hospitalName}>{ambulance.hospital_affiliation}</Text>
             </View>
           </Card>
-        )}
+        ) : null}
 
-        {/* Fare Estimate */}
-        <Card style={styles.fareCard} elevation="md">
-          <Text style={styles.sectionTitle}>Fare Estimate</Text>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Base fare</Text>
-            <Text style={styles.fareValue}>NPR {fare.baseFare.toLocaleString('en-IN')}</Text>
+        {/* Equipment — compact chips, no long per-item descriptions. */}
+        <Card style={styles.card} elevation="md">
+          <Text style={styles.sectionTitle}>Equipment</Text>
+          <View style={styles.equipmentChips}>
+            {ambulance.equipment.map((item, index) => (
+              <View key={`${item}-${index}`} style={styles.equipmentChip}>
+                <Text style={styles.equipmentChipText}>{item}</Text>
+              </View>
+            ))}
           </View>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Distance charge</Text>
-            <Text style={styles.fareValue}>NPR {fare.distanceCharge.toLocaleString('en-IN')}</Text>
-          </View>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Service fee</Text>
-            <Text style={styles.fareValue}>NPR {fare.serviceFee.toLocaleString('en-IN')}</Text>
-          </View>
-          <View style={styles.fareDivider} />
-          <View style={styles.fareRow}>
-            <Text style={styles.fareTotalLabel}>Estimated Total</Text>
-            <Text style={styles.fareTotalValue}>NPR {fare.totalFare.toLocaleString('en-IN')}</Text>
-          </View>
-          <Text style={styles.fareNote}>
-            Indicative rate card estimate for a {ambulance.category === 'icu' ? 'ICU / Emergency' : 'Basic'} ambulance — final fare may vary with actual distance and waiting time.
-          </Text>
         </Card>
 
-        {/* Bottom spacing for button */}
+        {/* Fare */}
+        <Card style={styles.card} elevation="md">
+          <Text style={styles.sectionTitle}>Fare</Text>
+          {fare ? (
+            <>
+              <View style={styles.fareRow}>
+                <Text style={styles.fareLabel}>Base fare</Text>
+                <Text style={styles.fareValue}>NPR {fare.baseFare.toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={styles.fareRow}>
+                <Text style={styles.fareLabel}>
+                  Distance ({formatKm(fare.distanceKm)}, straight line)
+                </Text>
+                <Text style={styles.fareValue}>NPR {fare.distanceCharge.toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={styles.fareRow}>
+                <Text style={styles.fareLabel}>Service fee</Text>
+                <Text style={styles.fareValue}>NPR {fare.serviceFee.toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={styles.fareDivider} />
+              <View style={styles.fareRow}>
+                <Text style={styles.fareTotalLabel}>Indicative total</Text>
+                <Text style={styles.fareTotalValue}>NPR {fare.totalFare.toLocaleString('en-IN')}</Text>
+              </View>
+              <Text style={styles.fareNote}>
+                Rate-card estimate from the straight-line distance between your two points. The
+                final fare is confirmed after the trip.
+              </Text>
+            </>
+          ) : (
+            <>
+              <View style={styles.pendingRow}>
+                <Text style={styles.pendingIcon}>🧾</Text>
+                <View style={styles.pendingTextWrap}>
+                  <Text style={styles.pendingTitle}>Fare confirmed after the trip</Text>
+                  <Text style={styles.pendingText}>
+                    Set both the pickup and destination locations to see an indicative estimate.
+                    Rates start from NPR {fromPrice.toLocaleString('en-IN')} for{' '}
+                    {ambulance.category === 'icu' ? 'ICU / Emergency' : 'Basic'} service.
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
+        </Card>
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Book Now Button */}
+      {/* Bottom Action */}
       <View style={styles.bottomBar}>
         <Button
-          title="Book Now"
-          onPress={handleBookNow}
+          title={isCategoryOption ? 'Continue to Booking' : 'Book This Ambulance'}
+          onPress={handleContinue}
           fullWidth
           size="lg"
         />
@@ -209,10 +178,7 @@ const AmbulanceDetailsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -222,27 +188,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backArrow: {
-    fontSize: 24,
-    color: colors.text,
-  },
-  headerTitle: {
-    ...typography.h3,
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  scrollView: {
-    flex: 1,
-  },
+  backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backArrow: { fontSize: 24, color: colors.text },
+  headerTitle: { ...typography.h3, flex: 1, textAlign: 'center' },
+  headerSpacer: { width: 40 },
+  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  emptyText: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm },
+
+  scrollView: { flex: 1 },
   imageContainer: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
@@ -256,163 +209,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  vehicleEmoji: {
-    fontSize: 64,
-    marginBottom: spacing.md,
-  },
-  vehicleModel: {
-    ...typography.h2,
-    color: colors.text,
-  },
+  vehicleEmoji: { fontSize: 64, marginBottom: spacing.md },
+  vehicleModel: { ...typography.h2, color: colors.text, textAlign: 'center', paddingHorizontal: spacing.lg },
   vehiclePlate: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  categoryBadge: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-  },
-  driverCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.h4,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  driverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  driverInfo: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  driverNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  driverName: {
-    ...typography.h4,
-    color: colors.text,
-  },
-  verifiedBadge: {
-    ...typography.caption,
-    color: colors.success,
-    backgroundColor: colors.greenLight,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-  },
-  star: {
-    fontSize: 16,
-    color: colors.warning,
-  },
-  ratingText: {
-    ...typography.body,
-    color: colors.text,
-    marginLeft: 4,
-  },
-  ridesText: {
-    ...typography.caption,
-    color: colors.textTertiary,
-    marginLeft: 4,
-  },
-  phoneText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
   },
-  equipmentCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+  categoryBadge: { position: 'absolute', top: spacing.md, right: spacing.md },
+
+  card: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
+  sectionTitle: { ...typography.h4, color: colors.text, marginBottom: spacing.sm },
+
+  hospitalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  hospitalIcon: { fontSize: 24 },
+  hospitalName: { ...typography.body, fontWeight: '600', color: colors.text, flex: 1 },
+
+  equipmentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  equipmentChip: {
+    backgroundColor: colors.input,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
   },
-  equipmentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  equipmentIcon: {
-    fontSize: 24,
-    marginRight: spacing.md,
-  },
-  equipmentContent: {
-    flex: 1,
-  },
-  equipmentName: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  equipmentDescription: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  hospitalCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-  },
-  hospitalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  hospitalIcon: {
-    fontSize: 24,
-  },
-  hospitalName: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  fareCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-  },
+  equipmentChipText: { ...typography.caption, color: colors.textSecondary, fontWeight: '500' },
+
   fareRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.sm,
   },
-  fareLabel: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  fareValue: {
-    ...typography.body,
-    color: colors.text,
-  },
-  fareDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.sm,
-  },
-  fareNote: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  fareTotalLabel: {
-    ...typography.h4,
-    color: colors.text,
-  },
-  fareTotalValue: {
-    ...typography.h3,
-    color: colors.primary,
-  },
+  fareLabel: { ...typography.body, color: colors.textSecondary, flex: 1, paddingRight: spacing.sm },
+  fareValue: { ...typography.body, color: colors.text },
+  fareDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  fareTotalLabel: { ...typography.h4, color: colors.text },
+  fareTotalValue: { ...typography.h3, color: colors.primary },
+  fareNote: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
+
+  pendingRow: { flexDirection: 'row', gap: spacing.md },
+  pendingIcon: { fontSize: 26 },
+  pendingTextWrap: { flex: 1 },
+  pendingTitle: { ...typography.body, fontWeight: '700', color: colors.text },
+  pendingText: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
+
   bottomBar: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,

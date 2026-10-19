@@ -1,7 +1,14 @@
 # RESQ Nepal — Database Schema
 
-Canonical DDL: `supabase/schema.sql` (apply via Supabase SQL Editor).
+Canonical base DDL: `supabase/schema.sql` (apply via Supabase SQL Editor).
+Forward-only identity migrations:
+`supabase/migrations/20261019_identity_registration.sql` and
+`supabase/migrations/20261019_identity_storage.sql`.
 TypeScript mirrors: `src/types/index.ts`. Client services: `src/services/database/`.
+
+> The identity migrations are **not applied to the hosted project** in this workspace. They are
+> verified locally by `qa/sql/verify_identity_registration.sh`; see
+> `docs/identity-registration-status-implementation.md`.
 
 ## Entity map
 
@@ -24,8 +31,13 @@ auth.users ──1:1── profiles
                     ├──1:N── notifications
                     ├──1:N── saved_places
                     ├──1:N── support_requests
+                    ├──1:N── identity_documents
+                    ├──1:N── registration_applications
                     │
                     └──M:N── hospitals  (drivers.hospital_id / hospital_memberships)
+
+drivers ──1:N── identity_documents (driver_id, nullable)
+ambulances ──1:N── identity_documents (vehicle_id, nullable)
 ```
 
 ## Tables
@@ -40,6 +52,7 @@ auth.users ──1:1── profiles
 | gender | text | optional |
 | date_of_birth | date | optional |
 | mode | text | `user` \| `driver`, default `user` |
+| citizenship_number | text | identity migration; nullable for legacy rows, non-blank + unique when present |
 | created_at / updated_at | timestamptz | trigger-maintained |
 
 ### hospitals
@@ -104,6 +117,51 @@ Every transition is auto-logged to `booking_status_history` by trigger.
 ### support_requests
 `id`, `user_id`, `subject`, `message`, `status (open|closed)`, `created_at`.
 
+### identity_documents
+Private document **metadata only**; image bytes live in the private `identity-documents` bucket.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | random identity |
+| account_id | uuid → profiles | owner; must match `auth.uid()` |
+| driver_id | uuid → drivers, nullable | required scope for licence; must belong to the account |
+| vehicle_id | uuid → ambulances, nullable | Blue Book scope; must belong to the account |
+| document_type | text | `CITIZENSHIP` \| `DRIVING_LICENSE` \| `VEHICLE_BLUE_BOOK` |
+| original_filename | text | sanitised display name only |
+| mime_type | text | detected `image/jpeg` \| `image/png` \| `image/heic` \| `image/heif` |
+| file_size | bigint | 1–8388608 bytes |
+| storage_bucket | text | always `identity-documents` |
+| storage_path | text | `<account-uuid>/<type>/<random-id>.<ext>` |
+| upload_status | text | `PENDING_UPLOAD` \| `UPLOADING` \| `UPLOADED` \| `UPLOAD_FAILED` \| `REMOVED` |
+| created_at / updated_at | timestamptz | trigger-maintained |
+
+Owner triggers reject foreign accounts, wrong buckets/paths, cross-account drivers/vehicles and
+out-of-scope citizenship rows. A replacement marks the previous same-scope document `REMOVED`.
+
+### registration_applications
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| reference_id | text unique | displayed to the applicant |
+| account_id | uuid → profiles | owner |
+| application_type | text | `USER` \| `DRIVER` |
+| status | text | `DRAFT`, `SUBMITTED`, `PENDING_VERIFICATION`, `APPROVED`, `REJECTED`, `ADDITIONAL_INFORMATION_REQUIRED` |
+| status_reason | text | reviewer note; not set by the client |
+| submitted_at | timestamptz | set by the submission RPC |
+| last_status_update | timestamptz | mirrored/tracked update time |
+| created_at / updated_at | timestamptz | trigger-maintained |
+
+Unique `(account_id, application_type)`. New submissions become `PENDING_VERIFICATION`. The
+existing `drivers.status` remains the driver approval source: `verified` mirrors to `APPROVED`,
+`rejected` mirrors to `REJECTED`. There is no client approval path and no auto-approval.
+
+### Private Storage bucket
+
+`storage.buckets.id = 'identity-documents'` with `public = false`, 8 MB limit and image-only
+MIME allow-list. Storage RLS permits an authenticated account to access only objects under
+`<auth.uid()>/…`. There is no public read policy and no public URL is exposed to the app.
+
 ## RPC
 
 ### `accept_booking(p_booking_id uuid, p_ambulance_id uuid) → bookings`
@@ -112,8 +170,16 @@ only while `status = 'pending'`. Concurrent double-accept attempts fail with
 *"booking is no longer available"*. This is the safest assignment path available without a
 custom backend.
 
+### `submit_identity_application(p_application_type text) → registration_applications`
+Requires an authenticated account. Re-checks the profile fields, required uploaded metadata and the
+actual private Storage objects before inserting/returning the application. New applications are
+`PENDING_VERIFICATION`; repeated calls return the existing row rather than duplicating or approving
+it. Driver submissions require licence expiry plus a Blue Book linked to the driver's newest vehicle.
+
 ## Currency & data-minimisation notes
 
 - Default currency **NPR**; fares stored as `numeric(10,2)`.
 - Only minimal patient transport details are collected (name/age/condition are optional).
   No diagnosis, prescription, or clinical history fields exist.
+- Identity documents are images held in private Storage; Postgres stores metadata only.
+  Citizenship numbers are sensitive PII stored in `profiles`, protected by RLS.

@@ -1,0 +1,117 @@
+appId: host.exp.Exponent
+---
+# Task 3 verification — Driver Mode demo walkthrough (Flow D), self-contained.
+# Walks: Account → Driver Mode → go online → sample requests (both
+# categories) → decline one → accept one → pickup → arrived → started →
+# completed → restart → requests restored → back to User Mode.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-verify-driver-demo.yaml
+- runFlow: maestro-signin-demo.yaml
+
+# ── Enter Driver Mode through the existing account mechanism ───────────────
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "^My Account$"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: "^My Account$"
+- extendedWaitUntil:
+    visible: ".*Switch to Driver Mode.*"
+    timeout: 20000
+- tapOn: "Switch to Driver Mode"
+
+# ── Driver dashboard: map-first, subtle demo indicator, online toggle ──────
+- extendedWaitUntil:
+    visible: ".*Driver Mode.*"
+    timeout: 20000
+- assertVisible: "DEMO"
+- extendedWaitUntil:
+    visible: ".*device.s GPS.*"
+    timeout: 15000
+- assertVisible: ".*You.re Offline.*"
+- assertVisible: ".*Nothing is saved.*"
+- takeScreenshot: ui-34-driver-demo-home
+- tapOn: "Go Online"
+- extendedWaitUntil:
+    visible: ".*You.re Online.*"
+    timeout: 10000
+- assertVisible: ".*Incoming Requests.*"
+
+# ── Requests: both categories, decline one, accept the other ───────────────
+- tapOn: "^View$"
+- extendedWaitUntil:
+    visible: ".*Ram Bahadur Thapa.*"
+    timeout: 15000
+- assertVisible: ".*Sunita Sharma.*"
+- assertVisible: "ICU"
+- assertVisible: "BASIC"
+- assertVisible: ".*sample requests for this demo session.*"
+- takeScreenshot: ui-35-driver-demo-requests
+- tapOn:
+    text: "Decline"
+    index: 0
+- assertNotVisible: ".*Ram Bahadur Thapa.*"
+- tapOn:
+    text: "Accept"
+    index: 0
+
+# ── Trip journey: pickup → arrived → started → completed ───────────────────
+- extendedWaitUntil:
+    visible: ".*Heading to Pickup.*"
+    timeout: 15000
+- assertVisible: ".*Sunita Sharma.*"
+- assertVisible: ".*not live GPS.*"
+- assertNotVisible: '.*\+977.*'
+- takeScreenshot: ui-36-driver-demo-trip-pickup
+- tapOn: "Arrived at Pickup"
+- extendedWaitUntil:
+    visible: "^Arrived at Pickup$"
+    timeout: 10000
+- tapOn: "Start Trip"
+- extendedWaitUntil:
+    visible: ".*Trip In Progress.*"
+    timeout: 10000
+- takeScreenshot: ui-36b-driver-demo-trip-started
+- tapOn: "Complete Trip"
+- extendedWaitUntil:
+    visible: ".*Walkthrough trip completed.*"
+    timeout: 10000
+- assertVisible: ".*No records were written.*"
+- takeScreenshot: ui-37-driver-demo-completed
+- tapOn: "OK"
+
+# ── Restart restores every sample request ──────────────────────────────────
+- extendedWaitUntil:
+    visible: ".*Restart walkthrough.*"
+    timeout: 15000
+- tapOn: "Restart walkthrough"
+- tapOn: "^View$"
+- extendedWaitUntil:
+    visible: ".*Ram Bahadur Thapa.*"
+    timeout: 10000
+- assertVisible: ".*Sunita Sharma.*"
+- takeScreenshot: ui-38-driver-demo-restart
+- tapOn: "Go back"
+
+# ── Exit: switch back to User Mode ─────────────────────────────────────────
+- extendedWaitUntil:
+    visible: ".*Driver Mode.*"
+    timeout: 10000
+- tapOn: "☰"
+- scrollUntilVisible:
+    element:
+      text: "Switch to User Mode"
+    direction: DOWN
+    timeout: 15000
+    centerElement: true
+- tapOn: "Switch to User Mode"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000

@@ -1,36 +1,43 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Button, Card, Avatar} from '../../components/ui';
+import { Button, Card, Avatar } from '../../components/ui';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { useWalletStore } from '../../store/walletStore';
 import { authService } from '../../services/auth/authService';
+import { useTripCounts } from '../../hooks/useTripCounts';
 
-const menuItems = [
+interface AccountMenuItem {
+  id: string;
+  label: string;
+  icon: string;
+  route: string;
+  params?: Record<string, unknown>;
+}
+
+const menuItems: AccountMenuItem[] = [
+  {
+    id: 'identity',
+    label: 'Identity Verification',
+    icon: '🪪',
+    route: 'ApplicationStatus',
+    params: { type: 'USER' },
+  },
   { id: 'notifications', label: 'Notifications', icon: '🔔', route: 'Notifications' },
   { id: 'payment', label: 'Payment Methods', icon: '💳', route: 'PaymentMethods' },
   { id: 'security', label: 'Account & Security', icon: '🔒', route: 'Security' },
-  { id: 'linked', label: 'Linked Accounts', icon: '🔗', route: 'Security' },
   { id: 'appearance', label: 'App Appearance', icon: '🎨', route: 'Appearance' },
-  { id: 'data', label: 'Data & Analytics', icon: '📊', route: 'Security' },
   { id: 'help', label: 'Help & Support', icon: '❓', route: 'Help' },
-  { id: 'rate', label: 'Rate us', icon: '⭐', route: 'Help' },
-];
-
-const tabs = [
-  { id: 'home', label: 'Home', icon: '🏠' },
-  { id: 'ambulances', label: 'Ambulances', icon: '🚑' },
-  { id: 'activity', label: 'Activity', icon: '📋' },
-  { id: 'account', label: 'Account', icon: '👤' },
+  { id: 'sos', label: 'Emergency SOS', icon: '🆘', route: 'SOS' },
 ];
 
 export const AccountScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { user, logout, setMode } = useAuthStore();
   const { balance } = useWalletStore();
-  const [isLoading, ] = useState(false);
+  const { counts, loading: countsLoading, error: countsError, usingSampleData } = useTripCounts();
 
   const handleLogout = useCallback(() => {
     Alert.alert('Logout', 'Sure you want to log out?', [
@@ -57,33 +64,32 @@ export const AccountScreen: React.FC = () => {
   }, [setMode]);
 
   const handleMenuPress = useCallback(
-    (route: string) => {
-      navigation.navigate(route);
+    (route: string, params?: Record<string, unknown>) => {
+      navigation.navigate(route, params);
     },
     [navigation]
   );
-
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Account</Text>
-        <TouchableOpacity style={styles.menuButton}>
-          <Text style={styles.menuIcon}>⋮</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Account</Text>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Card */}
         <TouchableOpacity
           activeOpacity={0.8}
@@ -98,18 +104,52 @@ export const AccountScreen: React.FC = () => {
           <Text style={styles.arrow}>›</Text>
         </TouchableOpacity>
 
-        {/* Wallet Card */}
+        {/* Wallet Card — the booking journey is cash-only in this version, so
+            the card is informational: no top-up or online payment is offered. */}
         <Card elevation="md" style={styles.walletCard}>
           <View style={styles.walletContent}>
-            <View>
+            <View style={styles.walletInfo}>
               <Text style={styles.walletLabel}>Wallet Balance (demo)</Text>
               <Text style={styles.walletBalance}>NPR {balance.toLocaleString('en-IN')}</Text>
-              <Text style={{ ...typography.caption, color: colors.textSecondary, marginTop: 2 }}>
-                Demo balance — no real money is stored in this build.
+              <Text style={styles.walletNote}>
+                Cash only in this version. Wallet top-up and online payments are not active.
               </Text>
             </View>
-            <Button title="Top Up" variant="primary" size="sm" onPress={() => navigation.navigate('TopUp')} />
           </View>
+        </Card>
+
+        {/* Trip summary — real counts from the user's booking records. */}
+        <Card elevation="sm" style={styles.tripsCard}>
+          <Text style={styles.tripsTitle}>Your trips</Text>
+          {countsLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.md }} />
+          ) : countsError ? (
+            <Text style={styles.tripsError}>{countsError}</Text>
+          ) : (
+            <View style={styles.tripsRow}>
+              <View style={styles.tripsStat}>
+                <Text style={styles.tripsValue}>{counts.total}</Text>
+                <Text style={styles.tripsLabel}>Total</Text>
+              </View>
+              <View style={styles.tripsStat}>
+                <Text style={styles.tripsValue}>{counts.completed}</Text>
+                <Text style={styles.tripsLabel}>Completed</Text>
+              </View>
+              <View style={styles.tripsStat}>
+                <Text style={styles.tripsValue}>{counts.cancelled}</Text>
+                <Text style={styles.tripsLabel}>Cancelled</Text>
+              </View>
+              <View style={styles.tripsStat}>
+                <Text style={styles.tripsValue}>{counts.active}</Text>
+                <Text style={styles.tripsLabel}>Active</Text>
+              </View>
+            </View>
+          )}
+          {!countsLoading && !countsError && usingSampleData && (
+            <Text style={styles.tripsNote}>
+              Sample walkthrough data — your real counts appear when signed in.
+            </Text>
+          )}
         </Card>
 
         {/* Driver Mode Switch */}
@@ -140,7 +180,7 @@ export const AccountScreen: React.FC = () => {
               key={item.id}
               style={[styles.menuItem, index < menuItems.length - 1 && styles.menuItemBorder]}
               activeOpacity={0.7}
-              onPress={() => handleMenuPress(item.route)}
+              onPress={() => handleMenuPress(item.route, item.params)}
             >
               <View style={styles.menuItemLeft}>
                 <Text style={styles.menuIcon}>{item.icon}</Text>
@@ -156,50 +196,34 @@ export const AccountScreen: React.FC = () => {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        {tabs.map((tab) => (
-          <TouchableOpacity
-            key={tab.id}
-            style={styles.navItem}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (tab.id === 'account') return;
-              navigation.navigate(tab.id.charAt(0).toUpperCase() + tab.id.slice(1));
-            }}
-          >
-            <Text style={[styles.navIcon, tab.id === 'account' && styles.navIconActive]}>
-              {tab.icon}
-            </Text>
-            <Text style={[styles.navLabel, tab.id === 'account' && styles.navLabelActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { ...typography.body, color: colors.textSecondary },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -spacing.md,
+  },
+  backArrow: { fontSize: 24, color: colors.text },
   headerTitle: { ...typography.h2 },
-  menuButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  menuIcon: { fontSize: 28, color: colors.text, fontWeight: '700' },
   scrollView: { flex: 1 },
+  // Breathing room for the last row above the home indicator.
+  scrollContent: { paddingBottom: spacing.xxxl },
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -224,8 +248,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  walletInfo: { flex: 1 },
   walletLabel: { ...typography.bodySmall, color: 'rgba(255,255,255,0.8)' },
   walletBalance: { ...typography.h2, color: colors.surface, marginTop: 2 },
+  walletNote: { ...typography.caption, color: 'rgba(255,255,255,0.9)', marginTop: spacing.xs },
+  tripsCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  tripsTitle: { ...typography.bodySmall, fontWeight: '600', color: colors.text },
+  tripsRow: { flexDirection: 'row', marginTop: spacing.md },
+  tripsStat: { flex: 1, alignItems: 'center' },
+  tripsValue: { ...typography.h3, color: colors.text },
+  tripsLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  tripsNote: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.md },
+  tripsError: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.sm },
   driverCard: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
@@ -250,6 +287,7 @@ const styles = StyleSheet.create({
   },
   menuItemBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
   menuItemLeft: { flexDirection: 'row', alignItems: 'center' },
+  menuIcon: { fontSize: 20 },
   menuLabel: { ...typography.body, marginLeft: spacing.md },
   menuArrow: { fontSize: 20, color: colors.textTertiary },
   logoutButton: {
@@ -259,16 +297,4 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xxxl,
   },
   logoutText: { ...typography.button, color: colors.primary },
-  bottomNav: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingVertical: spacing.sm,
-  },
-  navItem: { flex: 1, alignItems: 'center', paddingVertical: spacing.xs },
-  navIcon: { fontSize: 22, color: colors.textTertiary },
-  navIconActive: { color: colors.primary },
-  navLabel: { ...typography.caption, color: colors.textTertiary, marginTop: 2 },
-  navLabelActive: { color: colors.primary, fontWeight: '600' },
 });

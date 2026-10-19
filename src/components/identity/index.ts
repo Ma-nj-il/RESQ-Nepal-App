@@ -1,0 +1,1 @@
+export { DocumentUploadCard } from './DocumentUploadCard';

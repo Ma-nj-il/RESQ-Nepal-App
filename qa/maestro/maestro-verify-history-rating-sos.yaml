@@ -1,0 +1,247 @@
+appId: host.exp.Exponent
+---
+# UI-refinement verification — ambulance sheet, trip history, rating,
+# notifications and SOS (Flow B), self-contained.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-verify-history-rating-sos.yaml
+- runFlow: maestro-signin-demo.yaml
+
+# ── Ambulance selection sheet (categories first) ────────────────────────────
+# The bottom tab bar is gone (map-first home); every destination is reached
+# through the top-left menu drawer now.
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "^Ambulance$"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: "^Ambulance$"
+- extendedWaitUntil:
+    visible: ".*Book by service.*"
+    timeout: 20000
+- takeScreenshot: ui-04b-ambulance-list-live
+# Let the native map settle, then capture again to check for transient artifacts.
+- extendedWaitUntil:
+    notVisible: "ZZZ-never-visible-zzz"
+    timeout: 5000
+- takeScreenshot: ui-04c-ambulance-list-settled
+# The back control is an accessibility button label ("Go back").
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Trip history (Activity) ─────────────────────────────────────────────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "^My Trips$"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: "^My Trips$"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 20000
+- takeScreenshot: ui-09-activity-ongoing
+- tapOn: "Completed"
+- extendedWaitUntil:
+    visible: ".*Norvic International Hospital.*"
+    timeout: 15000
+- takeScreenshot: ui-10-activity-completed
+- tapOn: ".*Norvic International Hospital.*"
+- extendedWaitUntil:
+    visible: ".*Trip completed.*"
+    timeout: 20000
+- takeScreenshot: ui-11-trip-completed
+
+# ── Trip receipt (rendered from the stored record only) ─────────────────────
+- scrollUntilVisible:
+    element:
+      text: ".*View receipt.*"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: ".*View receipt.*"
+- extendedWaitUntil:
+    visible: ".*Trip Receipt.*"
+    timeout: 20000
+- takeScreenshot: ui-11b-trip-receipt
+- assertVisible: ".*Booking ref.*"
+- tapOn: "Close"
+- extendedWaitUntil:
+    visible: ".*Share trip summary.*"
+    timeout: 20000
+
+# ── Rating a completed trip ─────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: ".*Rate this trip.*"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: ".*Rate this trip.*"
+- extendedWaitUntil:
+    visible: ".*Trip Completed.*"
+    timeout: 20000
+- takeScreenshot: ui-12-rating
+- tapOn: "5 stars"
+- extendedWaitUntil:
+    visible: ".*What went well.*"
+    timeout: 10000
+- tapOn: "Quick response"
+- tapOn: ".*Add a comment.*"
+- inputText: "Quick and professional"
+- hideKeyboard
+- takeScreenshot: ui-13-rating-filled
+- scrollUntilVisible:
+    element:
+      text: ".*Submit.*"
+    direction: DOWN
+    timeout: 20000
+- tapOn: ".*Submit.*"
+- extendedWaitUntil:
+    visible: ".*Rating submitted.*"
+    timeout: 20000
+- takeScreenshot: ui-14-rating-thanks
+# The thanks screen animates in; let it settle so the Done tap cannot land
+# mid-transition (which swallowed it once on a first run).
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Done"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 20000
+# Return Home via the Activity header back button, then reach Account through
+# the drawer (the bottom tab bar no longer exists).
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Notifications inbox ─────────────────────────────────────────────────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: "^My Account$"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: "^My Account$"
+- extendedWaitUntil:
+    visible: ".*Switch to Driver Mode.*"
+    timeout: 20000
+- takeScreenshot: ui-15-account
+- tapOn: ".*Notifications.*"
+- extendedWaitUntil:
+    visible: ".*Recent updates.*"
+    timeout: 20000
+- takeScreenshot: ui-15b-notifications-inbox
+# Shared Header back button exposes the "Go back" accessibility label.
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Switch to Driver Mode.*"
+    timeout: 20000
+
+# ── SOS: trusted contacts + three deliberate taps ───────────────────────────
+- scrollUntilVisible:
+    element:
+      text: ".*Emergency SOS.*"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: ".*Emergency SOS.*"
+- extendedWaitUntil:
+    visible: ".*Trusted contacts.*"
+    timeout: 20000
+- takeScreenshot: ui-16-sos-idle
+# Device-local trusted contacts persist between runs and the list has a
+# five-contact cap. When the cap is reached, free one duplicate slot first so
+# every run still exercises the real add-contact path below.
+- runFlow:
+    when:
+      notVisible: "Add trusted contact"
+    commands:
+      - tapOn:
+          text: ".*Remove Aama.*"
+          index: 0
+      - tapOn: "^Remove$"
+      - extendedWaitUntil:
+          visible: "Add trusted contact"
+          timeout: 10000
+# Add a trusted contact (device-local only).
+# Tap the left edge of the row: Expo Go's floating dev bubble sits at the
+# top-right in this simulator and can overlap the button's right side.
+- tapOn:
+    text: "Add trusted contact"
+    point: "15%,50%"
+- tapOn: "e.g. Aama"
+- inputText: "Aama"
+- tapOn: "+977-98XXXXXXXX"
+- inputText: "9801234567"
+# Save contact is visible above the keypad; saving closes the form and the
+# keyboard dismisses with it (hideKeyboard is unreliable on this form).
+- tapOn: "Save contact"
+- extendedWaitUntil:
+    visible: ".*Edit Aama.*"
+    timeout: 10000
+- takeScreenshot: ui-17-sos-contacts
+# Two taps must be visible but must NOT arm the alert.
+- scrollUntilVisible:
+    element:
+      text: ".*Emergency SOS button.*"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn: ".*Emergency SOS button.*"
+- tapOn: ".*Emergency SOS button.*"
+- assertVisible: ".*2 of 3 taps.*"
+- takeScreenshot: ui-18-sos-two-taps
+# The arming progress resets on its own after 5 s without the third tap.
+- extendedWaitUntil:
+    visible: ".*Tap 3 times to arm the alert.*"
+    timeout: 15000
+- takeScreenshot: ui-19-sos-reset
+# Three deliberate taps arm the alert and queue the event locally.
+- tapOn: ".*Emergency SOS button.*"
+- tapOn: ".*Emergency SOS button.*"
+- tapOn: ".*Emergency SOS button.*"
+- extendedWaitUntil:
+    visible: ".*Queued on this device.*"
+    timeout: 30000
+- takeScreenshot: ui-20-sos-armed
+- scrollUntilVisible:
+    element:
+      text: ".*What happens now.*"
+    direction: DOWN
+    timeout: 20000
+# The trusted contact is offered for the SMS composer — but is not tapped,
+# so nothing leaves the app during verification.
+- assertVisible: ".*Message Aama.*"
+- takeScreenshot: ui-21-sos-sms-options
+- scrollUntilVisible:
+    element:
+      text: ".*Start over.*"
+    direction: DOWN
+    timeout: 15000
+    centerElement: true
+- tapOn: ".*Start over.*"
+- scrollUntilVisible:
+    element:
+      text: ".*Tap 3 times to arm the alert.*"
+    direction: UP
+    timeout: 15000
+- takeScreenshot: ui-22-sos-after-reset
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Switch to Driver Mode.*"
+    timeout: 20000

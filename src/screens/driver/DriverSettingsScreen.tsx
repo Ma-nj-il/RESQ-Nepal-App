@@ -199,6 +199,14 @@ const DriverSettingsScreen: React.FC = () => {
 
   const accountSection: SettingsItem[] = [
     {
+      id: 'identity',
+      icon: '🪪',
+      title: 'Application Status',
+      subtitle: 'Documents, reference ID and review state',
+      type: 'link',
+      onPress: () => navigation.navigate('ApplicationStatus', { type: 'DRIVER' }),
+    },
+    {
       id: 'language',
       icon: '🌐',
       title: 'Language',

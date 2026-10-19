@@ -6,6 +6,7 @@ import { Button } from '../../components/ui';
 import { useAuthStore } from '../../store/authStore';
 import { locationService } from '../../services/location/locationService';
 import { isSupabaseConfigured } from '../../services/database/client';
+import { isDemoMode } from '../../utils/demoMode';
 
 interface LocationPermissionScreenProps {
   navigation: any;
@@ -19,6 +20,22 @@ const LocationPermissionScreen: React.FC<LocationPermissionScreenProps> = ({ nav
       // A real account session already exists (created in the OTP step).
       // AppNavigator swaps the auth stack for the user/driver stack.
       setMode(user.mode === 'driver' ? 'driver' : 'user');
+      setAuthenticated(true);
+      return;
+    }
+    if (isDemoMode()) {
+      // Demo mode: continue with a clearly local demo session. No real
+      // account exists and nothing is written to Supabase.
+      setUser({
+        id: 'demo-user',
+        full_name: 'Demo User',
+        email: '',
+        phone: '',
+        mode: 'user',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      setMode('user');
       setAuthenticated(true);
       return;
     }

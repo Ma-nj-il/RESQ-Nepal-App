@@ -14,6 +14,7 @@ import { Button, Card, Header, EmptyState } from '../../components/ui';
 import { colors, spacing, typography, radii} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { driversService, bookingsService, isSupabaseConfigured } from '../../services/database';
+import { isDemoMode } from '../../utils/demoMode';
 import { Booking } from '../../types';
 
 interface TripHistoryItem {
@@ -107,7 +108,7 @@ const DriverEarningsScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (!isSupabaseConfigured) {
+      if (isDemoMode() || !isSupabaseConfigured) {
         setUsingSampleData(true);
         setTodayEarnings(4250);
         setWeeklyEarnings(28750);
@@ -240,7 +241,9 @@ const DriverEarningsScreen: React.FC = () => {
         {usingSampleData && (
           <Card elevation="sm" style={styles.sampleCard}>
             <Text style={styles.sampleText}>
-              ⚠️ Sample mode — database not configured. Showing example earnings.
+              {isDemoMode()
+                ? 'Walkthrough — sample earnings for this demo session. These figures are examples, not records.'
+                : '⚠️ Sample build — database not configured. Showing example earnings.'}
             </Text>
           </Card>
         )}

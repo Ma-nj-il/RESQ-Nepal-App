@@ -1,0 +1,82 @@
+appId: host.exp.Exponent
+---
+# D1 — DEMO MODE journey (port 8081): Welcome -> OTP 1234 -> Personal Info ->
+# Location permission -> Home (demo map) -> Account -> Logout -> Welcome.
+#
+# Preconditions:
+#   - Dev server running:  EXPO_PUBLIC_DEMO_MODE=true npx expo start --port 8081
+#   - Expo Go installed on the booted iOS simulator.
+#   - Run with:  maestro test --udid <SIM_UDID> qa/maestro/maestro-d1-demo-journey.yaml
+- launchApp
+- openLink: "exp://127.0.0.1:8081"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 120000
+- takeScreenshot: d1-01-welcome-demo
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Welcome Back.*"
+    timeout: 20000
+- tapOn: "e.g. 98XXXXXXXX"
+- inputText: "9812345678"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+# Demo mode: only 1234 is accepted; anything else shows an inline error.
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- extendedWaitUntil:
+    visible: ".*Fill Personal Info.*"
+    timeout: 30000
+- takeScreenshot: d1-02-personal-info
+- tapOn: "Enter your full name"
+- inputText: "QA Demo User"
+- pressKey: Enter
+- tapOn: "Enter your email"
+- inputText: "qa.demo@resq.test"
+- pressKey: Enter
+- tapOn: "Select gender, ▼"
+- extendedWaitUntil:
+    visible: ".*Male.*"
+    timeout: 10000
+- tapOn: "Female"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Enable Location.*"
+    timeout: 30000
+- tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 30000
+- takeScreenshot: d1-03-home-demo-map
+# Logout clears the local demo session and returns to Welcome. Home uses the
+# drawer (there is no persistent bottom tab bar in this round).
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "^My Account$"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "^My Account$"
+- waitForAnimationToEnd:
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "Logout"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Logout"
+- extendedWaitUntil:
+    visible: ".*Sure you want to log out.*"
+    timeout: 15000
+- tapOn: "Yes, Logout"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 20000
+- takeScreenshot: d1-04-signed-out

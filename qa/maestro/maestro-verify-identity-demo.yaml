@@ -1,0 +1,50 @@
+appId: host.exp.Exponent
+---
+# Identity/application-status verification in DEMO MODE (port 8081).
+# Proves the two user entry points are reachable and that demo mode never
+# fabricates an uploaded document, application or verification result.
+- runFlow: maestro-signin-demo.yaml
+
+# Drawer entry point.
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "^Application Status$"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "^Application Status$"
+- extendedWaitUntil:
+    visible: ".*No application in this mode.*"
+    timeout: 15000
+- assertVisible: ".*Demo mode is local-only.*"
+- assertNotVisible: ".*Pending verification.*"
+- assertNotVisible: ".*Approved.*"
+- takeScreenshot: identity-01-status-demo-drawer
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 15000
+
+# Account entry point.
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "^My Account$"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "^My Account$"
+- extendedWaitUntil:
+    visible: ".*Identity Verification.*"
+    timeout: 15000
+- tapOn: ".*Identity Verification.*"
+- extendedWaitUntil:
+    visible: ".*No application in this mode.*"
+    timeout: 15000
+- assertVisible: ".*Demo mode is local-only.*"
+- takeScreenshot: identity-02-status-demo-account

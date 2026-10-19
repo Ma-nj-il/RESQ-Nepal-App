@@ -1,100 +1,131 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Button, Card, Avatar, StarRating } from '../../components/ui';
+import { Button, Card, StarRating } from '../../components/ui';
 import { colors, spacing, typography, radii } from '../../constants/theme';
-import { paymentMethodLabel } from '../../utils/format';
 import { bookingsService } from '../../services/database/bookings';
 import { ratingsService } from '../../services/database/ratings';
 import { driversService } from '../../services/database/drivers';
 import { profilesService } from '../../services/database/profiles';
 import { isSupabaseConfigured } from '../../services/database/client';
 import { useAuthStore } from '../../store/authStore';
+import { isDemoMode } from '../../utils/demoMode';
 import { Booking } from '../../types';
 
 type RouteParams = {
-  Rating: { bookingId: string };
+  Rating: { bookingId?: string; booking?: Booking };
 };
+
+const POSITIVE_TAGS = ['Quick response', 'Professional crew', 'Clean vehicle', 'Careful driving'];
+const ISSUE_TAGS = ['Arrived late', 'Hard to reach', 'Driving style', 'Vehicle condition', 'Billing concern'];
 
 const RatingScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const route = useRoute<RouteProp<RouteParams, 'Rating'>>();
-  const { bookingId } = route.params;
+  const bookingId = route.params?.bookingId;
+  const paramBooking = route.params?.booking;
   const { user } = useAuthStore();
 
+  const demoRun = isDemoMode();
+  const shouldFetch = Boolean(bookingId && paramBooking === undefined && isSupabaseConfigured && !demoRun);
 
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [booking, setBooking] = useState<Booking | null>(paramBooking ?? null);
+  const [loading, setLoading] = useState(shouldFetch);
+  const [error, setError] = useState<string | null>(
+    !paramBooking && !shouldFetch && !demoRun ? 'No trip was provided to rate.' : null,
+  );
   const [rating, setRating] = useState(0);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [driverName, setDriverName] = useState('Driver');
+  const [driverName, setDriverName] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadBooking = async () => {
+    if (!shouldFetch || !bookingId) return;
+    let active = true;
+    (async () => {
       try {
-        setLoading(true);
         const data = await bookingsService.getById(bookingId);
+        if (!active) return;
         if (data) {
           setBooking(data);
+          setError(null);
         } else {
           setError('Booking not found');
         }
       } catch {
-        setError('Failed to load trip details');
+        if (active) setError('Failed to load trip details');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
+    })();
+    return () => {
+      active = false;
     };
-    loadBooking();
-  }, [bookingId]);
+  }, [bookingId, shouldFetch]);
 
   // Show the real driver's name when it can be loaded; otherwise a generic
   // label — never an invented person.
   useEffect(() => {
     const driverId = booking?.driver_id;
-    if (!driverId) return;
+    if (!driverId || !isSupabaseConfigured || demoRun) return;
+    let active = true;
     (async () => {
       try {
         const driver = await driversService.getById(driverId);
-        if (!driver) return;
+        if (!driver || !active) return;
         const profile = await profilesService.getById(driver.user_id);
-        if (profile?.full_name && profile.full_name.trim()) {
-          setDriverName(profile.full_name);
+        if (active && profile?.full_name && profile.full_name.trim()) {
+          setDriverName(profile.full_name.trim());
         }
       } catch {
         // Keep the generic label.
       }
     })();
-  }, [booking?.driver_id]);
+    return () => {
+      active = false;
+    };
+  }, [booking?.driver_id, demoRun]);
+
+  const canPersist = Boolean(
+    isSupabaseConfigured && !demoRun && booking && user?.id && booking.driver_id && bookingId,
+  );
+
+  const tagOptions = useMemo(
+    () => (rating >= 4 ? POSITIVE_TAGS : rating > 0 && rating <= 3 ? ISSUE_TAGS : []),
+    [rating],
+  );
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((current) =>
+      current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag],
+    );
+  };
 
   const handleSubmit = async () => {
     if (rating === 0 || submitting || submitted) return;
-    if (isSupabaseConfigured) {
-      if (!user?.id) {
-        setError('You need to be signed in to rate this trip.');
-        return;
-      }
-      if (!booking?.driver_id) {
-        setError('This trip has no assigned driver, so there is nothing to rate.');
-        return;
-      }
-    }
     try {
       setSubmitting(true);
       setError(null);
-      if (isSupabaseConfigured && booking && user?.id && booking.driver_id) {
-        // Persist the rating against the completed booking.
+
+      if (canPersist && booking && user && booking.driver_id && bookingId) {
+        const feedbackParts = [
+          selectedTags.length > 0 ? selectedTags.join(', ') : null,
+          comment.trim() ? comment.trim() : null,
+        ].filter(Boolean);
         await ratingsService.create({
-          booking_id: booking.id,
+          booking_id: bookingId,
           user_id: user.id,
           driver_id: booking.driver_id,
           rating,
+          feedback: feedbackParts.length > 0 ? feedbackParts.join(' — ') : undefined,
         });
       }
+      // Demo/sample runs: nothing leaves the device. The thank-you screen
+      // states that explicitly.
       setSubmitted(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : '';
@@ -109,7 +140,9 @@ const RatingScreen: React.FC = () => {
   };
 
   const handleClose = () => {
-    navigation.navigate('Activity');
+    // popTo returns to the existing trip list instead of pushing a duplicate
+    // copy of it on top of the rating screen (navigate pushes in v7).
+    navigation.popTo('Activity');
   };
 
   if (loading) {
@@ -117,13 +150,13 @@ const RatingScreen: React.FC = () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={styles.loadingText}>Loading trip…</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!booking) {
+  if (!booking && !demoRun) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -139,9 +172,11 @@ const RatingScreen: React.FC = () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.thankYouContainer}>
           <Text style={styles.thankYouIcon}>🎉</Text>
-          <Text style={styles.thankYouTitle}>Thank You!</Text>
+          <Text style={styles.thankYouTitle}>Rating submitted</Text>
           <Text style={styles.thankYouMessage}>
-            Your feedback helps us improve RESQ Nepal for everyone.
+            {canPersist
+              ? 'Your feedback was saved and helps us improve RESQ Nepal for everyone.'
+              : 'Your feedback was recorded for this walkthrough only — nothing was sent to a server.'}
           </Text>
           <Button title="Done" onPress={handleClose} fullWidth size="lg" style={{ marginTop: spacing.xxl }} />
         </View>
@@ -149,86 +184,88 @@ const RatingScreen: React.FC = () => {
     );
   }
 
-  // Real fare data from the booking — no invented promos, discounts or tax.
-  const fareValue = booking.final_fare ?? booking.estimated_fare ?? null;
-
   return (
     <SafeAreaView style={styles.container}>
-      {/* Close Button */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-          <Text style={styles.closeText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Driver Avatar */}
-        <View style={styles.avatarContainer}>
-          <Avatar name={driverName} size="xl" />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {/* Completed trip — green check as in the reference. */}
+        <View style={styles.checkCircle}>
+          <Text style={styles.checkGlyph}>✓</Text>
         </View>
 
-        {/* Heading */}
-        <Text style={styles.heading}>How was the driver?</Text>
-        <Text style={styles.subtitle}>Help RESQ Nepal do better by rating this trip</Text>
-        {!isSupabaseConfigured && (
+        <Text style={styles.heading}>Trip Completed</Text>
+        <Text style={styles.subtitle}>Thank you for using RESQ Nepal!</Text>
+        {(!isSupabaseConfigured || demoRun) && (
           <Text style={styles.sampleNote}>
-            Sample mode — database not configured. The rating is not saved.
+            {demoRun
+              ? 'Demo mode — this rating stays on this device and is not saved.'
+              : 'Sample mode — database not configured. The rating is not saved.'}
           </Text>
         )}
 
-        {/* Star Rating */}
-        <View style={styles.ratingContainer}>
-          <StarRating rating={rating} onRate={setRating} size="lg" />
-          <Text style={styles.ratingHint}>
-            {rating === 0
-              ? 'Tap a star to rate'
-              : rating === 1
-              ? 'Terrible'
-              : rating === 2
-              ? 'Bad'
-              : rating === 3
-              ? 'Okay'
-              : rating === 4
-              ? 'Good'
-              : 'Excellent'}
-          </Text>
-        </View>
+        {/* Rating card — stars for the real driver only. */}
+        <Card elevation="sm" style={styles.ratingCard}>
+          <Text style={styles.ratingTitle}>Rate your driver</Text>
+          <Text style={styles.ratingDriver}>{driverName ?? 'Your assigned driver'}</Text>
+          <View style={styles.ratingContainer}>
+            <StarRating rating={rating} onRate={setRating} size="lg" />
+            <Text style={styles.ratingHint}>
+              {rating === 0
+                ? 'Tap a star to rate'
+                : rating === 1
+                  ? 'Terrible'
+                  : rating === 2
+                    ? 'Bad'
+                    : rating === 3
+                      ? 'Okay'
+                      : rating === 4
+                        ? 'Good'
+                        : 'Excellent'}
+            </Text>
+          </View>
 
-        {/* Payment Summary Card */}
-        <Card elevation="md" style={styles.paymentCard}>
-          <Text style={styles.paymentTitle}>Payment Summary</Text>
-          <View style={styles.divider} />
-          <View style={styles.paymentRow}>
-            <Text style={styles.paymentLabel}>Payment Method</Text>
-            <Text style={styles.paymentValue}>
-              {paymentMethodLabel[booking.payment_method] ?? 'Not recorded'}
-            </Text>
-          </View>
-          <View style={styles.paymentRow}>
-            <Text style={styles.paymentLabel}>
-              {booking.final_fare ? 'Final fare' : 'Estimated fare'}
-            </Text>
-            <Text style={styles.paymentValue}>
-              {fareValue !== null ? `NPR ${fareValue}` : 'Not recorded'}
-            </Text>
-          </View>
-          {fareValue !== null && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.paymentRow}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>NPR {fareValue}</Text>
+          {/* Feedback chips + comment — optional, only after a rating choice */}
+          {tagOptions.length > 0 && (
+            <View style={styles.feedbackSection}>
+              <Text style={styles.feedbackTitle}>
+                {rating >= 4 ? 'What went well? (optional)' : 'What went wrong? (optional)'}
+              </Text>
+              <View style={styles.chipWrap}>
+                {tagOptions.map((tag) => {
+                  const selected = selectedTags.includes(tag);
+                  return (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[styles.chip, selected && styles.chipSelected]}
+                      onPress={() => toggleTag(tag)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{tag}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            </>
+
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Add a comment (optional)"
+                placeholderTextColor={colors.textTertiary}
+                value={comment}
+                onChangeText={setComment}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
           )}
         </Card>
 
         {/* Submit error (e.g. duplicate rating, network failure) */}
         {error && <Text style={styles.submitError}>{error}</Text>}
 
-        {/* Give Rate Button */}
         <Button
-          title="Give Rate"
+          title="Submit"
           onPress={handleSubmit}
           fullWidth
           size="lg"
@@ -236,6 +273,14 @@ const RatingScreen: React.FC = () => {
           loading={submitting}
           style={styles.submitButton}
         />
+        <TouchableOpacity
+          onPress={handleClose}
+          style={styles.skipLink}
+          accessibilityRole="button"
+          accessibilityLabel="Skip rating"
+        >
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -243,48 +288,64 @@ const RatingScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
-  scrollContent: { padding: spacing.xl, alignItems: 'center' },
+  scrollContent: { padding: spacing.xl, alignItems: 'center', paddingBottom: spacing.xxxl },
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
   loadingText: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
   errorText: { ...typography.body, color: colors.error, textAlign: 'center' },
 
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.full,
-    backgroundColor: colors.input,
+  checkCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
   },
-  closeText: { fontSize: 18, color: colors.text },
+  checkGlyph: { color: colors.surface, fontSize: 32, fontWeight: '800' },
 
-  avatarContainer: { marginBottom: spacing.lg, marginTop: spacing.md },
-  heading: { ...typography.h1, textAlign: 'center', marginBottom: spacing.sm },
+  heading: { fontSize: 22, fontWeight: '700', textAlign: 'center', marginBottom: spacing.xs, color: colors.text },
   subtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.md },
   sampleNote: {
-    ...typography.bodySmall,
-    color: colors.warning,
+    ...typography.caption,
+    color: colors.textTertiary,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
 
-  ratingContainer: { alignItems: 'center', marginBottom: spacing.xxl },
+  ratingCard: { width: '100%', marginBottom: spacing.lg, alignItems: 'stretch' },
+  ratingTitle: { ...typography.h4, color: colors.text },
+  ratingDriver: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.md },
+  ratingContainer: { alignItems: 'center', marginBottom: spacing.md },
   ratingHint: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.md },
 
-  paymentCard: { width: '100%', marginBottom: spacing.xl },
-  paymentTitle: { ...typography.h4, marginBottom: spacing.sm },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
-  paymentRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
-  paymentLabel: { ...typography.bodySmall, color: colors.textSecondary },
-  paymentValue: { ...typography.bodySmall, fontWeight: '500' },
-  totalLabel: { ...typography.body, fontWeight: '700' },
-  totalValue: { ...typography.body, fontWeight: '700', color: colors.primary },
+  feedbackSection: { width: '100%', marginTop: spacing.sm },
+  feedbackTitle: { ...typography.h4, marginBottom: spacing.md },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  chipSelected: { borderColor: colors.primary, backgroundColor: colors.redLight },
+  chipText: { ...typography.bodySmall, color: colors.textSecondary },
+  chipTextSelected: { color: colors.primaryDark, fontWeight: '700' },
+  commentInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    minHeight: 88,
+    ...typography.body,
+    color: colors.text,
+    backgroundColor: colors.input,
+  },
 
   submitError: {
     ...typography.bodySmall,
@@ -293,6 +354,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   submitButton: { marginTop: spacing.sm },
+  skipLink: {
+    alignSelf: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  skipText: { ...typography.body, color: colors.textSecondary, fontWeight: '600' },
 
   thankYouContainer: {
     flex: 1,

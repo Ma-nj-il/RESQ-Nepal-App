@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // User screens — home / booking / trip flow (default exports)
 import HomeScreen from '../screens/user/HomeScreen';
 import LocationSearchScreen from '../screens/user/LocationSearchScreen';
+import MapPickerScreen from '../screens/user/MapPickerScreen';
 import AmbulanceListScreen from '../screens/user/AmbulanceListScreen';
 import AmbulanceDetailsScreen from '../screens/user/AmbulanceDetailsScreen';
 import BookingConfirmationScreen from '../screens/user/BookingConfirmationScreen';
@@ -17,6 +18,7 @@ import CancelRideScreen from '../screens/user/CancelRideScreen';
 import ChatScreen from '../screens/user/ChatScreen';
 import CallScreen from '../screens/user/CallScreen';
 import ActivityScreen from '../screens/user/ActivityScreen';
+import SOSScreen from '../screens/user/SOSScreen';
 import PromoListScreen from '../screens/user/PromoListScreen';
 import PromoDetailScreen from '../screens/user/PromoDetailScreen';
 import { FAQScreen } from '../screens/user/FAQScreen';
@@ -42,6 +44,15 @@ import TopUpSuccessScreen from '../screens/user/TopUpSuccessScreen';
 import TopUpDetailsScreen from '../screens/user/TopUpDetailsScreen';
 import ShareReceiptScreen from '../screens/user/ShareReceiptScreen';
 import LegalScreen from '../screens/user/LegalScreen';
+import MenuDrawerScreen from '../screens/user/MenuDrawerScreen';
+import SavedPlacesScreen from '../screens/user/SavedPlacesScreen';
+import SavedHospitalsScreen from '../screens/user/SavedHospitalsScreen';
+import SettingsScreen from '../screens/user/SettingsScreen';
+import AboutScreen from '../screens/user/AboutScreen';
+import DriverOnboardingScreen from '../screens/user/DriverOnboardingScreen';
+import CitizenshipRegistrationScreen from '../screens/user/CitizenshipRegistrationScreen';
+import ApplicationStatusScreen from '../screens/user/ApplicationStatusScreen';
+import DriverRegistrationScreen from '../screens/driver/DriverRegistrationScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -53,9 +64,10 @@ export const UserNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Home" component={HomeScreen} />
-      <Stack.Screen name="Ambulances" component={AmbulanceListScreen} />
       <Stack.Screen name="AmbulanceList" component={AmbulanceListScreen} />
       <Stack.Screen name="LocationSearch" component={LocationSearchScreen} />
+      <Stack.Screen name="MapPicker" component={MapPickerScreen} />
+      <Stack.Screen name="SOS" component={SOSScreen} />
       <Stack.Screen name="AmbulanceDetails" component={AmbulanceDetailsScreen} />
       <Stack.Screen name="BookingConfirmation" component={BookingConfirmationScreen} />
       <Stack.Screen name="Processing" component={ProcessingScreen} />
@@ -98,6 +110,19 @@ export const UserNavigator = () => {
         component={LegalScreen}
         initialParams={{ kind: 'terms' }}
       />
+      <Stack.Screen
+        name="MenuDrawer"
+        component={MenuDrawerScreen}
+        options={{ presentation: 'transparentModal', animation: 'none' }}
+      />
+      <Stack.Screen name="SavedPlaces" component={SavedPlacesScreen} />
+      <Stack.Screen name="SavedHospitals" component={SavedHospitalsScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="DriverOnboarding" component={DriverOnboardingScreen} />
+      <Stack.Screen name="DriverRegistration" component={DriverRegistrationScreen} />
+      <Stack.Screen name="CitizenshipRegistration" component={CitizenshipRegistrationScreen} />
+      <Stack.Screen name="ApplicationStatus" component={ApplicationStatusScreen} />
     </Stack.Navigator>
   );
 };

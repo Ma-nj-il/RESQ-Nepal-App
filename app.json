@@ -47,8 +47,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "RESQ Nepal accesses your photos only when you choose a profile picture.",
-          "cameraPermission": "RESQ Nepal uses the camera only to take a profile picture.",
+          "photosPermission": "RESQ Nepal accesses your photos only when you choose a profile picture or an identity document.",
+          "cameraPermission": "RESQ Nepal uses the camera only when you take a profile picture or photograph an identity document.",
           "microphonePermission": false
         }
       ]

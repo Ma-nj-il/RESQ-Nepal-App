@@ -1,0 +1,49 @@
+appId: host.exp.Exponent
+---
+# Reusable helper — DEMO MODE sign-in (port 8081) ending on Home.
+# Preconditions: demo dev server on 8081, Expo Go installed, app signed out.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-signin-demo.yaml
+- launchApp
+- openLink: "exp://127.0.0.1:8081"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 120000
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Welcome Back.*"
+    timeout: 20000
+- tapOn: "e.g. 98XXXXXXXX"
+- eraseText
+- inputText: "9812345678"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ".*Enter OTP Code.*"
+    timeout: 30000
+- tapOn: "1"
+- tapOn: "2"
+- tapOn: "3"
+- tapOn: "4"
+- extendedWaitUntil:
+    visible: ".*Fill Personal Info.*"
+    timeout: 30000
+- tapOn: "Enter your full name"
+- eraseText
+- inputText: "QA Demo User"
+- pressKey: Enter
+- tapOn: "Enter your email"
+- eraseText
+- inputText: "qa.demo@resq.test"
+- pressKey: Enter
+- tapOn: "Select gender, ▼"
+- extendedWaitUntil:
+    visible: ".*Male.*"
+    timeout: 10000
+- tapOn: "Female"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: ".*Enable Location.*"
+    timeout: 30000
+- tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 30000

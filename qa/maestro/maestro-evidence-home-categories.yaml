@@ -1,0 +1,15 @@
+appId: host.exp.Exponent
+---
+# Evidence probe — Home category card selection states (demo server on 8081).
+# Starts from a signed-out app, same as the other flows.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-evidence-home-categories.yaml
+- runFlow: maestro-signin-demo.yaml
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+# ICU / Emergency selected (right card).
+- tapOn: ".*For critical patients requiring emergency or ICU support.*"
+- takeScreenshot: ui-04d-home-icu-selected
+# Patient Delivery selected (left card).
+- tapOn: ".*Transport for routine hospital visits and patient transfers.*"
+- takeScreenshot: ui-04e-home-patient-selected

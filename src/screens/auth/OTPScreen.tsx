@@ -5,6 +5,7 @@ import { colors, spacing, typography, radii } from '../../constants/theme';
 import { authService } from '../../services/auth/authService';
 import { profilesService } from '../../services/database/profiles';
 import { isSupabaseConfigured } from '../../services/database/client';
+import { isDemoMode, isValidDemoOtp, DEMO_OTP_CODE } from '../../utils/demoMode';
 import { useAuthStore } from '../../store/authStore';
 import { User } from '../../types';
 
@@ -84,14 +85,20 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation, route }) => {
   );
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      // Sample mode: no SMS is sent and no account is created. The state
-      // updates are deferred so nothing calls setState synchronously inside
-      // the effect body.
+    const demoActive = isDemoMode();
+
+    if (demoActive || !isSupabaseConfigured) {
+      // Demo mode / Sample mode: no SMS is sent and no account is created.
+      // The state updates are deferred so nothing calls setState synchronously
+      // inside the effect body.
       void (async () => {
         await Promise.resolve();
         setIsSending(false);
-        setNotice('Sample mode — Supabase is not configured, so no SMS is sent. Enter any 4 digits to preview the flow.');
+        if (demoActive) {
+          setNotice(`Demo mode — enter OTP ${DEMO_OTP_CODE} to continue.`);
+        } else {
+          setNotice('Sample mode — Supabase is not configured, so no SMS is sent. Enter any 4 digits to preview the flow.');
+        }
       })();
       return;
     }
@@ -139,7 +146,24 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation, route }) => {
       const code = nextOtp.join('');
       if (code.length !== 4 || verifyingRef.current) return;
 
-      if (!isSupabaseConfigured) {
+      const demoActive = isDemoMode();
+
+      if (demoActive || !isSupabaseConfigured) {
+        if (demoActive) {
+          // Demo mode: only accept the specific demo OTP
+          if (!isValidDemoOtp(code)) {
+            setError(`Invalid demo OTP. Please enter ${DEMO_OTP_CODE}.`);
+            setOtp(['', '', '', '']);
+            inputRefs.current[0]?.focus();
+            return;
+          }
+          // Valid demo OTP — proceed to next screen
+          setIsVerifying(false);
+          navigation.navigate('PersonalInfo', { phone });
+          return;
+        }
+
+        // Regular sample mode (no demo flag): accept any 4 digits
         verifyingRef.current = true;
         setIsVerifying(true);
         Alert.alert(
@@ -229,11 +253,16 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation, route }) => {
 
   const handleResend = () => {
     if (!canResend || isSending || isVerifying) return;
-    if (!isSupabaseConfigured) {
+    const demoActive = isDemoMode();
+    if (demoActive || !isSupabaseConfigured) {
       setTimer(60);
       setCanResend(false);
       setOtp(['', '', '', '']);
-      setNotice('Sample mode — no SMS is sent. Enter any 4 digits to preview the flow.');
+      if (demoActive) {
+        setNotice(`Demo mode — enter OTP ${DEMO_OTP_CODE} to continue.`);
+      } else {
+        setNotice('Sample mode — no SMS is sent. Enter any 4 digits to preview the flow.');
+      }
       return;
     }
     sendCode(true);
@@ -258,6 +287,8 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation, route }) => {
           <Text style={styles.subtitle}>
             {isSupabaseConfigured
               ? `Enter the 4-digit code sent to ${phone}.`
+              : isDemoMode()
+              ? `Demo mode — enter ${DEMO_OTP_CODE} to continue.`
               : 'Sample mode — no SMS is sent. Enter any 4 digits to preview the flow.'}
           </Text>
 
@@ -267,8 +298,8 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation, route }) => {
               <Text style={styles.sendingText}>Sending code...</Text>
             </View>
           )}
-          {!isSupabaseConfigured && (
-            <Text style={styles.demoHintText}>Demo OTP: 1234</Text>
+          {isDemoMode() && (
+            <Text style={styles.demoHintText}>Demo OTP: {DEMO_OTP_CODE}</Text>
           )}
           {notice && <Text style={styles.noticeText}>{notice}</Text>}
           {error && <Text style={styles.errorText}>{error}</Text>}

@@ -4,67 +4,29 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator } from 'react-native';
+  ActivityIndicator,
+  Alert,
+  TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Badge, EmptyState } from '../../components/ui';
-import { colors, spacing, typography, radii} from '../../constants/theme';
-import { Booking} from '../../types';
+import { colors, spacing, typography, radii } from '../../constants/theme';
+import { Booking } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../services/database';
+import { isDemoMode } from '../../utils/demoMode';
+import { useDriverDemoStore } from '../../store/driverDemoStore';
 
 const REQUEST_EXPIRY_SECONDS = 60;
 
-// Development sample requests — only shown when Supabase is not configured
-// (clearly labelled in the UI). Never presented as live data.
-const SAMPLE_REQUESTS: Booking[] = [
-  {
-    id: 'sample-b1',
-    user_id: 'u1',
-    category: 'icu',
-    pickup_address: 'Thamel, Kathmandu',
-    pickup_lat: 27.7172,
-    pickup_lng: 85.324,
-    destination_address: 'Norvic International Hospital, Kathmandu',
-    dest_lat: 27.7245,
-    dest_lng: 85.3128,
-    status: 'pending',
-    patient_name: 'Ram Bahadur Thapa',
-    patient_age: '65',
-    patient_condition: 'Chest pain, needs ICU transport',
-    emergency_level: 'high',
-    estimated_fare: 2500,
-    distance_km: 4.2,
-    duration_min: 18,
-    payment_method: 'cash',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'sample-b2',
-    user_id: 'u2',
-    category: 'basic',
-    pickup_address: 'Boudha, Kathmandu',
-    pickup_lat: 27.7215,
-    pickup_lng: 85.3624,
-    destination_address: 'Grande International Hospital, Dhapasi',
-    dest_lat: 27.7489,
-    dest_lng: 85.3256,
-    status: 'pending',
-    patient_name: 'Sunita Sharma',
-    patient_age: '32',
-    patient_condition: 'Fracture - left leg',
-    emergency_level: 'medium',
-    estimated_fare: 1200,
-    distance_km: 6.5,
-    duration_min: 25,
-    payment_method: 'cash',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 const DriverRequestsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+
+  // Demo walkthrough — sample requests live in an isolated in-memory store;
+  // accepting or declining here never touches the real database.
+  const walkthrough = isDemoMode() || !isSupabaseConfigured;
+  const demoRequests = useDriverDemoStore((s) => s.requests);
+  const acceptDemoRequest = useDriverDemoStore((s) => s.acceptRequest);
+  const declineDemoRequest = useDriverDemoStore((s) => s.declineRequest);
 
   const [requests, setRequests] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,17 +35,46 @@ const DriverRequestsScreen: React.FC = () => {
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [usingSampleData, setUsingSampleData] = useState(false);
 
+  // The walkthrough requests are projected into the same shape the card
+  // renders, so both paths share one presentation.
+  const displayRequests: Booking[] = walkthrough
+    ? demoRequests.map((r) => ({
+        id: r.id,
+        user_id: 'walkthrough-patient',
+        category: r.category,
+        pickup_address: r.pickupAddress,
+        pickup_lat: r.pickupLat,
+        pickup_lng: r.pickupLng,
+        destination_address: r.destinationAddress,
+        dest_lat: r.destLat,
+        dest_lng: r.destLng,
+        status: 'pending',
+        patient_name: r.patientName,
+        patient_age: r.patientAge,
+        patient_condition: r.patientCondition,
+        emergency_level: r.emergencyLevel,
+        estimated_fare: r.estimatedFare,
+        distance_km: r.distanceKm,
+        duration_min: r.durationMin,
+        payment_method: 'cash',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }))
+    : requests;
+
   useEffect(() => {
     loadRequests();
+    // Load exactly once on mount — loadRequests reads fresh state internally.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadRequests() {
     setLoading(true);
     setError(null);
     try {
-      if (!isSupabaseConfigured) {
+      if (walkthrough) {
         setUsingSampleData(true);
-        setRequests(SAMPLE_REQUESTS);
+        setLoading(false);
         return;
       }
       setUsingSampleData(false);
@@ -102,48 +93,58 @@ const DriverRequestsScreen: React.FC = () => {
   }
 
   const handleAccept = async (requestId: string) => {
+    if (walkthrough) {
+      // Walkthrough acceptance is instant and in-memory; the store refuses
+      // when a sample trip is already active.
+      const accepted = acceptDemoRequest(requestId);
+      if (!accepted) {
+        Alert.alert(
+          'Walkthrough trip already in progress',
+          'Finish or restart the current walkthrough trip before accepting another request.',
+        );
+        return;
+      }
+      navigation.navigate('DriverTrip', { bookingId: requestId });
+      return;
+    }
+
     setAcceptingId(requestId);
     try {
-      if (!isSupabaseConfigured) {
-        // Sample mode — simulate the acceptance delay.
-        await new Promise((resolve) => setTimeout(resolve, 800));
-      } else {
-        // Attach this driver's own ambulance to the accepted booking —
-        // otherwise the RPC stores ambulance_id = null.
-        let ambulanceId: string | null = null;
-        try {
-          const { data: authData } = await supabase.auth.getUser();
-          const userId = authData.user?.id;
-          if (userId) {
-            const { data: driverRow } = await supabase
-              .from('drivers')
+      // Attach this driver's own ambulance to the accepted booking —
+      // otherwise the RPC stores ambulance_id = null.
+      let ambulanceId: string | null = null;
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData.user?.id;
+        if (userId) {
+          const { data: driverRow } = await supabase
+            .from('drivers')
+            .select('id')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (driverRow?.id) {
+            const { data: ambRow } = await supabase
+              .from('ambulances')
               .select('id')
-              .eq('user_id', userId)
+              .eq('driver_id', driverRow.id)
+              .limit(1)
               .maybeSingle();
-            if (driverRow?.id) {
-              const { data: ambRow } = await supabase
-                .from('ambulances')
-                .select('id')
-                .eq('driver_id', driverRow.id)
-                .limit(1)
-                .maybeSingle();
-              ambulanceId = ambRow?.id ?? null;
-            }
+            ambulanceId = ambRow?.id ?? null;
           }
-        } catch {
-          // Leaving the ambulance unset is safe; acceptance still proceeds.
         }
+      } catch {
+        // Leaving the ambulance unset is safe; acceptance still proceeds.
+      }
 
-        // Atomic compare-and-set via the accept_booking RPC: only one
-        // driver can win a pending booking; the loser receives an error.
-        const { error: acceptError } = await supabase.rpc('accept_booking', {
-          p_booking_id: requestId,
-          p_ambulance_id: ambulanceId,
-        });
-        if (acceptError) {
-          setError(acceptError.message);
-          return;
-        }
+      // Atomic compare-and-set via the accept_booking RPC: only one
+      // driver can win a pending booking; the loser receives an error.
+      const { error: acceptError } = await supabase.rpc('accept_booking', {
+        p_booking_id: requestId,
+        p_ambulance_id: ambulanceId,
+      });
+      if (acceptError) {
+        setError(acceptError.message);
+        return;
       }
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
       navigation.navigate('DriverTrip', { bookingId: requestId });
@@ -153,6 +154,12 @@ const DriverRequestsScreen: React.FC = () => {
   };
 
   const handleDecline = async (requestId: string) => {
+    if (walkthrough) {
+      // Walkthrough decline — removes the sample request from this session
+      // only; nothing is written anywhere.
+      declineDemoRequest(requestId);
+      return;
+    }
     setDecliningId(requestId);
     try {
       // Declining only dismisses the request locally — the booking
@@ -199,17 +206,40 @@ const DriverRequestsScreen: React.FC = () => {
     );
   }
 
-  if (requests.length === 0) {
+  if (displayRequests.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.headerBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Text style={styles.headerBackText}>←</Text>
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>Requests</Text>
         </View>
-        <EmptyState
-          icon="📋"
-          title="No Incoming Requests"
-          message="New booking requests will appear here when patients request ambulances near you."
-        />
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            icon="📋"
+            title={walkthrough ? 'No Walkthrough Requests Left' : 'No Incoming Requests'}
+            message={
+              walkthrough
+                ? 'Every sample request was accepted or declined. Restart the walkthrough to bring them back.'
+                : 'New booking requests will appear here when patients request ambulances near you.'
+            }
+          />
+          {walkthrough && (
+            <Button
+              title="Restart walkthrough"
+              variant="outline"
+              onPress={() => useDriverDemoStore.getState().restart()}
+              style={styles.restartButton}
+            />
+          )}
+        </View>
       </SafeAreaView>
     );
   }
@@ -217,9 +247,18 @@ const DriverRequestsScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.headerBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        >
+          <Text style={styles.headerBackText}>←</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Requests</Text>
         <View style={styles.countBadge}>
-          <Text style={styles.countText}>{requests.length}</Text>
+          <Text style={styles.countText}>{displayRequests.length}</Text>
         </View>
       </View>
 
@@ -231,12 +270,14 @@ const DriverRequestsScreen: React.FC = () => {
         {usingSampleData && (
           <Card elevation="sm" style={styles.sampleCard}>
             <Text style={styles.sampleText}>
-              ⚠️ Sample mode — database not configured. Showing example requests.
+              {isDemoMode()
+                ? 'Walkthrough — sample requests for this demo session. Accepting or declining does not touch real bookings.'
+                : '⚠️ Sample build — database not configured. Showing example requests.'}
             </Text>
           </Card>
         )}
 
-        {requests.map((request) => (
+        {displayRequests.map((request) => (
           <Card key={request.id} elevation="sm" style={styles.requestCard}>
             {/* Header Row */}
             <View style={styles.cardHeader}>
@@ -335,6 +376,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xxl,
   },
+  emptyWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  restartButton: {
+    alignSelf: 'center',
+    marginTop: spacing.md,
+  },
   loadingText: {
     ...typography.body,
     color: colors.textSecondary,
@@ -355,6 +405,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  headerBack: {
+    position: 'absolute',
+    left: spacing.lg,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  headerBackText: {
+    ...typography.h3,
+    color: colors.text,
   },
   headerTitle: {
     ...typography.h3,

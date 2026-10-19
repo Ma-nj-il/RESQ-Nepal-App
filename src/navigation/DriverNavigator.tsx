@@ -9,6 +9,8 @@ import DriverRegistrationScreen from '../screens/driver/DriverRegistrationScreen
 import VehicleManagementScreen from '../screens/driver/VehicleManagementScreen';
 import DriverTripScreen from '../screens/driver/DriverTripScreen';
 import DriverSettingsScreen from '../screens/driver/DriverSettingsScreen';
+import ApplicationStatusScreen from '../screens/user/ApplicationStatusScreen';
+import CitizenshipRegistrationScreen from '../screens/user/CitizenshipRegistrationScreen';
 
 // Shared screens re-used in driver mode
 import { HelpScreen } from '../screens/user/HelpScreen';
@@ -31,6 +33,8 @@ export const DriverNavigator = () => {
       <Stack.Screen name="Help" component={HelpScreen} />
       <Stack.Screen name="FAQ" component={FAQScreen} />
       <Stack.Screen name="Language" component={LanguageScreen} />
+      <Stack.Screen name="ApplicationStatus" component={ApplicationStatusScreen} />
+      <Stack.Screen name="CitizenshipRegistration" component={CitizenshipRegistrationScreen} />
     </Stack.Navigator>
   );
 };

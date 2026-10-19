@@ -11,43 +11,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Button, Card, Badge, Avatar } from '../../components/ui';
+import { MapCanvas } from '../../components/map/MapCanvas';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
 import { bookingsService, isSupabaseConfigured } from '../../services/database';
+import { useDriverDemoStore } from '../../store/driverDemoStore';
+import { isDemoMode } from '../../utils/demoMode';
 import { Booking } from '../../types';
 
 type TripPhase = 'pickup' | 'arrived' | 'started' | 'completed';
-
-// Development sample trip — only shown when Supabase is not configured
-// (clearly labelled in the UI). Never presented as live data.
-function buildSampleBooking(bookingId?: string): Booking {
-  return {
-    id: bookingId ?? 'sample-b1',
-    user_id: 'u1',
-    category: 'icu',
-    pickup_address: 'Thamel, Kathmandu',
-    pickup_lat: 27.7172,
-    pickup_lng: 85.324,
-    destination_address: 'Norvic International Hospital, Kathmandu',
-    dest_lat: 27.7245,
-    dest_lng: 85.3128,
-    status: 'assigned',
-    patient_name: 'Ram Bahadur Thapa',
-    patient_age: '65',
-    patient_condition: 'Chest pain, needs ICU transport',
-    emergency_level: 'high',
-    estimated_fare: 2500,
-    distance_km: 4.2,
-    duration_min: 18,
-    payment_method: 'cash',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-}
 
 const DriverTripScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const bookingId = route.params?.bookingId;
+
+  // Demo walkthrough — the sample trip lives in an isolated in-memory store;
+  // every phase change here is local and never written to the database.
+  const walkthrough = isDemoMode() || !isSupabaseConfigured;
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,9 +47,44 @@ const DriverTripScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (!isSupabaseConfigured || !bookingId) {
+      if (walkthrough) {
+        // Sample trip from the isolated in-memory walkthrough store.
         setUsingSampleData(true);
-        setBooking(buildSampleBooking(bookingId));
+        const trip = useDriverDemoStore.getState().activeTrip;
+        if (!bookingId || !trip || trip.id !== bookingId) {
+          setError(
+            'This walkthrough trip is no longer active. Accept a sample request to start one.',
+          );
+          return;
+        }
+        setBooking({
+          id: trip.id,
+          user_id: 'walkthrough-patient',
+          category: trip.category,
+          pickup_address: trip.pickupAddress,
+          pickup_lat: trip.pickupLat,
+          pickup_lng: trip.pickupLng,
+          destination_address: trip.destinationAddress,
+          dest_lat: trip.destLat,
+          dest_lng: trip.destLng,
+          status: 'assigned',
+          patient_name: trip.patientName,
+          patient_age: trip.patientAge,
+          patient_condition: trip.patientCondition,
+          emergency_level: trip.emergencyLevel,
+          estimated_fare: trip.estimatedFare,
+          distance_km: trip.distanceKm,
+          duration_min: trip.durationMin,
+          payment_method: 'cash',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        setPhase(trip.phase);
+        return;
+      }
+
+      if (!bookingId) {
+        setError('Trip not found.');
         return;
       }
 
@@ -110,7 +125,16 @@ const DriverTripScreen: React.FC = () => {
   };
 
   const persistPhase = async (status: Booking['status'], next: TripPhase) => {
-    if (!isSupabaseConfigured || usingSampleData || !booking) {
+    if (walkthrough) {
+      // Local, in-memory phase change with a duplicate-tap guard.
+      if (updating || phase === next) return;
+      setUpdating(true);
+      useDriverDemoStore.getState().setPhase(next);
+      setPhase(next);
+      setUpdating(false);
+      return;
+    }
+    if (!booking) {
       setPhase(next);
       return;
     }
@@ -134,7 +158,21 @@ const DriverTripScreen: React.FC = () => {
   };
 
   const handleCompleteTrip = async () => {
-    if (isSupabaseConfigured && !usingSampleData && booking) {
+    if (walkthrough) {
+      if (updating) return; // duplicate-tap guard
+      setUpdating(true);
+      setPhase('completed');
+      useDriverDemoStore.getState().completeActiveTrip();
+      setUpdating(false);
+      Alert.alert(
+        'Trip Completed',
+        'Walkthrough trip completed. No records were written and no fare is charged.',
+        [{ text: 'OK', onPress: () => navigation.navigate('DriverHome') }],
+      );
+      return;
+    }
+
+    if (booking) {
       setUpdating(true);
       try {
         await bookingsService.updateStatus(booking.id, 'completed');
@@ -149,22 +187,17 @@ const DriverTripScreen: React.FC = () => {
       } finally {
         setUpdating(false);
       }
-      return;
     }
-
-    setUpdating(true);
-    setTimeout(() => {
-      setUpdating(false);
-      setPhase('completed');
-      Alert.alert(
-        'Trip Completed',
-        `Sample trip completed. Fare: NPR ${Number(booking?.estimated_fare ?? 0).toLocaleString('en-IN')}`,
-        [{ text: 'OK', onPress: () => navigation.navigate('DriverHome') }]
-      );
-    }, 800);
   };
 
   const handleCallPatient = () => {
+    if (walkthrough) {
+      Alert.alert(
+        'Demo walkthrough',
+        'No call is placed in the walkthrough — the sample patient has no recorded phone number.',
+      );
+      return;
+    }
     const phone = booking?.patient_phone?.trim();
     if (!phone) {
       Alert.alert(
@@ -223,6 +256,8 @@ const DriverTripScreen: React.FC = () => {
               title="Arrived at Pickup"
               fullWidth
               onPress={handleArrived}
+              loading={updating}
+              disabled={updating}
               style={styles.primaryButton}
             />
           </View>
@@ -234,6 +269,8 @@ const DriverTripScreen: React.FC = () => {
             fullWidth
             size="lg"
             onPress={handleStartTrip}
+            loading={updating}
+            disabled={updating}
             style={styles.primaryButton}
           />
         );
@@ -290,18 +327,19 @@ const DriverTripScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Map View */}
+      {/* Route map — straight-line preview of the real trip coordinates */}
       <View style={styles.mapContainer}>
-        <View style={styles.mapPlaceholder}>
-          <Text style={styles.mapIcon}>🗺️</Text>
-          <Text style={styles.mapText}>Route Map</Text>
-          <Text style={styles.mapSubtext}>{getPhaseLabel()}</Text>
-          {/* Progress bar overlay */}
-          <View style={styles.progressBarContainer}>
-            <View
-              style={[styles.progressBar, { width: `${getPhaseProgress() * 100}%` }]}
-            />
-          </View>
+        <MapCanvas
+          pickup={booking ? { lat: booking.pickup_lat, lng: booking.pickup_lng } : null}
+          destination={booking ? { lat: booking.dest_lat, lng: booking.dest_lng } : null}
+          pickupLabel="Pickup"
+          destinationLabel="Destination"
+          caption="Straight-line preview — not live GPS"
+        />
+        <View style={styles.progressBarOverlay}>
+          <View
+            style={[styles.progressBar, { width: `${getPhaseProgress() * 100}%` }]}
+          />
         </View>
       </View>
 
@@ -310,10 +348,14 @@ const DriverTripScreen: React.FC = () => {
         {usingSampleData && (
           <View style={styles.sampleBanner}>
             <Text style={styles.sampleBannerText}>
-              ⚠️ Sample mode — database not configured. Showing an example trip.
+              {walkthrough && isDemoMode()
+                ? 'Walkthrough trip — sample data for this demo session. Nothing is saved.'
+                : '⚠️ Sample build — database not configured. Showing an example trip.'}
             </Text>
           </View>
         )}
+
+        <Text style={styles.phaseTitle}>{getPhaseLabel()}</Text>
 
         {/* Trip Progress Indicator */}
         <View style={styles.progressIndicator}>
@@ -445,25 +487,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#E8EAF6',
   },
-  mapPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapIcon: {
-    fontSize: 48,
-    marginBottom: spacing.sm,
-  },
-  mapText: {
-    ...typography.h3,
-    color: colors.text,
-  },
-  mapSubtext: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  progressBarContainer: {
+  progressBarOverlay: {
     position: 'absolute',
     bottom: 20,
     left: 20,
@@ -476,6 +500,10 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: colors.primary,
     borderRadius: 2,
+  },
+  phaseTitle: {
+    ...typography.h3,
+    marginBottom: spacing.md,
   },
   bottomSheet: {
     backgroundColor: colors.surface,

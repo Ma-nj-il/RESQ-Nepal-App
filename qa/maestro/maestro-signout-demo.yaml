@@ -1,0 +1,33 @@
+appId: host.exp.Exponent
+---
+# Reusable helper — ensure the app is signed out (demo server on 8081).
+# Idempotent: launches Expo Go, then signs out from Home only when a demo
+# session is still active. Ends on the Welcome screen.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-signout-demo.yaml
+- launchApp
+- openLink: "exp://127.0.0.1:8081"
+- extendedWaitUntil:
+    visible: ".*(Find Ambulance|Let's dive in to your account).*"
+    timeout: 120000
+- runFlow:
+    when:
+      visible: ".*Find Ambulance.*"
+    commands:
+      - tapOn: "Open menu"
+      - extendedWaitUntil:
+          visible: ".*My Account.*"
+          timeout: 15000
+      - tapOn: "^My Account$"
+      - scrollUntilVisible:
+          element:
+            text: "^Logout$"
+          direction: DOWN
+          timeout: 20000
+      - tapOn: "^Logout$"
+      - extendedWaitUntil:
+          visible: ".*Sure you want to log out.*"
+          timeout: 10000
+      - tapOn: "Yes, Logout"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 30000

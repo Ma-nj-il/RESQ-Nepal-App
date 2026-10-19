@@ -11,6 +11,7 @@ import { Button, Card, Header, Badge, Toggle } from '../../components/ui';
 import { colors, spacing, typography, radii} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { driversService, ambulancesService, isSupabaseConfigured } from '../../services/database';
+import { isDemoMode } from '../../utils/demoMode';
 import { Ambulance, AmbulanceStatus } from '../../types';
 
 // Development sample vehicle — only shown when Supabase is not configured
@@ -47,7 +48,7 @@ const VehicleManagementScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (!isSupabaseConfigured) {
+      if (isDemoMode() || !isSupabaseConfigured) {
         setUsingSampleData(true);
         setVehicles([SAMPLE_VEHICLE]);
         return;
@@ -161,7 +162,9 @@ const VehicleManagementScreen: React.FC = () => {
         {usingSampleData && (
           <Card elevation="sm" style={styles.sampleCard}>
             <Text style={styles.sampleText}>
-              ⚠️ Sample mode — database not configured. Showing an example vehicle.
+              {isDemoMode()
+                ? 'Walkthrough — sample vehicle for this demo session. It is not a real registration.'
+                : '⚠️ Sample build — database not configured. Showing an example vehicle.'}
             </Text>
           </Card>
         )}

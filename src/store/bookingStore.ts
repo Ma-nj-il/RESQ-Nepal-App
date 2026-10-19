@@ -1,15 +1,15 @@
 import { create } from 'zustand';
-import { Booking, AmbulanceCategory, BookingStatus } from '../types';
+import { Booking, AmbulanceCategory, BookingStatus, RoutePoint } from '../types';
 
 interface BookingState {
   currentBooking: Booking | null;
-  pickup: { address: string; lat: number; lng: number } | null;
-  destination: { address: string; lat: number; lng: number } | null;
+  pickup: RoutePoint | null;
+  destination: RoutePoint | null;
   selectedCategory: AmbulanceCategory;
   bookingStatus: BookingStatus;
   isProcessing: boolean;
-  setPickup: (p: { address: string; lat: number; lng: number } | null) => void;
-  setDestination: (d: { address: string; lat: number; lng: number } | null) => void;
+  setPickup: (p: RoutePoint | null) => void;
+  setDestination: (d: RoutePoint | null) => void;
   setCategory: (c: AmbulanceCategory) => void;
   setBooking: (b: Booking | null) => void;
   setBookingStatus: (s: BookingStatus) => void;

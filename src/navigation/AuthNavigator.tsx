@@ -10,6 +10,9 @@ import PersonalInfoScreen from '../screens/auth/PersonalInfoScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import LocationPermissionScreen from '../screens/auth/LocationPermissionScreen';
 import LegalScreen from '../screens/user/LegalScreen';
+import ApplicationStatusScreen from '../screens/user/ApplicationStatusScreen';
+import CitizenshipRegistrationScreen from '../screens/user/CitizenshipRegistrationScreen';
+import DriverRegistrationScreen from '../screens/driver/DriverRegistrationScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,6 +27,9 @@ export const AuthNavigator = () => {
       <Stack.Screen name="PersonalInfo" component={PersonalInfoScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="LocationPermission" component={LocationPermissionScreen} />
+      <Stack.Screen name="ApplicationStatus" component={ApplicationStatusScreen} />
+      <Stack.Screen name="CitizenshipRegistration" component={CitizenshipRegistrationScreen} />
+      <Stack.Screen name="DriverRegistration" component={DriverRegistrationScreen} />
       <Stack.Screen
         name="PrivacyPolicy"
         component={LegalScreen}

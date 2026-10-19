@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Button, Input, Card, Header} from '../../components/ui';
+import { Button, Input, Card, Header } from '../../components/ui';
+import { DocumentUploadCard } from '../../components/identity';
 import { colors, spacing, typography, radii} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
-import { driversService, ambulancesService, isSupabaseConfigured } from '../../services/database';
-import { Ambulance, AmbulanceCategory } from '../../types';
+import {
+  driversService,
+  ambulancesService,
+  identityApplicationsService,
+  identityDocumentsService,
+  IdentityServiceError,
+  isSupabaseConfigured,
+} from '../../services/database';
+import { profilesService } from '../../services/database/profiles';
+import { isDemoMode } from '../../utils/demoMode';
+import { applicationStatusPresentation, pickCurrentDocument } from '../../utils/identity';
+import type { Ambulance, AmbulanceCategory, Driver, IdentityDocument } from '../../types';
 
 const EQUIPMENT_OPTIONS = [
   'Oxygen',
@@ -32,7 +43,7 @@ const CATEGORIES: { value: AmbulanceCategory; label: string }[] = [
 const DriverRegistrationScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
 
   // Edit mode: opened from Vehicle Management with an existing vehicle.
   const editVehicle: Ambulance | undefined = route.params?.vehicle;
@@ -42,6 +53,9 @@ const DriverRegistrationScreen: React.FC = () => {
   const [fullName, setFullName] = useState(user?.full_name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  const [citizenshipNumber, setCitizenshipNumber] = useState(
+    user?.citizenship_number ?? '',
+  );
 
   // License info
   const [licenseNumber, setLicenseNumber] = useState('');
@@ -63,6 +77,61 @@ const DriverRegistrationScreen: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [documents, setDocuments] = useState<IdentityDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentBusy, setDocumentBusy] = useState(false);
+  const [existingDriver, setExistingDriver] = useState<Driver | null>(null);
+
+  const requiresIdentity = isSupabaseConfigured && !isDemoMode();
+  const userId = user?.id;
+  const citizenshipDocument = pickCurrentDocument(documents, 'CITIZENSHIP');
+  const licenceDocument = pickCurrentDocument(documents, 'DRIVING_LICENSE');
+  const blueBookDocument = pickCurrentDocument(
+    documents,
+    'VEHICLE_BLUE_BOOK',
+    editVehicle?.id,
+  );
+
+  const loadApplicationData = useCallback(async () => {
+    if (!requiresIdentity || !userId) return;
+    setDocumentsLoading(true);
+    try {
+      const [profile, loadedDocuments, driver] = await Promise.all([
+        profilesService.getById(userId),
+        identityDocumentsService.listDocuments(),
+        isEditMode && editVehicle
+          ? driversService.getById(editVehicle.driver_id)
+          : driversService.getByUserId(userId),
+      ]);
+      setDocuments(loadedDocuments);
+      setExistingDriver(driver);
+      if (profile) {
+        setFullName((current) => current || profile.full_name || '');
+        setPhone((current) => current || profile.phone || '');
+        setEmail((current) => current || profile.email || '');
+        setCitizenshipNumber((current) => current || profile.citizenship_number || '');
+      }
+      if (driver && !isEditMode) {
+        setLicenseNumber((current) => current || driver.license_number || '');
+        setLicenseExpiry((current) => current || driver.license_expiry || '');
+      }
+    } catch (error) {
+      if (error instanceof IdentityServiceError) {
+        // The migration or storage may not be applied yet. The form still
+        // opens, but submission will surface the same honest error.
+        setDocuments([]);
+      }
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [editVehicle, isEditMode, requiresIdentity, userId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadApplicationData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadApplicationData]);
 
   const toggleEquipment = (item: string) => {
     setSelectedEquipment((prev) =>
@@ -70,10 +139,18 @@ const DriverRegistrationScreen: React.FC = () => {
     );
   };
 
-  const handleUploadLicense = () => {
-    Alert.alert(
-      'Document upload unavailable',
-      'Attaching document files is not part of this build — file storage is not configured yet. Continue by entering your license number and expiry date; a reviewer may ask for the document separately.',
+  const registerDocument = (document: IdentityDocument) => {
+    setDocuments((current) => [
+      document,
+      ...current.filter((item) => item.id !== document.id),
+    ]);
+  };
+
+  const markDocumentRemoved = (document: IdentityDocument) => {
+    setDocuments((current) =>
+      current.map((item) =>
+        item.id === document.id ? { ...item, upload_status: 'REMOVED' as const } : item,
+      ),
     );
   };
 
@@ -83,8 +160,27 @@ const DriverRegistrationScreen: React.FC = () => {
       if (!fullName.trim()) newErrors.fullName = 'Full name is required';
       if (!phone.trim()) newErrors.phone = 'Phone number is required';
       if (!email.trim()) newErrors.email = 'Email is required';
+      if (!citizenshipNumber.trim()) {
+        newErrors.citizenshipNumber = 'Citizenship number is required';
+      }
       if (!licenseNumber.trim()) newErrors.licenseNumber = 'License number is required';
-      if (!licenseExpiry.trim()) newErrors.licenseExpiry = 'Expiry date is required';
+      if (!licenseExpiry.trim()) {
+        newErrors.licenseExpiry = 'Expiry date is required';
+      } else if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(licenseExpiry.trim()) ||
+        Number.isNaN(new Date(`${licenseExpiry.trim()}T00:00:00`).getTime())
+      ) {
+        newErrors.licenseExpiry = 'Use the format YYYY-MM-DD';
+      }
+      if (requiresIdentity && !citizenshipDocument) {
+        newErrors.citizenshipDocument = 'Citizenship document is required';
+      }
+      if (requiresIdentity && !licenceDocument) {
+        newErrors.licenceDocument = 'Driving licence document is required';
+      }
+      if (requiresIdentity && !blueBookDocument) {
+        newErrors.blueBookDocument = 'Blue Book document is required';
+      }
     }
     if (!plateNumber.trim()) newErrors.plateNumber = 'Plate number is required';
     if (!model.trim()) newErrors.model = 'Vehicle model is required';
@@ -94,70 +190,137 @@ const DriverRegistrationScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!validate()) return;
+
+    if (isDemoMode()) {
+      Alert.alert(
+        'Demo mode',
+        'No driver record, vehicle, document or application is saved in demo mode. Nothing was sent to the database.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+
+    if (!isSupabaseConfigured) {
+      Alert.alert(
+        'Database Not Configured',
+        'Your application could not be saved because no database is configured. Add Supabase credentials in .env, then submit again. Nothing was sent anywhere.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }],
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isEditMode && editVehicle) {
         // ── Edit existing vehicle ─────────────────────────────────────
-        if (isSupabaseConfigured) {
-          await ambulancesService.update(editVehicle.id, {
-            category,
-            plate_number: plateNumber.trim(),
-            model: model.trim(),
-            color: color.trim() || 'White',
-            equipment: selectedEquipment,
-            hospital_affiliation: hospitalAffiliation.trim() || undefined,
-          });
-        }
+        await ambulancesService.update(editVehicle.id, {
+          category,
+          plate_number: plateNumber.trim(),
+          model: model.trim(),
+          color: color.trim() || 'White',
+          equipment: selectedEquipment,
+          hospital_affiliation: hospitalAffiliation.trim() || undefined,
+        });
         Alert.alert('Vehicle Updated', 'Your ambulance details have been saved.', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
         return;
       }
 
-      // ── New driver application / additional vehicle ────────────────
-      if (isSupabaseConfigured) {
-        const userId = user?.id;
-        if (!userId) {
-          Alert.alert('Not signed in', 'Please sign in before applying as a driver.');
-          return;
-        }
-
-        let driver = await driversService.getByUserId(userId);
-        if (!driver) {
-          driver = await driversService.register({
-            user_id: userId,
-            license_number: licenseNumber.trim(),
-            license_expiry: licenseExpiry.trim() || undefined,
-          });
-        }
-
-        await ambulancesService.create({
-          driver_id: driver.id,
-          category,
-          plate_number: plateNumber.trim(),
-          model: model.trim(),
-          color: color.trim() || 'White',
-          status: 'offline',
-          equipment: selectedEquipment,
-          hospital_affiliation: hospitalAffiliation.trim() || undefined,
-        });
-
-        Alert.alert(
-          'Application Submitted',
-          'Your driver application has been submitted for verification. An administrator will review your details before you can receive bookings.',
-          [{ text: 'OK', onPress: () => navigation.navigate('DriverHome') }],
-        );
-      } else {
-        // No database configured — the application cannot be persisted.
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        Alert.alert(
-          'Database Not Configured',
-          'Your application could not be saved because no database is configured. Add Supabase credentials in .env, then submit again. Nothing was sent anywhere.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }],
-        );
+      const userId = user?.id;
+      if (!userId) {
+        Alert.alert('Not signed in', 'Please sign in before applying as a driver.');
+        return;
       }
-    } catch {
-      Alert.alert('Error', 'Failed to submit. Please check your connection and try again.');
+
+      // Persist personal identity details on the existing profile. The
+      // profile row is created by the existing auth trigger.
+      const updatedProfile = await profilesService.update(userId, {
+        full_name: fullName.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        citizenship_number: citizenshipNumber.trim(),
+      });
+      setUser(updatedProfile);
+
+      let driver = existingDriver ?? (await driversService.getByUserId(userId));
+      if (!driver) {
+        driver = await driversService.register({
+          user_id: userId,
+          license_number: licenseNumber.trim(),
+          license_expiry: licenseExpiry.trim() || undefined,
+        });
+      } else if (
+        driver.license_number !== licenseNumber.trim() ||
+        (driver.license_expiry ?? '') !== licenseExpiry.trim()
+      ) {
+        driver = await driversService.updateEditable(driver.id, {
+          license_number: licenseNumber.trim(),
+          license_expiry: licenseExpiry.trim() || undefined,
+        });
+      }
+
+      const existingVehicles = (await driversService.getAmbulances(driver.id))
+        .slice()
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      const editableVehicle = {
+        category,
+        plate_number: plateNumber.trim(),
+        model: model.trim(),
+        color: color.trim() || 'White',
+        status: 'offline' as const,
+        equipment: selectedEquipment,
+        hospital_affiliation: hospitalAffiliation.trim() || undefined,
+      };
+      const vehicle =
+        existingVehicles.length > 0
+          ? await ambulancesService.update(existingVehicles[0].id, editableVehicle)
+          : await ambulancesService.create({
+              driver_id: driver.id,
+              ...editableVehicle,
+            });
+
+      // Attach documents uploaded before the driver/vehicle existed. RLS
+      // still checks that both records belong to this account.
+      await identityDocumentsService.associatePendingDocuments({
+        driverId: driver.id,
+        vehicleId: vehicle.id,
+      });
+
+      // Re-check every required document and storage object atomically on the
+      // server. The driver remains 'pending' until a reviewer verifies it.
+      const application = await identityApplicationsService.submitApplication('DRIVER');
+      const statusLabel = applicationStatusPresentation(application.status).label;
+
+      Alert.alert(
+        'Application recorded',
+        `Your driver application is recorded.\n\nReference: ${application.reference_id}\nStatus: ${statusLabel}\nThe app never approves a driver automatically.`,
+        [
+          {
+            text: 'View status',
+            onPress: () =>
+              navigation.navigate('ApplicationStatus', { type: 'DRIVER' }),
+          },
+          {
+            text: 'Done',
+            onPress: () => {
+              const routeNames: string[] = navigation.getState()?.routeNames ?? [];
+              if (routeNames.includes('DriverHome')) {
+                navigation.navigate('DriverHome');
+              } else if (navigation.canGoBack()) {
+                navigation.goBack();
+              }
+            },
+          },
+        ],
+        { cancelable: false },
+      );
+    } catch (error) {
+      const message =
+        error instanceof IdentityServiceError
+          ? error.userMessage
+          : 'Failed to submit. Please check your connection and try again.';
+      Alert.alert('Application not submitted', message, [{ text: 'OK' }]);
     } finally {
       setSubmitting(false);
     }
@@ -204,11 +367,40 @@ const DriverRegistrationScreen: React.FC = () => {
                 autoCapitalize="none"
                 error={errors.email}
               />
+              <Input
+                label="Citizenship Number"
+                value={citizenshipNumber}
+                onChangeText={setCitizenshipNumber}
+                placeholder="As printed on your citizenship certificate"
+                autoCapitalize="characters"
+                error={errors.citizenshipNumber}
+              />
+              {errors.citizenshipDocument ? (
+                <Text style={styles.fieldError}>{errors.citizenshipDocument}</Text>
+              ) : null}
+              {documentsLoading ? (
+                <Text style={styles.documentsLoadingText}>Checking uploaded documents…</Text>
+              ) : (
+                <DocumentUploadCard
+                  documentType="CITIZENSHIP"
+                  existing={citizenshipDocument}
+                  required
+                  disabled={!requiresIdentity}
+                  disabledReason={
+                    isDemoMode()
+                      ? 'Demo mode — no identity document is uploaded or stored.'
+                      : 'Identity document storage is not configured in this build.'
+                  }
+                  onUploaded={registerDocument}
+                  onRemoved={markDocumentRemoved}
+                  onBusyChange={setDocumentBusy}
+                />
+              )}
             </Card>
 
             {/* License Information */}
             <Card elevation="sm" style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>License Information</Text>
+              <Text style={styles.sectionTitle}>Driving Licence</Text>
               <Input
                 label="License Number"
                 value={licenseNumber}
@@ -223,13 +415,24 @@ const DriverRegistrationScreen: React.FC = () => {
                 placeholder="YYYY-MM-DD"
                 error={errors.licenseExpiry}
               />
-              <TouchableOpacity
-                style={styles.uploadButton}
-                onPress={handleUploadLicense}
-              >
-                <Text style={styles.uploadIcon}>📄</Text>
-                <Text style={styles.uploadText}>Attach License Document</Text>
-              </TouchableOpacity>
+              {errors.licenceDocument ? (
+                <Text style={styles.fieldError}>{errors.licenceDocument}</Text>
+              ) : null}
+              <DocumentUploadCard
+                documentType="DRIVING_LICENSE"
+                existing={licenceDocument}
+                driverId={existingDriver?.id}
+                required
+                disabled={!requiresIdentity}
+                disabledReason={
+                  isDemoMode()
+                    ? 'Demo mode — no driving licence is uploaded or stored.'
+                    : 'Identity document storage is not configured in this build.'
+                }
+                onUploaded={registerDocument}
+                onRemoved={markDocumentRemoved}
+                onBusyChange={setDocumentBusy}
+              />
             </Card>
           </>
         )}
@@ -284,6 +487,30 @@ const DriverRegistrationScreen: React.FC = () => {
           />
         </Card>
 
+        {/* Blue Book — linked to this vehicle once the vehicle exists. */}
+        <Card elevation="sm" style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Vehicle Blue Book</Text>
+          {errors.blueBookDocument ? (
+            <Text style={styles.fieldError}>{errors.blueBookDocument}</Text>
+          ) : null}
+          <DocumentUploadCard
+            documentType="VEHICLE_BLUE_BOOK"
+            existing={blueBookDocument}
+            driverId={existingDriver?.id ?? editVehicle?.driver_id}
+            vehicleId={editVehicle?.id}
+            required={!isEditMode}
+            disabled={!requiresIdentity}
+            disabledReason={
+              isDemoMode()
+                ? 'Demo mode — no Blue Book is uploaded or stored.'
+                : 'Identity document storage is not configured in this build.'
+            }
+            onUploaded={registerDocument}
+            onRemoved={markDocumentRemoved}
+            onBusyChange={setDocumentBusy}
+          />
+        </Card>
+
         {/* Equipment Checklist */}
         <Card elevation="sm" style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Equipment Checklist</Text>
@@ -327,8 +554,8 @@ const DriverRegistrationScreen: React.FC = () => {
           <Text style={styles.infoIcon}>ℹ️</Text>
           <Text style={styles.infoText}>
             {isEditMode
-              ? 'Changes to your ambulance are saved to your driver record.'
-              : 'Your application is stored in the database with a "pending" verification status. An administrator approves driver accounts — this cannot be self-approved from the app.'}
+              ? 'Changes to your ambulance are saved to your driver record. Blue Book replacement is optional when editing.'
+              : 'Your citizenship number, licence, vehicle and Blue Book are stored in the database. Documents go to a private bucket, and the application stays "pending" until an authorised reviewer verifies it. Nothing is self-approved from the app.'}
           </Text>
         </View>
 
@@ -339,7 +566,7 @@ const DriverRegistrationScreen: React.FC = () => {
           size="lg"
           onPress={handleSubmit}
           loading={submitting}
-          disabled={submitting}
+          disabled={submitting || documentBusy}
           style={styles.submitButton}
         />
       </ScrollView>
@@ -403,25 +630,15 @@ const styles = StyleSheet.create({
   categoryChipTextActive: {
     color: colors.primary,
   },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.lg,
-    borderRadius: radii.md,
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    backgroundColor: colors.input,
+  fieldError: {
+    ...typography.caption,
+    color: colors.error,
+    marginBottom: spacing.sm,
   },
-  uploadIcon: {
-    fontSize: 20,
-    marginRight: spacing.sm,
-  },
-  uploadText: {
-    ...typography.body,
+  documentsLoadingText: {
+    ...typography.caption,
     color: colors.textSecondary,
-    fontWeight: '600',
+    paddingVertical: spacing.md,
   },
   checklistItem: {
     flexDirection: 'row',

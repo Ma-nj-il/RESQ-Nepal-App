@@ -1,23 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Share, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button, Card, Avatar, Badge } from '../../components/ui';
+import { MapCanvas } from '../../components/map/MapCanvas';
+import { TripTimeline } from '../../components/booking/TripTimeline';
+import { RouteSummary } from '../../components/booking/RouteSummary';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
-import { useBookingStore } from '../../store/bookingStore';
+import { BOOKING_TIMELINE_STEPS, bookingStatusIndex } from '../../constants/bookingTimeline';
+import { SERVICE_CATEGORIES } from '../../constants/serviceCategories';
+import { estimateFare } from '../../constants/fares';
 import { bookingsService } from '../../services/database/bookings';
+import { assignedCrewService } from '../../services/database';
 import { driversService } from '../../services/database/drivers';
 import { profilesService } from '../../services/database/profiles';
-import { supabase, isSupabaseConfigured } from '../../services/database/client';
-import { estimateFare } from '../../constants/fares';
+import { isSupabaseConfigured } from '../../services/database/client';
+import { useBookingStore } from '../../store/bookingStore';
+import { isDemoMode } from '../../utils/demoMode';
+import { openNativeDialer } from '../../utils/dialer';
+import { straightLineKm } from '../../utils/geo';
 import { Booking } from '../../types';
 
 type RouteParams = {
-  TripTracking: { bookingId: string };
+  TripTracking: { bookingId?: string; booking?: Booking };
 };
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const STATUS_TEXT: Record<string, string> = {
   pending: 'Waiting for a driver to accept',
@@ -32,69 +38,55 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 const TripTrackingScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'TripTracking'>>();
-  const { bookingId } = route.params;
-  const { currentBooking } = useBookingStore();
+  const bookingId = route.params?.bookingId;
+  const paramBooking = route.params?.booking;
+  const { pickup, destination, setPickup, setDestination } = useBookingStore();
 
-  const [booking, setBooking] = useState<Booking | null>(currentBooking);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const demoRun = isDemoMode();
+  const shouldFetch = Boolean(bookingId && paramBooking === undefined && isSupabaseConfigured && !demoRun);
+
+  const [booking, setBooking] = useState<Booking | null>(paramBooking ?? null);
+  const [loading, setLoading] = useState(shouldFetch);
+  const [error, setError] = useState<string | null>(
+    !paramBooking && !shouldFetch
+      ? demoRun
+        ? 'Open an active trip from your Activity list in demo mode.'
+        : 'No booking was provided to track.'
+      : null,
+  );
   const [driverName, setDriverName] = useState<string | null>(null);
   const [driverRating, setDriverRating] = useState<number | null>(null);
-  const [vehicle, setVehicle] = useState<{ model?: string; plate_number?: string } | null>(null);
-
-  const pulseAnim = useMemo(() => new Animated.Value(1), []);
-  const routeAnim = useMemo(() => new Animated.Value(0.15), []);
 
   useEffect(() => {
-    const loadBooking = async () => {
+    if (!shouldFetch || !bookingId) return;
+    let active = true;
+    (async () => {
       try {
-        setLoading(true);
         const data = await bookingsService.getById(bookingId);
+        if (!active) return;
         if (data) {
           setBooking(data);
+          setError(null);
         } else {
-          setError('Booking not found');
+          setError('Booking not found.');
         }
       } catch {
-        setError('Failed to load trip details');
+        if (active) setError('Failed to load trip details.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
+    })();
+    return () => {
+      active = false;
     };
-    loadBooking();
-  }, [bookingId]);
+  }, [bookingId, shouldFetch]);
 
-  // Decorative route progress: this is a preview animation because the app
-  // does not receive live GPS updates from the driver in this build.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      Animated.timing(routeAnim, {
-        toValue: Math.min(0.9, (routeAnim as any)._value + 0.02),
-        duration: 1000,
-        useNativeDriver: false,
-      }).start();
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [routeAnim]);
-
-  // Pulse animation for the ambulance marker
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.3, duration: 1000, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [pulseAnim]);
-
-  // Load the real driver's name and rating — never an invented person.
+  // Real driver identity only — never an invented person.
   useEffect(() => {
     const driverId = booking?.driver_id;
-    if (!driverId || !isSupabaseConfigured) return;
+    if (!driverId || !isSupabaseConfigured || demoRun) return;
     let active = true;
     (async () => {
       try {
@@ -116,50 +108,31 @@ const TripTrackingScreen: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [booking?.driver_id]);
+  }, [booking?.driver_id, demoRun]);
 
-  // Load the real vehicle assigned to this booking, when one is recorded.
-  useEffect(() => {
-    const ambulanceId = booking?.ambulance_id;
-    if (!ambulanceId || !isSupabaseConfigured) return;
-    let active = true;
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('ambulances')
-          .select('*')
-          .eq('id', ambulanceId)
-          .maybeSingle();
-        if (active && data) {
-          setVehicle(data as { model?: string; plate_number?: string });
-        }
-      } catch {
-        // Vehicle details unavailable.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [booking?.ambulance_id]);
-
-  const handleCancel = () => {
-    navigation.navigate('CancelRide', { bookingId });
-  };
-
-  const handleChat = () => {
-    navigation.navigate('Chat', { bookingId });
-  };
-
-  const handleCall = () => {
-    navigation.navigate('Call', { bookingId, type: 'voice' });
-  };
+  const routeDistanceKm = useMemo(() => {
+    if (!booking) return null;
+    if (booking.distance_km != null) return Number(booking.distance_km);
+    if (
+      booking.pickup_lat != null &&
+      booking.pickup_lng != null &&
+      booking.dest_lat != null &&
+      booking.dest_lng != null
+    ) {
+      return straightLineKm(
+        { lat: Number(booking.pickup_lat), lng: Number(booking.pickup_lng) },
+        { lat: Number(booking.dest_lat), lng: Number(booking.dest_lng) },
+      );
+    }
+    return null;
+  }, [booking]);
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading trip details...</Text>
+          <Text style={styles.loadingText}>Loading trip details…</Text>
         </View>
       </SafeAreaView>
     );
@@ -169,91 +142,134 @@ const TripTrackingScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
-          <Text style={styles.errorText}>{error || 'Something went wrong'}</Text>
+          <Text style={styles.errorText}>{error || 'Something went wrong.'}</Text>
           <Button title="Go Back" onPress={() => navigation.goBack()} variant="outline" style={{ marginTop: spacing.lg }} />
         </View>
       </SafeAreaView>
     );
   }
 
-  const fareBreakdown = estimateFare(
-    booking.category,
-    booking.distance_km ? Number(booking.distance_km) : undefined
-  );
-  const totalFare = fareBreakdown.totalFare;
+  const category = SERVICE_CATEGORIES[booking.category] ?? SERVICE_CATEGORIES.basic;
   const statusText = STATUS_TEXT[booking.status] ?? booking.status;
-  const estimatedMinutes = booking.duration_min ? Number(booking.duration_min) : null;
-  const distanceLabel = booking.distance_km ? `${Number(booking.distance_km).toFixed(1)} km` : 'Not recorded';
+  const currentIndex = bookingStatusIndex(booking.status);
+  const isTerminal = ['completed', 'cancelled', 'rejected'].includes(booking.status);
+  const isCancelled = booking.status === 'cancelled' || booking.status === 'rejected';
+  const fare = estimateFare(booking.category, routeDistanceKm);
+  const finalFare = booking.final_fare != null ? Number(booking.final_fare) : null;
+
+  const pickupPoint =
+    booking.pickup_lat != null && booking.pickup_lng != null
+      ? { lat: Number(booking.pickup_lat), lng: Number(booking.pickup_lng) }
+      : pickup && pickup.lat != null && pickup.lng != null
+        ? { lat: pickup.lat, lng: pickup.lng }
+        : null;
+
+  const destPoint =
+    booking.dest_lat != null && booking.dest_lng != null
+      ? { lat: Number(booking.dest_lat), lng: Number(booking.dest_lng) }
+      : destination && destination.lat != null && destination.lng != null
+        ? { lat: destination.lat, lng: destination.lng }
+        : null;
+
+  const handleShareTrip = async () => {
+    if (!booking) return;
+    try {
+      await Share.share({
+        message: [
+          'RESQ Nepal trip update',
+          `Status: ${STATUS_TEXT[booking.status] ?? booking.status}`,
+          `From: ${booking.pickup_address}`,
+          `To: ${booking.destination_address}`,
+          `Category: ${booking.category === 'icu' ? 'ICU / Emergency Ambulance' : 'Basic Patient Delivery'}`,
+          `Booking ref: ${booking.id}`,
+          'Shared from the RESQ Nepal app. This is a status summary, not a live tracking link.',
+        ].join('\n'),
+      });
+    } catch {
+      // Sharing was cancelled or is unavailable on this device.
+    }
+  };
+
+  const isLiveTrip = Boolean(bookingId && isSupabaseConfigured && !demoRun);
+
+  // Native dialer only — the crew's number is fetched through the
+  // ownership-checked service and never rendered as text.
+  const handleCallDriver = async () => {
+    if (!isLiveTrip || !bookingId) {
+      Alert.alert(
+        'Demo walkthrough',
+        'No call is placed in the demo — nothing is dialled and no real crew is attached. With a real assignment this button opens your phone’s dialer with the crew’s contact number.',
+      );
+      return;
+    }
+    let phone: string | null = null;
+    try {
+      const crew = await assignedCrewService.getForBooking(bookingId);
+      phone = crew?.driverPhone ?? null;
+    } catch {
+      phone = null;
+    }
+    const result = await openNativeDialer(phone, (url) => Linking.openURL(url));
+    if (result === 'invalid') {
+      Alert.alert(
+        'Driver contact is currently unavailable',
+        'The assigned crew’s contact number has not been shared with this app yet. If dispatch gave you a number, use your phone app to call it.',
+      );
+    } else if (result === 'failed') {
+      Alert.alert(
+        'Could not open the dialer',
+        'Your device could not open the phone dialer. Try again or call from your phone app.',
+      );
+    }
+  };
+
+  const handleBookAgain = () => {
+    if (!booking) return;
+    // Pre-fill the route so the user only reviews and confirms — nothing is
+    // submitted until they go through the booking steps again.
+    setPickup({
+      address: booking.pickup_address,
+      lat: booking.pickup_lat ?? null,
+      lng: booking.pickup_lng ?? null,
+    });
+    setDestination({
+      address: booking.destination_address,
+      lat: booking.dest_lat ?? null,
+      lng: booking.dest_lng ?? null,
+    });
+    navigation.navigate('Home');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Map Placeholder */}
-      <View style={styles.mapContainer}>
-        <View style={styles.mapPlaceholder}>
-          {/* Route line (preview illustration) */}
-          <View style={styles.routeContainer}>
-            <View style={styles.routeLine} />
-            <Animated.View
-              style={[
-                styles.routeProgress,
-                {
-                  width: routeAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0%', '100%'],
-                  }),
-                },
-              ]}
-            />
-            {/* Pickup point */}
-            <View style={[styles.mapPin, styles.pickupPin]}>
-              <Text style={styles.pinIcon}>●</Text>
-            </View>
-            {/* Destination point */}
-            <View style={[styles.mapPin, styles.destPin]}>
-              <Text style={styles.pinIcon}>■</Text>
-            </View>
-            {/* Animated ambulance marker */}
-            <Animated.View
-              style={[
-                styles.ambulanceMarker,
-                {
-                  left: routeAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['10%', '80%'],
-                  }),
-                  transform: [{ scale: pulseAnim }],
-                },
-              ]}
-            >
-              <Text style={styles.ambulanceIcon}>🚑</Text>
-            </Animated.View>
-          </View>
-          <Text style={styles.mapLabel}>
-            {isSupabaseConfigured
-              ? 'Route preview — live GPS tracking is not enabled in this build'
-              : 'Sample preview — no live tracking'}
-          </Text>
-        </View>
+      <View style={styles.mapArea}>
+        <MapCanvas
+          pickup={pickupPoint}
+          destination={destPoint}
+          caption={
+            booking.status === 'started'
+              ? 'Trip in progress — schematic straight-line preview'
+              : 'Schematic straight-line preview — not live GPS tracking'
+          }
+          style={styles.map}
+        />
 
-        {/* Trip Status Card */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>{statusText}</Text>
-          </View>
-          {estimatedMinutes !== null && (
-            <Text style={styles.etaText}>
-              Estimated trip time: about {Math.round(estimatedMinutes)} mins
-            </Text>
-          )}
-        </View>
+        {/* Back control floating over the map, as in the reference. */}
+        <TouchableOpacity
+          style={styles.mapBackButton}
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Text style={styles.mapBackArrow}>←</Text>
+        </TouchableOpacity>
 
-        {/* Driver Info Bar — only when a driver is actually assigned */}
-        {booking.driver_id && (
+        {/* Driver bar — only when a driver is actually assigned */}
+        {booking.driver_id && !isCancelled && (
           <View style={styles.driverBar}>
             <Avatar name={driverName ?? 'Driver'} size="sm" />
             <View style={styles.driverInfo}>
-              <Text style={styles.driverName}>{driverName ?? 'Driver'}</Text>
+              <Text style={styles.driverName}>{driverName ?? 'Assigned driver'}</Text>
               <View style={styles.ratingRow}>
                 {driverRating !== null ? (
                   <>
@@ -265,86 +281,168 @@ const TripTrackingScreen: React.FC = () => {
                 )}
               </View>
             </View>
-            <TouchableOpacity style={styles.iconButton} onPress={handleChat}>
-              <Text style={styles.iconText}>💬</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={handleCall}>
-              <Text style={styles.iconText}>📞</Text>
-            </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {/* Bottom Sheet Card */}
+      {/* Bottom sheet */}
       <View style={styles.bottomCard}>
-        <Card elevation="lg" style={styles.detailsCard}>
-          {/* Ambulance Details */}
-          <View style={styles.ambulanceRow}>
-            <Text style={styles.ambulanceIcon}>🚑</Text>
-            <View style={styles.ambulanceInfo}>
-              <Text style={styles.ambulanceModel}>
-                {vehicle?.model
-                  ? `${vehicle.model} - ${booking.category.toUpperCase()}`
-                  : `${booking.category.toUpperCase()} ambulance`}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={styles.bottomScroll}
+          contentContainerStyle={styles.bottomScrollContent}
+        >
+          <View style={styles.handleBar} />
+
+          {/* Status banner — the real booking status, with honest notes about
+              what this version can and cannot show. */}
+          <View style={[styles.statusBanner, isCancelled && styles.statusBannerDanger]}>
+            <View style={[styles.bannerDot, isCancelled && styles.bannerDotDanger]} />
+            <View style={styles.bannerInfo}>
+              <Text style={[styles.bannerTitle, isCancelled && styles.bannerTitleDanger]}>
+                {statusText}
               </Text>
-              <Text style={styles.plateNumber}>
-                {vehicle?.plate_number ?? 'Vehicle details not recorded'}
+              {demoRun && (
+                <Text style={styles.bannerMeta}>
+                  Demo walkthrough trip — status changes are samples on this device.
+                </Text>
+              )}
+              {!demoRun && !isSupabaseConfigured && (
+                <Text style={styles.bannerMeta}>Sample mode — no live GPS tracking in this build.</Text>
+              )}
+              {isLiveTrip && !isTerminal && (
+                <Text style={styles.bannerMeta}>
+                  Live vehicle location is not available yet — the map shows the recorded route.
+                </Text>
+              )}
+              {booking.duration_min != null && booking.status !== 'completed' && (
+                <Text style={styles.bannerMeta}>
+                  Recorded trip time: about {Math.round(Number(booking.duration_min))} min
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Reference action — “Call Driver” uses the native dialer (no call
+              is placed in demo mode). The share action stays in the sheet's
+              action list below. */}
+          {booking.driver_id && !isCancelled && !isTerminal && (
+            <Button
+              title="Call Driver"
+              onPress={() => void handleCallDriver()}
+              size="sm"
+              fullWidth
+              style={styles.callButton}
+              icon={<Text style={styles.actionIcon}>📞</Text>}
+            />
+          )}
+
+          <Card elevation="sm" style={styles.card}>
+            <TripTimeline steps={BOOKING_TIMELINE_STEPS} currentIndex={currentIndex} failed={isCancelled} failedLabel="This trip did not complete." />
+          </Card>
+
+          <Card elevation="sm" style={styles.card}>
+            <View style={styles.ambulanceRow}>
+              <Text style={styles.ambulanceIcon}>🚑</Text>
+              <View style={styles.ambulanceInfo}>
+                <Text style={styles.ambulanceModel}>{category.name}</Text>
+                <Text style={styles.plateNumber}>
+                  {booking.ambulance_id ? 'Vehicle recorded against this booking' : 'Vehicle assigned by dispatch'}
+                </Text>
+              </View>
+              <Badge
+                label={booking.status.toUpperCase()}
+                variant={booking.status === 'completed' ? 'success' : isCancelled ? 'error' : 'info'}
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <RouteSummary
+              pickup={{ address: booking.pickup_address, lat: null, lng: null }}
+              destination={{ address: booking.destination_address, lat: null, lng: null }}
+            />
+          </Card>
+
+          <Card elevation="sm" style={styles.card}>
+            <Text style={styles.fareTitle}>Fare</Text>
+            {finalFare != null ? (
+              <View style={styles.fareRow}>
+                <Text style={styles.totalLabel}>Final fare (recorded)</Text>
+                <Text style={styles.totalValue}>NPR {finalFare.toLocaleString('en-IN')}</Text>
+              </View>
+            ) : fare ? (
+              <>
+                <View style={styles.fareRow}>
+                  <Text style={styles.fareLabel}>Base fare</Text>
+                  <Text style={styles.fareValue}>NPR {fare.baseFare}</Text>
+                </View>
+                <View style={styles.fareRow}>
+                  <Text style={styles.fareLabel}>
+                    Distance ({routeDistanceKm?.toFixed(1)} km{booking.distance_km != null ? '' : ', straight line'})
+                  </Text>
+                  <Text style={styles.fareValue}>NPR {fare.distanceCharge}</Text>
+                </View>
+                <View style={styles.fareRow}>
+                  <Text style={styles.fareLabel}>Service fee</Text>
+                  <Text style={styles.fareValue}>NPR {fare.serviceFee}</Text>
+                </View>
+                <View style={[styles.fareRow, styles.totalRow]}>
+                  <Text style={styles.totalLabel}>Indicative total</Text>
+                  <Text style={styles.totalValue}>NPR {fare.totalFare}</Text>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.farePending}>
+                Fare is confirmed after the trip — the recorded distance is not available yet.
               </Text>
-            </View>
-            <Badge label={booking.status.toUpperCase()} variant="info" />
-          </View>
+            )}
+            <Text style={styles.fareNote}>
+              {finalFare != null
+                ? 'As recorded on the completed booking. Paid in cash.'
+                : 'Rate-card estimate — final fare is confirmed after the trip. Paid in cash.'}
+            </Text>
+          </Card>
 
-          <View style={styles.divider} />
-
-          {/* Pickup / Destination */}
-          <View style={styles.locationRow}>
-            <View style={[styles.locationDot, styles.pickup]} />
-            <View style={styles.locationInfo}>
-              <Text style={styles.locationLabel}>Pickup</Text>
-              <Text style={styles.locationAddress}>{booking.pickup_address}</Text>
-            </View>
+          <View style={styles.actions}>
+            {!isTerminal && (
+              <Button
+                title="Cancel ride"
+                onPress={() => navigation.navigate('CancelRide', { bookingId: booking.id, booking })}
+                variant="outline"
+                fullWidth
+              />
+            )}
+            <Button title="Share trip summary" onPress={handleShareTrip} variant="outline" fullWidth />
+            {booking.status === 'completed' && (
+              <Button
+                title="View receipt"
+                variant="outline"
+                onPress={() => navigation.navigate('ShareReceipt', { booking })}
+                fullWidth
+              />
+            )}
+            {booking.status === 'completed' && (
+              <Button
+                title="Rate this trip"
+                onPress={() => navigation.navigate('Rating', { bookingId, booking })}
+                fullWidth
+              />
+            )}
+            {isTerminal && (
+              <Button title="Book again" onPress={handleBookAgain} fullWidth />
+            )}
+            {isTerminal && (
+              <Button
+                title={demoRun || !isSupabaseConfigured ? 'Back to activity' : 'Back to home'}
+                onPress={() => navigation.navigate(demoRun || !isSupabaseConfigured ? 'Activity' : 'Home')}
+                variant="ghost"
+                fullWidth
+              />
+            )}
           </View>
-          <View style={styles.locationRow}>
-            <View style={[styles.locationDot, styles.destination]} />
-            <View style={styles.locationInfo}>
-              <Text style={styles.locationLabel}>Destination</Text>
-              <Text style={styles.locationAddress}>{booking.destination_address}</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Fare Breakdown */}
-          <Text style={styles.fareTitle}>Fare Estimate</Text>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Base fare</Text>
-            <Text style={styles.fareValue}>NPR {fareBreakdown.baseFare}</Text>
-          </View>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Distance ({distanceLabel})</Text>
-            <Text style={styles.fareValue}>NPR {fareBreakdown.distanceCharge}</Text>
-          </View>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Service fee</Text>
-            <Text style={styles.fareValue}>NPR {fareBreakdown.serviceFee}</Text>
-          </View>
-          <View style={[styles.fareRow, styles.totalRow]}>
-            <Text style={styles.totalLabel}>Estimated total</Text>
-            <Text style={styles.totalValue}>NPR {totalFare}</Text>
-          </View>
-          <Text style={styles.fareNote}>
-            Rate card estimate — the final fare is confirmed after the trip.
-          </Text>
-        </Card>
-
-        {/* Cancel Button */}
-        <Button
-          title="Cancel Ride"
-          onPress={handleCancel}
-          variant="outline"
-          fullWidth
-          style={styles.cancelButton}
-        />
+          <View style={{ height: spacing.xl }} />
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -356,81 +454,25 @@ const styles = StyleSheet.create({
   loadingText: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
   errorText: { ...typography.body, color: colors.error, textAlign: 'center' },
 
-  mapContainer: { flex: 1, position: 'relative' },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: '#E8EAF0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapLabel: {
-    ...typography.caption,
-    color: colors.textTertiary,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  routeContainer: {
-    width: SCREEN_WIDTH * 0.7,
-    height: 200,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  routeLine: {
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    width: '100%',
-  },
-  routeProgress: {
-    height: 4,
-    backgroundColor: colors.primary,
-    borderRadius: 2,
+  mapArea: { flex: 1, position: 'relative' },
+  map: { ...StyleSheet.absoluteFill },
+  mapBackButton: {
     position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  mapPin: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickupPin: { left: 0, top: '40%', backgroundColor: colors.green },
-  destPin: { right: 0, top: '40%', backgroundColor: colors.primary },
-  pinIcon: { color: colors.surface, fontSize: 12 },
-  ambulanceMarker: {
-    position: 'absolute',
-    top: '35%',
-    fontSize: 32,
-  },
-  ambulanceIcon: { fontSize: 32 },
-
-  statusCard: {
-    position: 'absolute',
-    top: spacing.lg,
+    top: spacing.md,
     left: spacing.lg,
-    right: spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...shadows.md,
   },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.success,
-  },
-  statusText: { ...typography.h4, flex: 1 },
-  etaText: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs, marginLeft: spacing.lg + 10 },
+  mapBackArrow: { fontSize: 22, color: colors.text },
 
   driverBar: {
     position: 'absolute',
-    top: 100,
+    top: 68,
     left: spacing.lg,
     right: spacing.lg,
     flexDirection: 'row',
@@ -438,7 +480,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
     ...shadows.md,
   },
   driverInfo: { flex: 1 },
@@ -446,58 +488,71 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   starIcon: { color: colors.warning, fontSize: 14 },
   ratingText: { ...typography.caption, color: colors.textSecondary },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.full,
-    backgroundColor: colors.input,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconText: { fontSize: 18 },
 
   bottomCard: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    padding: spacing.lg,
+    borderTopLeftRadius: radii.xxl,
+    borderTopRightRadius: radii.xxl,
+    maxHeight: '62%',
     ...shadows.lg,
   },
-  detailsCard: { marginBottom: spacing.lg },
-  ambulanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  ambulanceInfo: { flex: 1 },
-  ambulanceModel: { ...typography.body, fontWeight: '600' },
-  plateNumber: { ...typography.caption, color: colors.textSecondary },
+  bottomScroll: { paddingHorizontal: spacing.lg },
+  bottomScrollContent: { paddingBottom: spacing.xxl },
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginVertical: spacing.sm,
+  },
 
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
-
-  locationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.sm },
-  locationDot: {
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.greenLight,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  statusBannerDanger: { backgroundColor: colors.redLight },
+  bannerDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
+    backgroundColor: colors.success,
     marginTop: 4,
   },
-  pickup: { backgroundColor: colors.green },
-  destination: { backgroundColor: colors.primary },
-  locationInfo: { flex: 1 },
-  locationLabel: { ...typography.caption, color: colors.textTertiary },
-  locationAddress: { ...typography.bodySmall, fontWeight: '500' },
+  bannerDotDanger: { backgroundColor: colors.error },
+  bannerInfo: { flex: 1 },
+  bannerTitle: { ...typography.body, fontWeight: '700', color: colors.success },
+  bannerTitleDanger: { color: colors.error },
+  bannerMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 3 },
+
+  callButton: { marginBottom: spacing.md },
+  actionIcon: { fontSize: 15 },
+
+  card: { marginBottom: spacing.md },
+
+  ambulanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  ambulanceIcon: { fontSize: 28 },
+  ambulanceInfo: { flex: 1 },
+  ambulanceModel: { ...typography.body, fontWeight: '600' },
+  plateNumber: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
 
   fareTitle: { ...typography.h4, marginBottom: spacing.sm },
-  fareNote: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
   fareRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
-  fareLabel: { ...typography.bodySmall, color: colors.textSecondary },
+  fareLabel: { ...typography.bodySmall, color: colors.textSecondary, flex: 1, paddingRight: spacing.sm },
   fareValue: { ...typography.bodySmall, fontWeight: '500' },
   totalRow: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, marginTop: spacing.xs },
-  totalLabel: { ...typography.body, fontWeight: '700' },
+  totalLabel: { ...typography.body, fontWeight: '700', flex: 1 },
   totalValue: { ...typography.body, fontWeight: '700', color: colors.primary },
+  farePending: { ...typography.bodySmall, color: colors.textSecondary },
+  fareNote: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
 
-  cancelButton: { marginTop: spacing.sm },
+  actions: { gap: spacing.sm, marginTop: spacing.xs },
 });
 
 export default TripTrackingScreen;

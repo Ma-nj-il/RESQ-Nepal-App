@@ -1,0 +1,237 @@
+appId: host.exp.Exponent
+---
+# UI-refinement Round 3 verification — top-left menu drawer, trip counters,
+# saved hospitals, saved places, settings hub, about and driver onboarding
+# (Flow C), self-contained.
+# Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-verify-menu-account.yaml
+- runFlow: maestro-signin-demo.yaml
+
+# ── Home: the top-left menu button opens the drawer ────────────────────────
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 10000
+- assertVisible: ".*Sample walkthrough data.*"
+- assertVisible: ".*Saved Hospitals.*"
+- takeScreenshot: ui-23-menu-drawer
+
+# ── Saved hospitals: search the real directory and star a row ──────────────
+- tapOn: "^Saved Hospitals$"
+- extendedWaitUntil:
+    visible: ".*Search the hospital directory.*"
+    timeout: 20000
+- takeScreenshot: ui-24-saved-hospitals
+- tapOn: "Search by hospital name or address"
+- inputText: "Patan"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: ".*Patan Hospital.*"
+    timeout: 15000
+# Star the first result — skipped when a previous verification run already
+# starred it, so the flow stays idempotent.
+- runFlow:
+    when:
+      visible: "^Save$"
+    commands:
+      - tapOn:
+          text: "^Save$"
+          index: 0
+- assertVisible: "^Saved ✓$"
+- takeScreenshot: ui-25-saved-hospital-starred
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Saved places: demo notice, validation and the honest demo guard ────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Saved Places$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Saved Places$"
+- extendedWaitUntil:
+    visible: ".*Demo mode.*saved places need a real signed-in account.*"
+    timeout: 20000
+- takeScreenshot: ui-26-saved-places-demo
+- tapOn: "Save a place"
+- assertVisible: ".*New saved place.*"
+- tapOn: "Home, Work, Grandmother's house…"
+- inputText: "Test place"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "^Save place$"
+    direction: DOWN
+    timeout: 10000
+    centerElement: true
+- tapOn: "^Save place$"
+- assertVisible: ".*Capture the location first.*"
+- takeScreenshot: ui-27-saved-place-validation
+- tapOn: "Use my current location"
+- extendedWaitUntil:
+    visible: ".*Recapture location.*"
+    timeout: 30000
+- tapOn: "^Save place$"
+- extendedWaitUntil:
+    visible: ".*Nothing is saved in demo mode.*"
+    timeout: 10000
+- takeScreenshot: ui-28-saved-place-demo-guard
+- tapOn: "OK"
+- tapOn: "^Cancel$"
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Settings hub → About ────────────────────────────────────────────────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Settings$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Settings$"
+- extendedWaitUntil:
+    visible: ".*Location permission.*"
+    timeout: 20000
+- takeScreenshot: ui-29-settings
+- tapOn: "About RESQ Nepal"
+- extendedWaitUntil:
+    visible: ".*What this build does not do yet.*"
+    timeout: 20000
+- takeScreenshot: ui-30-about
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Location permission.*"
+    timeout: 10000
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Legal & Privacy from the drawer ────────────────────────────────────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Legal & Privacy$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Legal & Privacy$"
+- extendedWaitUntil:
+    visible: ".*Privacy Policy.*"
+    timeout: 20000
+- assertVisible: ".*Draft —.*"
+- takeScreenshot: ui-31-privacy-draft
+- tapOn:
+    text: "←"
+    index: 0
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Driver onboarding: local draft only, honest submission state ───────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: ".*Your trips.*"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Become a Driver$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Become a Driver$"
+- extendedWaitUntil:
+    visible: ".*Before you apply.*"
+    timeout: 20000
+# A previous verification run may have saved a draft; clear it so the form
+# starts empty and the placeholder-based taps below are deterministic.
+- scrollUntilVisible:
+    element:
+      text: "^Save draft$"
+    direction: DOWN
+    timeout: 10000
+- runFlow:
+    when:
+      visible: "^Clear draft$"
+    commands:
+      - tapOn: "^Clear draft$"
+      - tapOn: "Delete draft"
+- scrollUntilVisible:
+    element:
+      text: ".*Before you apply.*"
+    direction: UP
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: ".*As written on your licence.*"
+    direction: DOWN
+    timeout: 10000
+- tapOn: ".*As written on your licence.*"
+- inputText: "Ram Bahadur Shrestha"
+- tapOn: ".*reach you on.*"
+- inputText: "9841000000"
+# Phone-pad keyboards have no return key; tapping a static label dismisses it.
+- tapOn: "Full name"
+- scrollUntilVisible:
+    element:
+      text: ".*Printed on your licence.*"
+    direction: DOWN
+    timeout: 10000
+- tapOn: ".*Printed on your licence.*"
+- inputText: "03-123456"
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      text: ".*Ba 1 Pa 1234.*"
+    direction: DOWN
+    timeout: 10000
+- tapOn: ".*Ba 1 Pa 1234.*"
+- inputText: "Ba 1 Pa 5678"
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      text: ".*Stretcher.*"
+    direction: DOWN
+    timeout: 10000
+- tapOn: ".*Stretcher.*"
+- scrollUntilVisible:
+    element:
+      text: "^Save draft$"
+    direction: DOWN
+    timeout: 10000
+    centerElement: true
+- tapOn: "^Save draft$"
+- extendedWaitUntil:
+    visible: ".*Draft saved just now.*"
+    timeout: 10000
+- takeScreenshot: ui-32-driver-draft-saved
+- scrollUntilVisible:
+    element:
+      text: "^Submit application$"
+    direction: DOWN
+    timeout: 10000
+    visibilityPercentage: 60
+- tapOn: "^Submit application$"
+- extendedWaitUntil:
+    visible: ".*Submission is not available yet.*"
+    timeout: 10000
+- takeScreenshot: ui-33-driver-submit-honest
+- tapOn: "OK"
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
