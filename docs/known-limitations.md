@@ -62,11 +62,15 @@ tracking requires `expo-task-manager` + store review; it is not claimed.
 The language picker is fully implemented, but app copy ships in English only. Wiring 11
 languages needs an i18n catalogue (e.g. `i18next` + translations) — the UI is ready for it.
 
-## 8. Map tiles need platform keys
+## 8. Map tiles need a network connection and a production tile provider
 
-Interactive Google map tiles require adding platform API keys and rebuilding natively
-(`maps-setup.md`). Without keys the app shows its own styled map surface with real pins and
-route lines — never a fake "live" map.
+The app renders real OpenStreetMap raster tiles through Leaflet in a WebView — no Google Maps
+key is required. Tiles come from `https://tile.openstreetmap.org` by default, which is the
+community-funded service intended for development and light interactive use. It has no SLA and
+must not be used for production-scale traffic; set `EXPO_PUBLIC_OSM_TILE_URL` to a commercial
+OSM-derived provider or your own tile server before shipping (see `maps-setup.md`). Tiles need a
+network connection and are never downloaded ahead of the visible viewport; there is no offline
+map. If tiles fail, the app says so and offers a retry rather than showing a fake map.
 
 ## 9. Push notifications
 
@@ -97,24 +101,30 @@ matches exactly one driver, and (4) realtime or polling transport for counter-of
 then the app shows **no offer control at all** — the earlier demo-only fare preview card was
 removed on 2026-10-19 so the booking path cannot imply a capability the backend does not have.
 
-## 12. Live ambulance GPS updates are not wired end-to-end
+## 12. Live ambulance GPS requires migration approval and device verification
 
-**What exists:** a `trip_locations` breadcrumb table with full RLS (`select` for the booking's
-patient and assigned driver; `insert` only for the assigned driver, whose booking is in
-`assigned`/active states), plus a typed service (`src/services/database/trips.ts`:
-`recordLocation` / `getLatestLocation` / `getTrail`).
-**What is missing:** (1) the driver app never calls `recordLocation` — there is no periodic or
-background location loop on the driver side; (2) the patient map never reads `getTrail` /
-`getLatestLocation` — trip screens show the recorded route summary and honest straight-line
-previews, not live movement; (3) Supabase Realtime is not enabled on `trip_locations` (no
-`alter publication supabase_realtime add table`), so updates would need polling or a realtime
-publication; (4) background location on the driver device needs `expo-location`
-background permissions and store review.
-**To ship real live tracking:** turn on the driver-side recording loop (foreground while the
-trip screen is open, background via `expo-task-manager`), add polling or Realtime consumption on
-the patient trip map, and verify the privacy review of continuous location collection. The app
-currently shows only real coordinates it holds (pickup / destination markers) and labels every
-map as a straight-line preview — never a fake moving ambulance.
+**Implemented locally:** on a real, non-demo assigned trip, the driver app requests foreground
+location permission, watches real GPS while the trip screen is open, and appends coordinates to
+the existing `trip_locations` table through the authenticated Supabase client. The patient trip
+screen polls only its booking and latest location every 10 seconds, accepts only the assigned
+driver's fresh fix (90-second limit), and shows an ambulance marker plus an OSRM road route,
+distance and ETA only when valid route data is returned. Demo/sample mode never publishes or
+displays simulated GPS. The watcher and polling timer are cleaned up with the screen/app lifecycle.
+
+**Approval gate:** the local-only forward migration
+`supabase/migrations/20261024_secure_active_trip_tracking.sql` replaces the base schema's
+trip-location policies so reads require an active booking participant, writes require the
+authenticated assigned driver and matching `driver_id`, and terminal trips stop exposing
+locations. It has **not** been applied to the hosted database. GPS upload and location reads
+therefore remain disabled by default; set `EXPO_PUBLIC_SECURE_TRIP_TRACKING_ENABLED=true` only
+after the project owner reviews/applies the migration and authenticated driver/patient access is
+verified. This client-side switch is not a security control; RLS remains the authorization
+boundary.
+
+**Not implemented or verified:** Supabase Realtime is not enabled for `trip_locations`, so the
+patient uses scoped polling; GPS sharing is foreground-only and stops when the driver leaves the
+trip screen or app. Background tracking is not configured or promised. Automated checks do not
+verify actual GPS, hosted RLS, or real patient/driver end-to-end delivery.
 
 ## 13. Assigned-crew details (driver name, verification, plate, contact number) are not readable by the patient client
 
@@ -153,7 +163,7 @@ Until it is deployed, the status screen shows neutral fallbacks ("Assigned ambul
 dots-free placeholder avatar, no plate line) and **Call Driver** answers "Driver contact is
 currently unavailable" — the app never invents a name, plate or phone number.
 
-## 14. Driver-side requests and location are not realtime
+## 14. Driver requests are not realtime; trip location uses polling
 
 **What exists:** for real accounts the driver screens use real data end-to-end: incoming
 assignments are listed from the driver's own bookings when the requests screen opens, accept
@@ -170,15 +180,15 @@ and the online toggle never touch Supabase.
 - **Decline is local-only**: declining removes the request from the driver's own list; no
   backend record is written, and the booking stays pending for other drivers (which is the
   correct dispatch semantics here, but there is no "declined by driver X" audit).
-- **Driver location is display-only**: the app never uploads continuous position updates (no
-  background location — §6), so patients cannot see live ambulance movement anywhere; trip
-  maps remain labelled straight-line previews.
+- **Location is not realtime/background**: the driver shares foreground GPS on an active trip;
+  the patient polls at a limited interval. Realtime publication/subscriptions and background GPS
+  are not configured (see §6 and §12).
 - **Walkthrough isolation**: restarting the app clears the walkthrough (by design); the
   online toggle and completed-trip counter survive navigation but not a relaunch.
 
-**Why:** realtime fan-out for requests and continuous location streaming need backend tables
-and policies (Realtime publication, push tokens) that are deliberately out of scope for this
-client-only increment and are tracked in the standing limitations above.
+**Why:** push/realtime request fan-out remains out of scope. Live location also depends on owner
+approval of its local RLS migration before any hosted deployment; no client-side RLS bypass is
+used.
 
 ## 15. Identity registration, private document storage and application status
 

@@ -7,24 +7,23 @@ import {
   ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Button, Card, Header, Avatar, Badge, StarRating } from '../../components/ui';
+import { Button, Card, Avatar, Badge, StarRating } from '../../components/ui';
 import { colors, spacing, typography} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
-import { driversService, isSupabaseConfigured } from '../../services/database';
+import { driversService } from '../../services/database';
 import { isDemoMode } from '../../utils/demoMode';
 import { Driver, Ambulance } from '../../types';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
-// Development sample profile — only shown when Supabase is not configured
-// (clearly labelled in the UI).
+// Local-only profile data used by the explicitly enabled Driver demo.
 const SAMPLE_DRIVER: Driver = {
   id: 'sample-driver',
   user_id: 'sample-user',
-  license_number: 'DL-2024-78542',
-  license_expiry: '2027-06-15',
-  status: 'verified',
-  rating: 4.8,
-  total_rides: 1247,
-  verified_at: '2024-01-15',
+  license_number: '—',
+  license_expiry: '—',
+  status: 'pending',
+  rating: 0,
+  total_rides: 0,
   created_at: '2024-01-10',
 };
 
@@ -32,24 +31,23 @@ const SAMPLE_AMBULANCE: Ambulance = {
   id: 'sample-ambulance',
   driver_id: 'sample-driver',
   category: 'icu',
-  plate_number: 'BA 2 PA 4521',
-  model: 'Force Traveller Ambulance',
+  plate_number: '—',
+  model: 'Ambulance',
   color: 'White',
   status: 'available',
   equipment: ['Oxygen', 'Stretcher', 'Ventilator', 'Defibrillator', 'First Aid Kit'],
-  hospital_affiliation: 'Norvic International Hospital',
+  hospital_affiliation: '',
   created_at: '2024-01-12',
 };
 
 const DriverProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { user } = useAuthStore();
+  const { user, isDemoDriver } = useAuthStore();
 
   const [driver, setDriver] = useState<Driver | null>(null);
   const [ambulance, setAmbulance] = useState<Ambulance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [usingSampleData, setUsingSampleData] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -61,14 +59,12 @@ const DriverProfileScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (isDemoMode() || !isSupabaseConfigured) {
-        setUsingSampleData(true);
+      if (isDemoMode() && isDemoDriver) {
         setDriver(SAMPLE_DRIVER);
         setAmbulance(SAMPLE_AMBULANCE);
         return;
       }
 
-      setUsingSampleData(false);
       const userId = user?.id;
       if (!userId) {
         setDriver(null);
@@ -119,7 +115,7 @@ const DriverProfileScreen: React.FC = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="Driver Profile" showBack onBack={() => navigation.goBack()} />
+        <DriverNavigationHeader title="Driver Profile" showBack />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading profile...</Text>
@@ -131,7 +127,7 @@ const DriverProfileScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="Driver Profile" showBack onBack={() => navigation.goBack()} />
+        <DriverNavigationHeader title="Driver Profile" showBack />
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <Button title="Retry" variant="outline" onPress={loadProfile} style={styles.retryButton} />
@@ -142,22 +138,12 @@ const DriverProfileScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Driver Profile" showBack onBack={() => navigation.goBack()} />
+      <DriverNavigationHeader title="Driver Profile" showBack />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {usingSampleData && (
-          <Card elevation="sm" style={styles.sampleCard}>
-            <Text style={styles.sampleText}>
-              {isDemoMode()
-                ? 'Walkthrough — sample driver profile for this demo session. Nothing here is a real record.'
-                : '⚠️ Sample build — database not configured. Showing an example driver profile.'}
-            </Text>
-          </Card>
-        )}
-
         {!driver ? (
           <Card elevation="sm" style={styles.emptyCard}>
             <Text style={styles.emptyIcon}>🚑</Text>
@@ -176,15 +162,19 @@ const DriverProfileScreen: React.FC = () => {
           <>
             {/* Avatar & Name */}
         <View style={styles.profileHeader}>
-          <Avatar name={user?.full_name ?? 'Driver'} size="xl" />
-          <Text style={styles.driverName}>{user?.full_name ?? 'Driver'}</Text>
-          <Text style={styles.driverPhone}>{user?.phone ?? '+977-98XXXXXXXX'}</Text>
-          <View style={styles.badgeRow}>
-            <Badge
-              label={getStatusLabel(driver?.status ?? 'pending')}
-              variant={getStatusBadgeVariant(driver?.status ?? 'pending')}
-            />
-          </View>
+          <Avatar name={isDemoDriver ? 'Driver' : user?.full_name ?? 'Driver'} size="xl" />
+          <Text style={styles.driverName}>
+            {isDemoDriver ? 'Driver' : user?.full_name ?? 'Driver'}
+          </Text>
+          <Text style={styles.driverPhone}>{isDemoDriver ? '—' : user?.phone ?? '—'}</Text>
+          {!isDemoDriver && (
+            <View style={styles.badgeRow}>
+              <Badge
+                variant={getStatusBadgeVariant(driver?.status ?? 'pending')}
+                label={getStatusLabel(driver?.status ?? 'pending')}
+              />
+            </View>
+          )}
         </View>
 
         {/* Rating & Rides */}
@@ -208,15 +198,15 @@ const DriverProfileScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>License Information</Text>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>License Number</Text>
-            <Text style={styles.infoValue}>{driver?.license_number}</Text>
+            <Text style={styles.infoValue}>{isDemoDriver ? '—' : driver?.license_number}</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Expiry Date</Text>
-            <Text style={styles.infoValue}>{driver?.license_expiry}</Text>
+            <Text style={styles.infoValue}>{isDemoDriver ? '—' : driver?.license_expiry}</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Verified On</Text>
-            <Text style={styles.infoValue}>{driver?.verified_at ?? 'Not verified'}</Text>
+            <Text style={styles.infoValue}>{isDemoDriver ? '—' : driver?.verified_at ?? 'Not verified'}</Text>
           </View>
         </Card>
 

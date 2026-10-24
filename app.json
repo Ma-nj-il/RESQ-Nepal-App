@@ -10,7 +10,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.resq.nepal",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "RESQ Nepal uses your location to find nearby ambulances and set your pickup point."
+        "NSLocationWhenInUseUsageDescription": "RESQ Nepal uses your location to set pickup points and, during an assigned trip, share the ambulance's live position with that booking's patient."
       }
     },
     "android": {
@@ -41,7 +41,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "RESQ Nepal uses your location to find nearby ambulances and set your pickup point."
+          "locationWhenInUsePermission": "RESQ Nepal uses your location to set pickup points and, during an assigned trip, share the ambulance's live position with that booking's patient."
         }
       ],
       [

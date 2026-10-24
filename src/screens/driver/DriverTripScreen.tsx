@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,33 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Button, Card, Badge, Avatar } from '../../components/ui';
 import { MapCanvas } from '../../components/map/MapCanvas';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
-import { bookingsService, isSupabaseConfigured } from '../../services/database';
+import { bookingsService, driversService } from '../../services/database';
 import { useDriverDemoStore } from '../../store/driverDemoStore';
+import { useAuthStore } from '../../store/authStore';
 import { isDemoMode } from '../../utils/demoMode';
+import { SECURE_TRIP_TRACKING_ENABLED } from '../../utils/tracking';
+import {
+  ArrivalDetectionResult,
+  ArrivalDetectorState,
+  ArrivalLocationFix,
+  createSimulatedArrivalFixes,
+  emptyArrivalDetector,
+  isUsableArrivalFix,
+  updateArrivalDetection,
+} from '../../utils/arrivalDetection';
+import { useDriverTripLocation } from '../../hooks/useDriverTripLocation';
+import { useTrackingRoute } from '../../hooks/useTrackingRoute';
 import { Booking } from '../../types';
+import {
+  buildGoogleMapsDirectionsUrl,
+  canAdvanceDriverTripPhase,
+  getDriverTripDestination,
+  phaseFromBookingStatus,
+  DriverTripPhase,
+} from '../../utils/driverTrip';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
-type TripPhase = 'pickup' | 'arrived' | 'started' | 'completed';
+type TripPhase = DriverTripPhase;
 
 const DriverTripScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -27,7 +48,8 @@ const DriverTripScreen: React.FC = () => {
 
   // Demo walkthrough — the sample trip lives in an isolated in-memory store;
   // every phase change here is local and never written to the database.
-  const walkthrough = isDemoMode() || !isSupabaseConfigured;
+  const isDemoDriver = useAuthStore((state) => state.isDemoDriver);
+  const walkthrough = isDemoMode() && isDemoDriver;
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +57,146 @@ const DriverTripScreen: React.FC = () => {
   const [phase, setPhase] = useState<TripPhase>('pickup');
   const [navigating, setNavigating] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [usingSampleData, setUsingSampleData] = useState(false);
+  const [routeRetry, setRouteRetry] = useState(0);
+  const [arrivalResult, setArrivalResult] = useState<{
+    key: string;
+    result: ArrivalDetectionResult;
+  } | null>(null);
+  const [demoLocation, setDemoLocation] = useState<{
+    key: string;
+    fix: ArrivalLocationFix;
+  } | null>(null);
+  const refreshInFlight = useRef(false);
+  const assignedDriverId = useRef<string | null>(null);
+  const arrivalDetector = useRef<{
+    key: string;
+    state: ArrivalDetectorState;
+    lastGpsTimestamp: number | null;
+  }>({ key: '', state: emptyArrivalDetector(), lastGpsTimestamp: null });
+  const destinationPhase = phase === 'started' || phase === 'hospital-arrived';
+  const routeDestination = booking
+    ? getDriverTripDestination(
+        phase,
+        { lat: booking.pickup_lat, lng: booking.pickup_lng },
+        { lat: booking.dest_lat, lng: booking.dest_lng },
+      )
+    : null;
+  const arrivalPhase = phase === 'pickup' || phase === 'started';
+  const arrivalTargetName = phase === 'started' ? 'Hospital' : 'Pickup';
+  const arrivalTarget = arrivalPhase ? routeDestination : null;
+  const arrivalTargetLatitude = arrivalTarget?.lat;
+  const arrivalTargetLongitude = arrivalTarget?.lng;
+  const arrivalKey = `${booking?.id ?? ''}:${arrivalTargetName}`;
+  const arrivalResultForTarget =
+    arrivalResult?.key === arrivalKey ? arrivalResult.result : null;
+  const demoLocationForTarget =
+    demoLocation?.key === arrivalKey ? demoLocation.fix : null;
+  const processGpsFix = useCallback(
+    (fix: ArrivalLocationFix | null) => {
+      if (
+        !arrivalPhase ||
+        arrivalTargetLatitude == null ||
+        arrivalTargetLongitude == null
+      ) return;
+      const detector = arrivalDetector.current;
+      if (detector.key !== arrivalKey) {
+        detector.key = arrivalKey;
+        detector.state = emptyArrivalDetector();
+      }
+      if (!fix) {
+        detector.state = emptyArrivalDetector();
+        setArrivalResult(null);
+        return;
+      }
+      if (detector.lastGpsTimestamp === fix.timestamp) return;
+      detector.lastGpsTimestamp = fix.timestamp;
+      const result = updateArrivalDetection(detector.state, fix, {
+        lat: arrivalTargetLatitude,
+        lng: arrivalTargetLongitude,
+      });
+      detector.state = result.state;
+      setArrivalResult({ key: arrivalKey, result });
+    },
+    [
+      arrivalKey,
+      arrivalPhase,
+      arrivalTargetLatitude,
+      arrivalTargetLongitude,
+    ],
+  );
+  const driverLocation = useDriverTripLocation({
+    bookingId: booking?.id,
+    driverId: booking?.driver_id,
+    status: booking?.status,
+    demoMode: walkthrough,
+    onLocationFix: processGpsFix,
+  });
+  const mapLocation = walkthrough
+    ? demoLocationForTarget
+    : driverLocation.currentLocation;
+  const routeDestinationValid = Boolean(routeDestination);
+  const routeResult = useTrackingRoute(
+      mapLocation,
+    routeDestinationValid ? routeDestination : null,
+    `${bookingId ?? ''}:${destinationPhase ? 'hospital' : 'pickup'}:${routeRetry}`,
+    Boolean(routeDestinationValid && mapLocation),
+  );
+
+  const simulateArrival = () => {
+    if (!walkthrough || !arrivalPhase || !arrivalTarget) return;
+    if (arrivalDetector.current.key !== arrivalKey) {
+      arrivalDetector.current.key = arrivalKey;
+      arrivalDetector.current.state = emptyArrivalDetector();
+    }
+    const samples = createSimulatedArrivalFixes(arrivalTarget);
+    let result: ArrivalDetectionResult | null = null;
+    const now = Date.now();
+    for (const sample of samples) {
+      result = updateArrivalDetection(
+        arrivalDetector.current.state,
+        sample,
+        arrivalTarget,
+        now,
+      );
+      arrivalDetector.current.state = result.state;
+    }
+    const finalFix = samples[samples.length - 1];
+    if (finalFix) setDemoLocation({ key: arrivalKey, fix: finalFix });
+    if (result) setArrivalResult({ key: arrivalKey, result });
+  };
+
+  const arrivalMessage = (() => {
+    if (!arrivalPhase) return null;
+    if (!arrivalTarget) {
+      return `${arrivalTargetName} coordinates are unavailable; arrival assistance cannot run.`;
+    }
+    if (!walkthrough && driverLocation.state === 'permission-denied') {
+      return 'Allow foreground location access to check arrival.';
+    }
+    if (!walkthrough && driverLocation.state === 'unavailable') {
+      return 'Turn on device location to check arrival.';
+    }
+    if (!walkthrough && driverLocation.state === 'stale') {
+      return 'GPS fix is stale; waiting for a fresh location.';
+    }
+    if (!walkthrough && driverLocation.state === 'error') {
+      return 'Location is temporarily unavailable; arrival cannot be checked.';
+    }
+    if (arrivalResultForTarget?.reached) {
+      return `${arrivalTargetName} location reached — confirm arrival${
+        walkthrough ? ' (simulated)' : ''
+      }`;
+    }
+    if (walkthrough) return 'Simulated location has not reached the destination.';
+    const fix = driverLocation.currentFix;
+    if (fix && !isUsableArrivalFix(fix)) {
+      return 'GPS accuracy is insufficient or the location fix is stale.';
+    }
+    if (arrivalResultForTarget?.valid && arrivalResultForTarget.distanceMeters != null) {
+      return `${Math.round(arrivalResultForTarget.distanceMeters)} m from ${arrivalTargetName.toLowerCase()}.`;
+    }
+    return 'Waiting for an accurate GPS fix to check arrival.';
+  })();
 
   useEffect(() => {
     loadBooking();
@@ -43,23 +204,64 @@ const DriverTripScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (walkthrough || !bookingId) return;
+    let active = true;
+    const refreshStatus = async () => {
+      if (refreshInFlight.current) return;
+      refreshInFlight.current = true;
+      try {
+        const latest = await bookingsService.getById(bookingId);
+        if (active && latest) {
+          if (latest.driver_id !== assignedDriverId.current) {
+            setBooking(null);
+            setError('This trip is no longer assigned to your driver account.');
+            return;
+          }
+          const latestPhase = phaseFromBookingStatus(latest.status);
+          if (!latestPhase) {
+            setBooking(null);
+            setError('This trip is no longer active.');
+            return;
+          }
+          setBooking(latest);
+          setPhase((current) =>
+            current === 'hospital-arrived' && latestPhase === 'started'
+              ? current
+              : latestPhase,
+          );
+        }
+      } catch {
+        // The foreground GPS hook reports upload failures without interrupting
+        // the active driver workflow.
+      } finally {
+        refreshInFlight.current = false;
+      }
+    };
+    const timer = setInterval(() => void refreshStatus(), 15_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [bookingId, walkthrough]);
+
   async function loadBooking() {
     setLoading(true);
     setError(null);
     try {
       if (walkthrough) {
         // Sample trip from the isolated in-memory walkthrough store.
-        setUsingSampleData(true);
         const trip = useDriverDemoStore.getState().activeTrip;
         if (!bookingId || !trip || trip.id !== bookingId) {
           setError(
-            'This walkthrough trip is no longer active. Accept a sample request to start one.',
+            'This trip is no longer active. Return to Requests to choose another booking.',
           );
           return;
         }
         setBooking({
           id: trip.id,
           user_id: 'walkthrough-patient',
+          driver_id: 'demo-driver-local',
           category: trip.category,
           pickup_address: trip.pickupAddress,
           pickup_lat: trip.pickupLat,
@@ -88,18 +290,26 @@ const DriverTripScreen: React.FC = () => {
         return;
       }
 
-      setUsingSampleData(false);
       const record = await bookingsService.getById(bookingId);
       if (!record) {
         setError('Trip not found.');
         return;
       }
+      const userId = useAuthStore.getState().user?.id;
+      const driver = userId ? await driversService.getByUserId(userId) : null;
+      if (!driver || record.driver_id !== driver.id) {
+        setError('This trip is not assigned to your driver account.');
+        return;
+      }
+      const recordPhase = phaseFromBookingStatus(record.status);
+      if (!recordPhase) {
+        setError('This trip is no longer active.');
+        return;
+      }
+      assignedDriverId.current = driver.id;
       setBooking(record);
       // Resume the phase display from the stored status.
-      if (record.status === 'arrived') setPhase('arrived');
-      else if (record.status === 'started') setPhase('started');
-      else if (record.status === 'completed') setPhase('completed');
-      else setPhase('pickup');
+      setPhase(recordPhase);
     } catch {
       setError('Failed to load trip details.');
     } finally {
@@ -107,27 +317,27 @@ const DriverTripScreen: React.FC = () => {
     }
   }
 
-  const openMaps = async (lat: number, lng: number, label: string) => {
+  const openMaps = async (lat?: number | null, lng?: number | null) => {
+    const url =
+      lat != null && lng != null ? buildGoogleMapsDirectionsUrl(lat, lng) : null;
+    if (!url) {
+      Alert.alert('Destination unavailable', 'Valid destination coordinates are not available.');
+      return;
+    }
     setNavigating(true);
     try {
-      const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Error', 'Cannot open maps application');
-      }
+      await Linking.openURL(url);
     } catch {
-      Alert.alert('Error', 'Failed to open maps');
+      Alert.alert('Unable to open Maps', 'Please try again or use another navigation app.');
     } finally {
       setNavigating(false);
     }
   };
 
   const persistPhase = async (status: Booking['status'], next: TripPhase) => {
+    if (updating || !canAdvanceDriverTripPhase(phase, next)) return;
     if (walkthrough) {
       // Local, in-memory phase change with a duplicate-tap guard.
-      if (updating || phase === next) return;
       setUpdating(true);
       useDriverDemoStore.getState().setPhase(next);
       setPhase(next);
@@ -135,12 +345,38 @@ const DriverTripScreen: React.FC = () => {
       return;
     }
     if (!booking) {
-      setPhase(next);
+      Alert.alert('Trip unavailable', 'Reload the trip before changing its status.');
       return;
     }
     setUpdating(true);
     try {
+      const latest = await bookingsService.getById(booking.id);
+      const allowedCurrentStatuses =
+        phase === 'pickup' ? ['assigned', 'arriving'] : [booking.status];
+      if (
+        !latest ||
+        latest.driver_id !== booking.driver_id ||
+        latest.status !== booking.status ||
+        !allowedCurrentStatuses.includes(latest.status)
+      ) {
+        if (latest && latest.driver_id === assignedDriverId.current) {
+          const latestPhase = phaseFromBookingStatus(latest.status);
+          if (latestPhase) {
+            setBooking(latest);
+            setPhase(latestPhase);
+          } else {
+            setBooking(null);
+            setError('This trip is no longer active.');
+          }
+        } else if (latest) {
+          setBooking(null);
+          setError('This trip is no longer assigned to your driver account.');
+        }
+        Alert.alert('Trip changed', 'Trip details changed. Review the latest status before continuing.');
+        return;
+      }
       await bookingsService.updateStatus(booking.id, status);
+      setBooking((current) => current ? { ...current, status } : current);
       setPhase(next);
     } catch {
       Alert.alert('Update Failed', 'Could not update the trip status. Check your connection and try again.');
@@ -157,29 +393,60 @@ const DriverTripScreen: React.FC = () => {
     void persistPhase('started', 'started');
   };
 
+  const handleArrivedAtHospital = () => {
+    if (updating || !canAdvanceDriverTripPhase(phase, 'hospital-arrived')) return;
+    setPhase('hospital-arrived');
+    if (walkthrough) useDriverDemoStore.getState().setPhase('hospital-arrived');
+  };
+
   const handleCompleteTrip = async () => {
+    if (phase !== 'hospital-arrived' || updating) return;
     if (walkthrough) {
-      if (updating) return; // duplicate-tap guard
       setUpdating(true);
       setPhase('completed');
       useDriverDemoStore.getState().completeActiveTrip();
       setUpdating(false);
-      Alert.alert(
-        'Trip Completed',
-        'Walkthrough trip completed. No records were written and no fare is charged.',
-        [{ text: 'OK', onPress: () => navigation.navigate('DriverHome') }],
-      );
+      Alert.alert('Trip Completed', 'The trip is complete.', [
+        { text: 'OK', onPress: () => navigation.navigate('DriverHome') },
+      ]);
       return;
     }
 
     if (booking) {
       setUpdating(true);
       try {
+        const latest = await bookingsService.getById(booking.id);
+        if (
+          !latest ||
+          latest.driver_id !== booking.driver_id ||
+          latest.status !== 'started'
+        ) {
+          if (latest && latest.driver_id === assignedDriverId.current) {
+            const latestPhase = phaseFromBookingStatus(latest.status);
+            if (latestPhase) {
+              setBooking(latest);
+              setPhase(latestPhase);
+            } else {
+              setBooking(null);
+              setError('This trip is no longer active.');
+            }
+          } else if (latest) {
+            setBooking(null);
+            setError('This trip is no longer assigned to your driver account.');
+          }
+          Alert.alert('Trip changed', 'Trip details changed. Review the latest status before completing.');
+          return;
+        }
         await bookingsService.updateStatus(booking.id, 'completed');
+        setBooking((current) => current ? { ...current, status: 'completed' } : current);
         setPhase('completed');
+        const recordedFare =
+          booking.final_fare != null && Number.isFinite(Number(booking.final_fare))
+            ? ` Recorded fare: NPR ${Number(booking.final_fare).toLocaleString('en-IN')}.`
+            : '';
         Alert.alert(
           'Trip Completed',
-          `Trip completed. Fare: NPR ${Number(booking.final_fare ?? booking.estimated_fare ?? 0).toLocaleString('en-IN')}`,
+          `Trip completed.${recordedFare}`,
           [{ text: 'OK', onPress: () => navigation.navigate('DriverHome') }]
         );
       } catch {
@@ -193,8 +460,8 @@ const DriverTripScreen: React.FC = () => {
   const handleCallPatient = () => {
     if (walkthrough) {
       Alert.alert(
-        'Demo walkthrough',
-        'No call is placed in the walkthrough — the sample patient has no recorded phone number.',
+        'No phone number',
+        'A patient contact number was not recorded for this booking.',
       );
       return;
     }
@@ -218,7 +485,9 @@ const DriverTripScreen: React.FC = () => {
       case 'arrived':
         return 0.5;
       case 'started':
-        return 0.75;
+        return 0.6;
+      case 'hospital-arrived':
+        return 0.8;
       case 'completed':
         return 1;
     }
@@ -232,6 +501,8 @@ const DriverTripScreen: React.FC = () => {
         return 'Arrived at Pickup';
       case 'started':
         return 'Trip In Progress';
+      case 'hospital-arrived':
+        return 'Arrived at Hospital';
       case 'completed':
         return 'Trip Completed';
     }
@@ -243,12 +514,13 @@ const DriverTripScreen: React.FC = () => {
         return (
           <View style={styles.actionColumn}>
             <Button
-              title="Navigate to Pickup"
+              title="Open in Google Maps"
               variant="outline"
               fullWidth
               onPress={() =>
-                openMaps(booking?.pickup_lat ?? 0, booking?.pickup_lng ?? 0, 'Pickup')
+                openMaps(routeDestination?.lat, routeDestination?.lng)
               }
+              disabled={!routeDestination}
               loading={navigating}
               style={styles.navigateButton}
             />
@@ -265,7 +537,7 @@ const DriverTripScreen: React.FC = () => {
       case 'arrived':
         return (
           <Button
-            title="Start Trip"
+            title="Patient Onboard"
             fullWidth
             size="lg"
             onPress={handleStartTrip}
@@ -278,25 +550,36 @@ const DriverTripScreen: React.FC = () => {
         return (
           <View style={styles.actionColumn}>
             <Button
-              title="Navigate to Destination"
+              title="Open in Google Maps"
               variant="outline"
               fullWidth
-              onPress={() =>
-                openMaps(booking?.dest_lat ?? 0, booking?.dest_lng ?? 0, 'Destination')
-              }
+              onPress={() => openMaps(routeDestination?.lat, routeDestination?.lng)}
               loading={navigating}
+              disabled={!routeDestination}
               style={styles.navigateButton}
             />
             <Button
-              title="Complete Trip"
+              title="Arrived at Hospital"
               fullWidth
               size="lg"
-              onPress={handleCompleteTrip}
+              onPress={handleArrivedAtHospital}
               loading={updating}
               disabled={updating}
               style={styles.primaryButton}
             />
           </View>
+        );
+      case 'hospital-arrived':
+        return (
+          <Button
+            title="Complete Trip"
+            fullWidth
+            size="lg"
+            onPress={handleCompleteTrip}
+            loading={updating}
+            disabled={updating}
+            style={styles.primaryButton}
+          />
         );
       case 'completed':
         return null;
@@ -306,6 +589,7 @@ const DriverTripScreen: React.FC = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <DriverNavigationHeader title="Trip" />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading trip details...</Text>
@@ -317,6 +601,7 @@ const DriverTripScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
+        <DriverNavigationHeader title="Trip" />
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <Button title="Retry" variant="outline" onPress={loadBooking} />
@@ -327,14 +612,36 @@ const DriverTripScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Route map — straight-line preview of the real trip coordinates */}
+      <DriverNavigationHeader title="Trip" />
       <View style={styles.mapContainer}>
         <MapCanvas
           pickup={booking ? { lat: booking.pickup_lat, lng: booking.pickup_lng } : null}
-          destination={booking ? { lat: booking.dest_lat, lng: booking.dest_lng } : null}
+          destination={destinationPhase ? routeDestination : null}
           pickupLabel="Pickup"
-          destinationLabel="Destination"
-          caption="Straight-line preview — not live GPS"
+          destinationLabel={destinationPhase ? 'Hospital' : 'Pickup'}
+          current={mapLocation}
+          currentLabel="Your ambulance"
+          route={routeResult.route?.coordinates}
+          showSchematicRoute={false}
+          caption={
+            walkthrough
+              ? demoLocation
+                ? 'Simulated location — device GPS is not used in this walkthrough'
+                : 'Local arrival simulation is available'
+              : driverLocation.state === 'permission-denied'
+              ? 'Allow location access to share your ambulance position'
+              : driverLocation.state === 'unavailable'
+                ? 'Turn on device location to share your position'
+                : driverLocation.state === 'stale'
+                  ? 'GPS fix is stale; waiting for a fresh position'
+                  : !SECURE_TRIP_TRACKING_ENABLED
+                    ? 'Live GPS sharing is disabled until the approved database policy is enabled'
+                : driverLocation.state === 'error'
+                  ? 'Location sharing is temporarily unavailable'
+                  : driverLocation.state === 'sharing'
+                    ? 'Sharing your real GPS while this trip is active'
+                    : 'Waiting for a real GPS fix'
+          }
         />
         <View style={styles.progressBarOverlay}>
           <View
@@ -345,24 +652,51 @@ const DriverTripScreen: React.FC = () => {
 
       {/* Bottom Content */}
       <View style={styles.bottomSheet}>
-        {usingSampleData && (
-          <View style={styles.sampleBanner}>
-            <Text style={styles.sampleBannerText}>
-              {walkthrough && isDemoMode()
-                ? 'Walkthrough trip — sample data for this demo session. Nothing is saved.'
-                : '⚠️ Sample build — database not configured. Showing an example trip.'}
-            </Text>
-          </View>
-        )}
-
         <Text style={styles.phaseTitle}>{getPhaseLabel()}</Text>
+        {arrivalMessage ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.arrivalStatus,
+              arrivalResultForTarget?.reached && styles.arrivalStatusReached,
+            ]}
+          >
+            {arrivalMessage}
+          </Text>
+        ) : null}
+        {walkthrough && arrivalPhase ? (
+          <Button
+            title={`Simulate ${arrivalTargetName.toLowerCase()} arrival`}
+            variant="outline"
+            size="sm"
+            onPress={simulateArrival}
+            style={styles.simulateArrivalButton}
+          />
+        ) : null}
+        {routeResult.route ? (
+          <Text style={styles.routeSummary}>
+            {routeResult.route.distanceKm.toFixed(1)} km · {routeResult.route.durationMinutes} min
+          </Text>
+        ) : routeResult.loading ? (
+          <Text style={styles.routeSummary}>Finding a driving route…</Text>
+        ) : routeResult.unavailable ? (
+          <View style={styles.routeError}>
+            <Text style={styles.routeSummary}>Driving route unavailable.</Text>
+            <Button
+              title="Retry"
+              variant="outline"
+              size="sm"
+              onPress={() => setRouteRetry((value) => value + 1)}
+            />
+          </View>
+        ) : null}
 
         {/* Trip Progress Indicator */}
         <View style={styles.progressIndicator}>
           <View style={styles.progressSteps}>
-            {['Pickup', 'Arrived', 'Started', 'Complete'].map((step, index) => {
-              const stepPhase: TripPhase[] = ['pickup', 'arrived', 'started', 'completed'];
-              const isActive = stepPhase.indexOf(phase) >= index;
+            {['Pickup', 'Arrived', 'Onboard', 'Hospital', 'Complete'].map((step, index) => {
+              const phaseOrder: TripPhase[] = ['pickup', 'arrived', 'started', 'hospital-arrived', 'completed'];
+              const isActive = phaseOrder.indexOf(phase) >= index;
               return (
                 <View key={step} style={styles.progressStep}>
                   <View
@@ -505,6 +839,18 @@ const styles = StyleSheet.create({
     ...typography.h3,
     marginBottom: spacing.md,
   },
+  arrivalStatus: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  arrivalStatusReached: {
+    color: colors.success,
+    fontWeight: '700',
+  },
+  simulateArrivalButton: {
+    marginBottom: spacing.sm,
+  },
   bottomSheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: radii.xl,
@@ -512,16 +858,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     ...shadows.lg,
   },
-  sampleBanner: {
-    backgroundColor: colors.amberLight,
-    borderRadius: radii.md,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  sampleBannerText: {
-    ...typography.bodySmall,
-    color: colors.warning,
-  },
+  routeSummary: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.sm },
+  routeError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   progressIndicator: {
     marginBottom: spacing.lg,
   },

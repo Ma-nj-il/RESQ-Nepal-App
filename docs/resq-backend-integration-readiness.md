@@ -23,8 +23,8 @@ Expo (React Native 0.88 / SDK 58)
 - There is **no custom backend** and **no service-role key anywhere in the app** (verified: no
   `service_role`/secret references in `src/`, `supabase/` or `.env.example`).
 - `.env` is git-ignored; only `.env.example` is tracked. The client uses exactly three public
-  variables: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
-  `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`, plus the non-secret `EXPO_PUBLIC_DEMO_MODE` flag.
+  variables: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` and the optional
+  `EXPO_PUBLIC_OSM_TILE_URL`, plus the non-secret `EXPO_PUBLIC_DEMO_MODE` flag.
 - Demo mode (`EXPO_PUBLIC_DEMO_MODE=true`) intercepts auth (OTP `1234`), booking creation, driver
   requests/trips and identity uploads; it **never writes** to Supabase and labels every fabricated
   element in the UI. Live mode without credentials falls back to honest error states, never fake
@@ -157,9 +157,10 @@ runtime, and this workspace has not modified the hosted project.
 
 - Expo Continuous Native Generation: no `ios/`/`android/` directories are checked in; app config
   lives in `app.json` (image-picker plugin, camera-only, microphone disabled).
-- Google map tiles on a store build require platform keys and a development/native build
-  (`docs/maps-setup.md`); Expo Go’s bundled modules are the current test surface.
-- Required build profile env: Supabase URL + anon key, Google Maps key, and
+- Map tiles render from OpenStreetMap through `react-native-webview` with no API key. Set
+  `EXPO_PUBLIC_OSM_TILE_URL` to a production tile provider before store traffic
+  (`docs/maps-setup.md`); Expo Go’s bundled WebView is the current test surface.
+- Required build profile env: Supabase URL + anon key, optional OSM tile URL, and
   `EXPO_PUBLIC_DEMO_MODE` **unset/`false`** for any real build. A production build with demo mode
   on would still write nothing, but must not ship as the real experience.
 - No push entitlements, no background location modes and no payment SDK are configured — intentional

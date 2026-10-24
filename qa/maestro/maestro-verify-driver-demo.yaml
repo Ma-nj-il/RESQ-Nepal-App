@@ -13,7 +13,7 @@ appId: host.exp.Exponent
     timeout: 20000
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 20000
 - scrollUntilVisible:
     element:

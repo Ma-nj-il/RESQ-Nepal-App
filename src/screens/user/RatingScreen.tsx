@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -12,10 +12,12 @@ import { profilesService } from '../../services/database/profiles';
 import { isSupabaseConfigured } from '../../services/database/client';
 import { useAuthStore } from '../../store/authStore';
 import { isDemoMode } from '../../utils/demoMode';
+import { DemoTripReceipt } from '../../utils/demoTrip';
+import { useDemoRatingStore } from '../../store/demoRatingStore';
 import { Booking } from '../../types';
 
 type RouteParams = {
-  Rating: { bookingId?: string; booking?: Booking };
+  Rating: { bookingId?: string; booking?: Booking; demoTrip?: DemoTripReceipt };
 };
 
 const POSITIVE_TAGS = ['Quick response', 'Professional crew', 'Clean vehicle', 'Careful driving'];
@@ -29,6 +31,11 @@ const RatingScreen: React.FC = () => {
   const { user } = useAuthStore();
 
   const demoRun = isDemoMode();
+  const demoTrip = demoRun && route.params?.demoTrip?.isDemo ? route.params.demoTrip : undefined;
+  const saveDemoRating = useDemoRatingStore((state) => state.saveDemoRating);
+  const existingDemoRating = useDemoRatingStore((state) =>
+    demoTrip ? state.ratingsByTripId[demoTrip.id] : undefined,
+  );
   const shouldFetch = Boolean(bookingId && paramBooking === undefined && isSupabaseConfigured && !demoRun);
 
   const [booking, setBooking] = useState<Booking | null>(paramBooking ?? null);
@@ -40,8 +47,9 @@ const RatingScreen: React.FC = () => {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(Boolean(existingDemoRating));
   const [driverName, setDriverName] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!shouldFetch || !bookingId) return;
@@ -106,26 +114,42 @@ const RatingScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (rating === 0 || submitting || submitted) return;
+    if (rating === 0 || submittingRef.current || submitted) return;
+    if (demoRun) {
+      if (demoTrip) {
+        const feedback = [
+          selectedTags.length > 0 ? selectedTags.join(', ') : null,
+          comment.trim() || null,
+        ].filter(Boolean).join(' — ');
+        saveDemoRating(demoTrip.id, {
+          rating,
+          feedback: feedback || undefined,
+          submittedAt: new Date().toISOString(),
+        });
+      }
+      setSubmitted(true);
+      return;
+    }
+    if (!canPersist || !booking || !user || !booking.driver_id || !bookingId) {
+      setError('An authorized assigned driver and completed booking are required to submit a rating.');
+      return;
+    }
     try {
+      submittingRef.current = true;
       setSubmitting(true);
       setError(null);
 
-      if (canPersist && booking && user && booking.driver_id && bookingId) {
-        const feedbackParts = [
-          selectedTags.length > 0 ? selectedTags.join(', ') : null,
-          comment.trim() ? comment.trim() : null,
-        ].filter(Boolean);
-        await ratingsService.create({
-          booking_id: bookingId,
-          user_id: user.id,
-          driver_id: booking.driver_id,
-          rating,
-          feedback: feedbackParts.length > 0 ? feedbackParts.join(' — ') : undefined,
-        });
-      }
-      // Demo/sample runs: nothing leaves the device. The thank-you screen
-      // states that explicitly.
+      const feedbackParts = [
+        selectedTags.length > 0 ? selectedTags.join(', ') : null,
+        comment.trim() ? comment.trim() : null,
+      ].filter(Boolean);
+      await ratingsService.create({
+        booking_id: bookingId,
+        user_id: user.id,
+        driver_id: booking.driver_id,
+        rating,
+        feedback: feedbackParts.length > 0 ? feedbackParts.join(' — ') : undefined,
+      });
       setSubmitted(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : '';
@@ -135,11 +159,16 @@ const RatingScreen: React.FC = () => {
           : 'Failed to submit rating. Please try again.',
       );
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleClose = () => {
+    if (demoRun) {
+      navigation.popTo('Home');
+      return;
+    }
     // popTo returns to the existing trip list instead of pushing a duplicate
     // copy of it on top of the rating screen (navigate pushes in v7).
     navigation.popTo('Activity');
@@ -174,11 +203,19 @@ const RatingScreen: React.FC = () => {
           <Text style={styles.thankYouIcon}>🎉</Text>
           <Text style={styles.thankYouTitle}>Rating submitted</Text>
           <Text style={styles.thankYouMessage}>
-            {canPersist
+            {demoRun
+              ? 'Your rating is saved only for this local demo walkthrough. No driver was notified and nothing was sent to a server.'
+              : canPersist
               ? 'Your feedback was saved and helps us improve RESQ Nepal for everyone.'
-              : 'Your feedback was recorded for this walkthrough only — nothing was sent to a server.'}
+              : 'Your feedback was not sent because this trip has no authorized assigned driver.'}
           </Text>
-          <Button title="Done" onPress={handleClose} fullWidth size="lg" style={{ marginTop: spacing.xxl }} />
+          <Button
+            title={demoRun ? 'Back to Home' : 'Done'}
+            onPress={handleClose}
+            fullWidth
+            size="lg"
+            style={{ marginTop: spacing.xxl }}
+          />
         </View>
       </SafeAreaView>
     );
@@ -196,8 +233,10 @@ const RatingScreen: React.FC = () => {
         <Text style={styles.subtitle}>Thank you for using RESQ Nepal!</Text>
         {(!isSupabaseConfigured || demoRun) && (
           <Text style={styles.sampleNote}>
-            {demoRun
-              ? 'Demo mode — this rating stays on this device and is not saved.'
+            {demoTrip
+              ? `DEMO PREVIEW · ${demoTrip.id} · sample assignment only. This rating stays local.`
+              : demoRun
+              ? 'Demo mode — this rating stays on this device and is not sent to a server.'
               : 'Sample mode — database not configured. The rating is not saved.'}
           </Text>
         )}
@@ -205,7 +244,9 @@ const RatingScreen: React.FC = () => {
         {/* Rating card — stars for the real driver only. */}
         <Card elevation="sm" style={styles.ratingCard}>
           <Text style={styles.ratingTitle}>Rate your driver</Text>
-          <Text style={styles.ratingDriver}>{driverName ?? 'Your assigned driver'}</Text>
+          <Text style={styles.ratingDriver}>
+            {demoTrip ? 'Sample driver · no real driver was assigned' : driverName ?? 'Your assigned driver'}
+          </Text>
           <View style={styles.ratingContainer}>
             <StarRating rating={rating} onRate={setRating} size="lg" />
             <Text style={styles.ratingHint}>
@@ -265,11 +306,11 @@ const RatingScreen: React.FC = () => {
         {error && <Text style={styles.submitError}>{error}</Text>}
 
         <Button
-          title="Submit"
+          title="Submit Rating"
           onPress={handleSubmit}
           fullWidth
           size="lg"
-          disabled={rating === 0 || submitting}
+          disabled={rating === 0 || submitting || (!demoRun && !canPersist)}
           loading={submitting}
           style={styles.submitButton}
         />

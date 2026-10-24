@@ -1,39 +1,36 @@
 appId: host.exp.Exponent
 ---
-# Evidence probe — secondary vehicle flow still reaches confirmation, with no
-# Payment section. Preconditions: signed in, Home with pickup + destination.
-- tapOn: "Open menu"
+# Evidence probe — select a Home category and continue through the existing
+# local demo search without an extra vehicle-selection drawer destination.
+- runFlow: maestro-signin-demo.yaml
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
-    timeout: 15000
-- tapOn: "^Ambulance$"
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn:
+    text: ".*Tap to set pickup location.*"
+    optional: true
+- tapOn:
+    text: ".*Bir Hospital.*"
+    optional: true
+- tapOn: ".*Tap to search hospital or destination.*"
 - extendedWaitUntil:
-    visible: ".*Choose ambulance.*"
+    visible: ".*Search hospital or destination.*"
     timeout: 20000
-- scrollUntilVisible:
-    element:
-      text: ".*Basic Patient Delivery.*"
-    direction: DOWN
-    timeout: 20000
-- tapOn: ".*Basic Patient Delivery.*"
 - extendedWaitUntil:
-    visible: ".*Service Details.*"
-    timeout: 20000
-- takeScreenshot: confirm-01-service-details
-- scrollUntilVisible:
-    element:
-      text: ".*Continue to Booking.*"
-    direction: DOWN
-    timeout: 20000
-- tapOn: ".*Continue to Booking.*"
+    visible: ".*Norvic.*"
+    timeout: 30000
+- tapOn:
+    text: ".*Norvic.*"
+    index: 0
 - extendedWaitUntil:
-    visible: ".*Confirm Booking.*"
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: ".*Transport for routine hospital visits and patient transfers.*"
+- assertVisible: ".*Selected.*"
+- takeScreenshot: confirm-01-home-patient-selected
+- tapOn: ".*Find Ambulance.*"
+- extendedWaitUntil:
+    visible: ".*Finding an Ambulance.*"
     timeout: 20000
 - assertNotVisible: ".*Payment Method.*"
 - takeScreenshot: confirm-02-no-payment
-- scrollUntilVisible:
-    element:
-      text: ".*Patient Details.*"
-    direction: DOWN
-    timeout: 20000
-- takeScreenshot: confirm-03-patient-details

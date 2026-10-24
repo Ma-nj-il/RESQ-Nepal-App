@@ -26,7 +26,7 @@ Two Metro dev servers are used, because the app has two honest runtime modes:
 npx expo start --port 8081
 
 # sample mode — no Supabase credentials
-EXPO_PUBLIC_SUPABASE_URL= EXPO_PUBLIC_SUPABASE_ANON_KEY= EXPO_PUBLIC_GOOGLE_MAPS_API_KEY= \
+EXPO_PUBLIC_SUPABASE_URL= EXPO_PUBLIC_SUPABASE_ANON_KEY= \
   npx expo start --port 8082
 ```
 
@@ -51,7 +51,7 @@ OTP `1234` locally and never uploads documents or writes to Supabase.
 |---|---|---|
 | Helper | `maestro-signin-demo.yaml` | demo sign-in ending on Home |
 | Helper | `maestro-signout-demo.yaml` | idempotent precondition: launches Expo Go, signs out only if signed in, ends on Welcome |
-| A | `maestro-verify-booking.yaml` | Home → manual pickup fallback → real hospital destination → route preview → compact category cards → direct “Find Ambulance” → map-first searching (radar, cancel, no payment) → assigned sample state → labelled crew card → demo Call Driver guard → back Home |
+| A | `maestro-verify-booking.yaml` | Home and Processing menu → manual pickup fallback → destination → route preview → “Find Ambulance” → same-screen searching → local-only assigned-ambulance preview and safe demo call |
 | B | `maestro-verify-history-rating-sos.yaml` | activity → completed trip → rating → notifications → SOS |
 | C | `maestro-verify-menu-account.yaml` | drawer → saved hospitals/places → settings → about → privacy → driver local draft |
 | D | `maestro-verify-driver-demo.yaml` | Driver Mode walkthrough, request accept/decline, trip phases, restart |
@@ -67,9 +67,9 @@ Run them on the demo server (port 8081), for example:
 maestro test --udid <sim-udid> qa/maestro/maestro-verify-identity-demo.yaml
 ```
 
-Evidence probes are **partial flows**: run `maestro-verify-booking.yaml` first so the app is left
-signed in on Home with a pickup and destination, then run the radar and no-payment probes
-back-to-back without relaunching.
+Evidence probes are **partial flows**: start signed in on Home with a pickup and destination.
+The radar probe leaves the app on the Processing screen; return to Home before running another
+Home-based probe.
 
 Flow C uses the device location ("Use my current location"). On a simulator,
 set a location first or the Saved Places location capture will fail for

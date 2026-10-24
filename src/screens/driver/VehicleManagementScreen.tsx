@@ -7,31 +7,31 @@ import {
   ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Button, Card, Header, Badge, Toggle } from '../../components/ui';
+import { Button, Card, Badge, Toggle } from '../../components/ui';
 import { colors, spacing, typography, radii} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { driversService, ambulancesService, isSupabaseConfigured } from '../../services/database';
 import { isDemoMode } from '../../utils/demoMode';
 import { Ambulance, AmbulanceStatus } from '../../types';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
-// Development sample vehicle — only shown when Supabase is not configured
-// (clearly labelled in the UI).
+// Local-only vehicle data used by the explicitly enabled Driver demo.
 const SAMPLE_VEHICLE: Ambulance = {
   id: 'sample-vehicle',
   driver_id: 'sample-driver',
-  category: 'icu',
-  plate_number: 'BA 2 PA 4521',
-  model: 'Force Traveller Ambulance',
+  category: 'basic',
+  plate_number: '—',
+  model: 'Ambulance',
   color: 'White',
-  status: 'available',
-  equipment: ['Oxygen', 'Stretcher', 'Ventilator', 'Defibrillator', 'First Aid Kit'],
-  hospital_affiliation: 'Norvic International Hospital',
+  status: 'offline',
+  equipment: [],
+  hospital_affiliation: '',
   created_at: '2024-01-12',
 };
 
 const VehicleManagementScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { user } = useAuthStore();
+  const { user, isDemoDriver } = useAuthStore();
 
   const [vehicles, setVehicles] = useState<Ambulance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,7 @@ const VehicleManagementScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (isDemoMode() || !isSupabaseConfigured) {
+      if (isDemoMode() && isDemoDriver) {
         setUsingSampleData(true);
         setVehicles([SAMPLE_VEHICLE]);
         return;
@@ -130,7 +130,7 @@ const VehicleManagementScreen: React.FC = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="My Ambulance" showBack onBack={() => navigation.goBack()} />
+        <DriverNavigationHeader title="My Ambulance" showBack />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading vehicles...</Text>
@@ -142,7 +142,7 @@ const VehicleManagementScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="My Ambulance" showBack onBack={() => navigation.goBack()} />
+        <DriverNavigationHeader title="My Ambulance" showBack />
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <Button title="Retry" variant="outline" onPress={loadVehicles} />
@@ -153,22 +153,12 @@ const VehicleManagementScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="My Ambulance" showBack onBack={() => navigation.goBack()} />
+      <DriverNavigationHeader title="My Ambulance" showBack />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {usingSampleData && (
-          <Card elevation="sm" style={styles.sampleCard}>
-            <Text style={styles.sampleText}>
-              {isDemoMode()
-                ? 'Walkthrough — sample vehicle for this demo session. It is not a real registration.'
-                : '⚠️ Sample build — database not configured. Showing an example vehicle.'}
-            </Text>
-          </Card>
-        )}
-
         {vehicles.length === 0 ? (
           <Card elevation="sm" style={styles.emptyCard}>
             <Text style={styles.emptyIcon}>🚑</Text>

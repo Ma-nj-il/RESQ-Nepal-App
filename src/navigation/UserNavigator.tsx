@@ -53,6 +53,7 @@ import DriverOnboardingScreen from '../screens/user/DriverOnboardingScreen';
 import CitizenshipRegistrationScreen from '../screens/user/CitizenshipRegistrationScreen';
 import ApplicationStatusScreen from '../screens/user/ApplicationStatusScreen';
 import DriverRegistrationScreen from '../screens/driver/DriverRegistrationScreen';
+import DriverLoginScreen from '../screens/auth/DriverLoginScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -64,6 +65,7 @@ export const UserNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="DriverLogin" component={DriverLoginScreen} />
       <Stack.Screen name="AmbulanceList" component={AmbulanceListScreen} />
       <Stack.Screen name="LocationSearch" component={LocationSearchScreen} />
       <Stack.Screen name="MapPicker" component={MapPickerScreen} />

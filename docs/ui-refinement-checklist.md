@@ -1,5 +1,8 @@
 # UI/UX Refinement — Implementation Checklist (2026-10-18)
 
+> **Map update (2026-10-23):** the map was migrated from `react-native-maps` to OpenStreetMap
+> tiles rendered in a WebView. Map references below describe this earlier round.
+
 Working checklist for the "reference ZIP" refinement round. Reference screenshots live in a
 temporary directory (`iloveimg-compressed (1).zip`, 5 files, 10 panels) — the original ZIP and
 its contents are **not** modified. This file tracks what is audited, changed and verified.

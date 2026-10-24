@@ -9,12 +9,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Button, Card, Header, Toggle} from '../../components/ui';
+import { Button, Card, Toggle} from '../../components/ui';
 import { colors, spacing, typography} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/auth/authService';
 import { supportRequestsService } from '../../services/database/supportRequests';
 import { isSupabaseConfigured } from '../../services/database/client';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
 interface SettingsItem {
   id: string;
@@ -30,7 +31,7 @@ interface SettingsItem {
 
 const DriverSettingsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { user, logout, setMode } = useAuthStore();
+  const { user, logout, isDemoDriver, returnToUserMode } = useAuthStore();
 
   const [notifications, setNotifications] = useState(true);
   const [soundAlerts, setSoundAlerts] = useState(true);
@@ -50,6 +51,10 @@ const DriverSettingsScreen: React.FC = () => {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
+            if (isDemoDriver) {
+              returnToUserMode();
+              return;
+            }
             // End the real Supabase session, then clear local state.
             try {
               await authService.signOut();
@@ -64,10 +69,14 @@ const DriverSettingsScreen: React.FC = () => {
   };
 
   const handleSwitchToUser = () => {
-    setMode('user');
+    returnToUserMode();
   };
 
   const handleDeactivateAccount = () => {
+    if (isDemoDriver) {
+      Alert.alert('Demo preview', 'Account changes are unavailable in the local driver demo.');
+      return;
+    }
     Alert.alert(
       'Deactivate Account',
       'Are you sure you want to deactivate your driver account?',
@@ -286,7 +295,7 @@ const DriverSettingsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Settings" showBack onBack={() => navigation.goBack()} />
+      <DriverNavigationHeader title="Settings" showBack />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

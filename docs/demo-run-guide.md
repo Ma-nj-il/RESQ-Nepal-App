@@ -90,7 +90,7 @@ maestro test --udid 697230A0-A74B-47B4-A5AA-3B58887F06E5 qa/maestro/maestro-veri
 | OTP | `1234` accepted locally; no Twilio / no Supabase OTP call |
 | Auth session | local-only demo user; no real account created |
 | Payments / chat / calls / push | not available; labelled honestly in-app |
-| Map | static labelled preview, no Google Maps key required |
+| Map | real OpenStreetMap tiles; no Google Maps key required |
 | Supabase | untouched — real mode still calls `verifyOtp()` and never accepts `1234` |
 | Driver Mode | walkthrough on in-memory sample requests/trip; nothing saved, no real patient or driver involved; real requests need a verified driver account |
 | Identity / Application Status | no document upload, no application row, no status read; the screen explicitly says demo mode is local-only |

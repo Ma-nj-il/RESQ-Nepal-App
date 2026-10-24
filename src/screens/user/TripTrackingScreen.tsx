@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Share, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -14,11 +14,22 @@ import { bookingsService } from '../../services/database/bookings';
 import { assignedCrewService } from '../../services/database';
 import { driversService } from '../../services/database/drivers';
 import { profilesService } from '../../services/database/profiles';
+import { tripsService } from '../../services/database/trips';
 import { isSupabaseConfigured } from '../../services/database/client';
+import { useTrackingRoute } from '../../hooks/useTrackingRoute';
 import { useBookingStore } from '../../store/bookingStore';
 import { isDemoMode } from '../../utils/demoMode';
 import { openNativeDialer } from '../../utils/dialer';
 import { straightLineKm } from '../../utils/geo';
+import {
+  isFreshTrackingLocation,
+  isAssignedDriverLocation,
+  isTrackableBookingStatus,
+  SECURE_TRIP_TRACKING_ENABLED,
+  trackingAgeLabel,
+  TRACKING_POLL_INTERVAL_MS,
+  TrackingCoordinate,
+} from '../../utils/tracking';
 import { Booking } from '../../types';
 
 type RouteParams = {
@@ -37,6 +48,28 @@ const STATUS_TEXT: Record<string, string> = {
   draft: 'Waiting to be confirmed',
 };
 
+function pickupPointFromBooking(booking: Booking | null): TrackingCoordinate | null {
+  if (!booking) return null;
+  if (booking.pickup_lat == null || booking.pickup_lng == null) return null;
+  const lat = Number(booking.pickup_lat);
+  const lng = Number(booking.pickup_lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+    ? { lat, lng }
+    : null;
+}
+
+function destPointFromBooking(booking: Booking | null): TrackingCoordinate | null {
+  if (!booking) return null;
+  if (booking.dest_lat == null || booking.dest_lng == null) return null;
+  const lat = Number(booking.dest_lat);
+  const lng = Number(booking.dest_lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+    ? { lat, lng }
+    : null;
+}
+
 const TripTrackingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'TripTracking'>>();
@@ -45,10 +78,11 @@ const TripTrackingScreen: React.FC = () => {
   const { pickup, destination, setPickup, setDestination } = useBookingStore();
 
   const demoRun = isDemoMode();
-  const shouldFetch = Boolean(bookingId && paramBooking === undefined && isSupabaseConfigured && !demoRun);
+  const trackingBookingId = bookingId ?? paramBooking?.id;
+  const shouldFetch = Boolean(trackingBookingId && isSupabaseConfigured && !demoRun);
 
   const [booking, setBooking] = useState<Booking | null>(paramBooking ?? null);
-  const [loading, setLoading] = useState(shouldFetch);
+  const [loading, setLoading] = useState(shouldFetch && !paramBooking);
   const [error, setError] = useState<string | null>(
     !paramBooking && !shouldFetch
       ? demoRun
@@ -58,30 +92,70 @@ const TripTrackingScreen: React.FC = () => {
   );
   const [driverName, setDriverName] = useState<string | null>(null);
   const [driverRating, setDriverRating] = useState<number | null>(null);
+  const [latestLocation, setLatestLocation] = useState<Awaited<ReturnType<typeof tripsService.getLatestLocation>>>(null);
+  const [trackingError, setTrackingError] = useState(false);
+  const [trackingNow, setTrackingNow] = useState(0);
+  const refreshInFlight = useRef(false);
+  const hasLoadedBooking = useRef(Boolean(paramBooking));
 
   useEffect(() => {
-    if (!shouldFetch || !bookingId) return;
+    if (!shouldFetch || !trackingBookingId) return;
     let active = true;
-    (async () => {
+    const refresh = async () => {
+      if (refreshInFlight.current) return;
+      refreshInFlight.current = true;
       try {
-        const data = await bookingsService.getById(bookingId);
+        const data = await bookingsService.getById(trackingBookingId);
         if (!active) return;
         if (data) {
+          hasLoadedBooking.current = true;
           setBooking(data);
           setError(null);
+          if (
+            SECURE_TRIP_TRACKING_ENABLED &&
+            data.driver_id &&
+            isTrackableBookingStatus(data.status)
+          ) {
+            try {
+              const location = await tripsService.getLatestLocation(data.id);
+              if (!active) return;
+              setLatestLocation(
+                isAssignedDriverLocation(location, data.driver_id) ? location : null,
+              );
+              setTrackingError(false);
+            } catch {
+              if (active) setTrackingError(true);
+            }
+          } else {
+            setLatestLocation(null);
+            setTrackingError(false);
+          }
         } else {
+          hasLoadedBooking.current = true;
+          setBooking(null);
+          setLatestLocation(null);
           setError('Booking not found.');
         }
       } catch {
-        if (active) setError('Failed to load trip details.');
+        if (active) {
+          setTrackingError(true);
+          if (!hasLoadedBooking.current) setError('Failed to load trip details.');
+        }
       } finally {
-        if (active) setLoading(false);
+        refreshInFlight.current = false;
+        if (active) {
+          setLoading(false);
+          setTrackingNow(Date.now());
+        }
       }
-    })();
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), TRACKING_POLL_INTERVAL_MS);
     return () => {
       active = false;
+      clearInterval(timer);
     };
-  }, [bookingId, shouldFetch]);
+  }, [trackingBookingId, shouldFetch]);
 
   // Real driver identity only — never an invented person.
   useEffect(() => {
@@ -126,6 +200,32 @@ const TripTrackingScreen: React.FC = () => {
     }
     return null;
   }, [booking]);
+
+  const liveLocation =
+    booking &&
+    latestLocation &&
+    isAssignedDriverLocation(latestLocation, booking.driver_id) &&
+    isTrackableBookingStatus(booking.status) &&
+    isFreshTrackingLocation(latestLocation, trackingNow)
+      ? latestLocation
+      : null;
+  const ambulancePoint: TrackingCoordinate | null = liveLocation
+    ? { lat: liveLocation.lat, lng: liveLocation.lng }
+    : null;
+  const trackingTarget =
+    booking?.status === 'started' ? destPointFromBooking(booking) : pickupPointFromBooking(booking);
+  const trackingRoute = useTrackingRoute(
+    ambulancePoint,
+    trackingTarget,
+    booking ? `${booking.id}:${booking.status}:${trackingTarget?.lat}:${trackingTarget?.lng}` : '',
+    Boolean(
+      SECURE_TRIP_TRACKING_ENABLED &&
+      ambulancePoint &&
+      trackingTarget &&
+      !demoRun &&
+      isSupabaseConfigured,
+    ),
+  );
 
   if (loading) {
     return (
@@ -190,7 +290,7 @@ const TripTrackingScreen: React.FC = () => {
     }
   };
 
-  const isLiveTrip = Boolean(bookingId && isSupabaseConfigured && !demoRun);
+  const isLiveTrip = Boolean(trackingBookingId && isSupabaseConfigured && !demoRun);
 
   // Native dialer only — the crew's number is fetched through the
   // ownership-checked service and never rendered as text.
@@ -246,10 +346,12 @@ const TripTrackingScreen: React.FC = () => {
         <MapCanvas
           pickup={pickupPoint}
           destination={destPoint}
+          ambulance={ambulancePoint}
+          route={trackingRoute.route?.coordinates}
           caption={
-            booking.status === 'started'
-              ? 'Trip in progress — schematic straight-line preview'
-              : 'Schematic straight-line preview — not live GPS tracking'
+            ambulancePoint && liveLocation?.recorded_at
+              ? `Live ambulance · ${trackingAgeLabel(liveLocation.recorded_at, trackingNow) ?? 'location received'}`
+              : 'Live ambulance location unavailable'
           }
           style={styles.map}
         />
@@ -312,8 +414,28 @@ const TripTrackingScreen: React.FC = () => {
               )}
               {isLiveTrip && !isTerminal && (
                 <Text style={styles.bannerMeta}>
-                  Live vehicle location is not available yet — the map shows the recorded route.
+                  {demoRun
+                    ? 'Live tracking is disabled in demo mode.'
+                    : !SECURE_TRIP_TRACKING_ENABLED
+                      ? 'Live tracking is disabled until the approved database policy is enabled.'
+                    : !booking.driver_id
+                      ? 'Tracking starts after a driver is assigned.'
+                      : ambulancePoint && liveLocation?.recorded_at
+                        ? `Ambulance ${trackingAgeLabel(liveLocation.recorded_at, trackingNow) ?? 'location received'}.`
+                        : latestLocation && !isFreshTrackingLocation(latestLocation, trackingNow)
+                          ? 'Last ambulance location is stale; waiting for a fresh update.'
+                          : trackingError
+                            ? 'Live location is temporarily unavailable. Retrying automatically.'
+                            : 'Waiting for the ambulance’s first location update.'}
                 </Text>
+              )}
+              {ambulancePoint && trackingRoute.route && (
+                <Text style={styles.bannerMeta}>
+                  {booking.status === 'started' ? 'To destination' : 'To pickup'}: {trackingRoute.route.distanceKm.toFixed(1)} km · ETA about {trackingRoute.route.durationMinutes} min
+                </Text>
+              )}
+              {ambulancePoint && trackingRoute.unavailable && (
+                <Text style={styles.bannerMeta}>Road distance and ETA are unavailable right now.</Text>
               )}
               {booking.duration_min != null && booking.status !== 'completed' && (
                 <Text style={styles.bannerMeta}>

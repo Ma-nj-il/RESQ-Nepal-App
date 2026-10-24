@@ -8,7 +8,7 @@ appId: host.exp.Exponent
 # Drawer entry point.
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 15000
 - scrollUntilVisible:
     element:
@@ -31,7 +31,7 @@ appId: host.exp.Exponent
 # Account entry point.
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 15000
 - scrollUntilVisible:
     element:

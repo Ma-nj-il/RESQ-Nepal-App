@@ -1,5 +1,8 @@
 # Interactive QA Checklist — RESQ Nepal (2026-10-17)
 
+> **Map update (2026-10-23):** this checklist records the pre-OSM build. The app now renders
+> real OpenStreetMap tiles through `react-native-webview`; map observations below are historical.
+
 Status per screen, tested via **Maestro 2.11.0** driving **Expo Go 58.0.4** on **iPhone 17 Pro (iOS 26.4)**. Two Metro dev servers:
 - **Configured mode** (port 8081, hosted Supabase project `biormfaekazzwwyxympq`) — flows `a2`, `a3`.
 - **Sample mode** (port 8082, empty `EXPO_PUBLIC_*`) — flows `b0`, `b1`, `b2`, `b3`.
@@ -132,7 +135,7 @@ Legend: **PASS** = executed & observed · **CODE-VERIFIED** = code review + stat
 npx expo start --port 8081
 
 # Terminal 2 — sample mode
-EXPO_PUBLIC_SUPABASE_URL= EXPO_PUBLIC_SUPABASE_ANON_KEY= EXPO_PUBLIC_GOOGLE_MAPS_API_KEY= \
+EXPO_PUBLIC_SUPABASE_URL= EXPO_PUBLIC_SUPABASE_ANON_KEY= \
   npx expo start --port 8082
 
 # Terminal 3 — Maestro runs (simulator UDID: 697230A0-A74B-47B4-A5AA-3B58887F06E5)

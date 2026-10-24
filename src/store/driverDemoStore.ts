@@ -7,15 +7,20 @@ import { create } from 'zustand';
  * database is configured — i.e. developer/tester sessions, never production.
  * It lets a tester walk the full driver journey (online → sample request →
  * accept → pickup → trip → completion → restart) without touching the real
- * database: nothing here is ever written anywhere, and every value is
- * fictional sample data that the screens label as such.
+ * database: nothing here is ever written anywhere, and every value is local
+ * fictional data.
  *
  * The state lives for the current app session only (plain module state, no
  * persistence), so a reload returns to a clean walkthrough.
  */
 
 export type DriverDemoCategory = 'basic' | 'icu';
-export type DriverDemoPhase = 'pickup' | 'arrived' | 'started' | 'completed';
+export type DriverDemoPhase =
+  | 'pickup'
+  | 'arrived'
+  | 'started'
+  | 'hospital-arrived'
+  | 'completed';
 export type DriverDemoEmergencyLevel = 'low' | 'medium' | 'high';
 
 export interface DriverDemoRequest {
@@ -148,5 +153,5 @@ export const useDriverDemoStore = create<DriverDemoState>((set, get) => ({
         : {},
     ),
 
-  restart: () => set(freshWalkthrough()),
+  restart: () => set({ isOnline: false, ...freshWalkthrough() }),
 }));

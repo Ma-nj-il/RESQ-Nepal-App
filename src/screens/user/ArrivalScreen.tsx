@@ -11,9 +11,11 @@ import { bookingsService } from '../../services/database/bookings';
 import { isSupabaseConfigured } from '../../services/database/client';
 import { isDemoMode } from '../../utils/demoMode';
 import { Booking } from '../../types';
+import { SERVICE_CATEGORIES } from '../../constants/serviceCategories';
+import { DemoTripReceipt } from '../../utils/demoTrip';
 
 type RouteParams = {
-  Arrival: { bookingId?: string; booking?: Booking };
+  Arrival: { bookingId?: string; booking?: Booking; demoTrip?: DemoTripReceipt };
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,6 +25,7 @@ const ArrivalScreen: React.FC = () => {
   const route = useRoute<RouteProp<RouteParams, 'Arrival'>>();
   const bookingId = route.params?.bookingId;
   const paramBooking = route.params?.booking;
+  const demoTrip = isDemoMode() ? route.params?.demoTrip : undefined;
   const { setBookingStatus } = useBookingStore();
 
   const demoRun = isDemoMode();
@@ -34,7 +37,7 @@ const ArrivalScreen: React.FC = () => {
   const [booking, setBooking] = useState<Booking | null>(paramBooking ?? null);
   const [loading, setLoading] = useState(canFetch);
   const [error, setError] = useState<string | null>(
-    !paramBooking && !canFetch ? 'No trip summary is available for this booking.' : null,
+    !paramBooking && !demoTrip && !canFetch ? 'No trip summary is available for this booking.' : null,
   );
   const [finishing, setFinishing] = useState(false);
 
@@ -63,11 +66,12 @@ const ArrivalScreen: React.FC = () => {
   }, [bookingId, canFetch]);
 
   const handleComplete = async () => {
-    // Completing a trip is a database write. It only happens against a real
-    // booking row — demo/sample walkthroughs never touch the database.
+    if (demoTrip) {
+      navigation.navigate('Rating', { demoTrip });
+      return;
+    }
     if (!canPersist || !bookingId) {
-      setBookingStatus('completed');
-      navigation.navigate('Rating', { bookingId, booking: booking ?? undefined });
+      setError('A real completed booking is required before submitting trip completion.');
       return;
     }
     try {
@@ -92,7 +96,7 @@ const ArrivalScreen: React.FC = () => {
     );
   }
 
-  if (error || !booking) {
+  if (error || (!booking && !demoTrip)) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -103,22 +107,28 @@ const ArrivalScreen: React.FC = () => {
     );
   }
 
-  // Only recorded values are shown — nothing is estimated here.
-  const duration = booking.duration_min != null ? Number(booking.duration_min) : null;
-  const distance = booking.distance_km != null ? Number(booking.distance_km) : null;
+  // Production trip metrics are shown only when stored on the booking.
+  const duration = booking?.duration_min != null ? Number(booking.duration_min) : null;
+  const distance = booking?.distance_km != null ? Number(booking.distance_km) : null;
   const avgSpeed =
     duration !== null && distance !== null && duration > 0
       ? Math.round((distance / (duration / 60)) * 10) / 10
       : null;
 
-  const pickupPoint =
-    booking.pickup_lat != null && booking.pickup_lng != null
+  const pickupPoint = demoTrip?.pickupPoint ?? (
+    booking?.pickup_lat != null && booking.pickup_lng != null
       ? { lat: Number(booking.pickup_lat), lng: Number(booking.pickup_lng) }
-      : null;
-  const destPoint =
-    booking.dest_lat != null && booking.dest_lng != null
+      : null
+  );
+  const destPoint = demoTrip?.destinationPoint ?? (
+    booking?.dest_lat != null && booking.dest_lng != null
       ? { lat: Number(booking.dest_lat), lng: Number(booking.dest_lng) }
-      : null;
+      : null
+  );
+  const category = demoTrip?.category ?? booking?.category;
+  const pickupAddress = demoTrip?.pickupAddress ?? booking?.pickup_address ?? 'Unavailable';
+  const destinationAddress =
+    demoTrip?.destinationAddress ?? booking?.destination_address ?? 'Unavailable';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -128,9 +138,13 @@ const ArrivalScreen: React.FC = () => {
           <MapCanvas
             pickup={pickupPoint}
             destination={destPoint}
-            caption="Completed trip — straight-line preview"
-            pickupLabel={booking.pickup_address}
-            destinationLabel={booking.destination_address}
+            caption={
+              demoTrip
+                ? 'DEMO PREVIEW · no trip GPS recorded'
+                : 'Completed trip — recorded locations only'
+            }
+            pickupLabel={pickupAddress}
+            destinationLabel={destinationAddress}
           />
         </View>
 
@@ -140,11 +154,59 @@ const ArrivalScreen: React.FC = () => {
             <Text style={styles.redPin}>📍</Text>
           </View>
 
-          <Text style={styles.heading}>You have arrived</Text>
-          <Text style={styles.destinationName}>{booking.destination_address.split(',')[0]}</Text>
-          <Text style={styles.destinationAddress}>{booking.destination_address}</Text>
+          <Text style={styles.heading}>{demoTrip ? 'Trip Completed' : 'You have arrived'}</Text>
+          <Text style={styles.destinationName}>{destinationAddress.split(',')[0]}</Text>
+          <Text style={styles.destinationAddress}>{destinationAddress}</Text>
+          {demoTrip ? (
+            <Text style={styles.noticeText}>
+              DEMO PREVIEW · No real ambulance trip or backend completion occurred.
+            </Text>
+          ) : null}
 
-          {/* Trip Stats — recorded values only */}
+          {demoTrip ? (
+            <Card elevation="md" style={styles.statsCard}>
+              <Text style={styles.statLabel}>Demo trip ID</Text>
+              <Text style={styles.demoValue}>{demoTrip.id}</Text>
+              <Text style={styles.statLabel}>Pickup</Text>
+              <Text style={styles.demoValue}>{pickupAddress}</Text>
+              <Text style={styles.statLabel}>Destination</Text>
+              <Text style={styles.demoValue}>{destinationAddress}</Text>
+              <Text style={styles.statLabel}>Ambulance category</Text>
+              <Text style={styles.demoValue}>
+                {category ? SERVICE_CATEGORIES[category].name : 'Unavailable'}
+              </Text>
+              <Text style={styles.statLabel}>Distance</Text>
+              <Text style={styles.demoValue}>
+                {demoTrip.estimatedDistanceKm === null
+                  ? 'Unavailable'
+                  : `About ${demoTrip.estimatedDistanceKm.toFixed(1)} km · illustrative planned-route estimate`}
+              </Text>
+              <Text style={styles.statLabel}>Duration</Text>
+              <Text style={styles.demoValue}>Unavailable · no demo trip duration was measured</Text>
+              <Text style={styles.statLabel}>Completed (demo local time)</Text>
+              <Text style={styles.demoValue}>
+                {new Date(demoTrip.completedAt).toLocaleString()}
+              </Text>
+              <Text style={styles.statLabel}>Final fare</Text>
+              <Text style={styles.fareTotal}>
+                {demoTrip.fare
+                  ? `NPR ${demoTrip.fare.totalFare.toLocaleString('en-IN')} estimated`
+                  : 'Unavailable'}
+              </Text>
+              {demoTrip.fare ? (
+                <>
+                  <Text style={styles.fareLine}>
+                    Base NPR {demoTrip.fare.baseFare.toLocaleString('en-IN')} · Distance NPR{' '}
+                    {demoTrip.fare.distanceCharge.toLocaleString('en-IN')} · Service NPR{' '}
+                    {demoTrip.fare.serviceFee.toLocaleString('en-IN')}
+                  </Text>
+                  <Text style={styles.fareLine}>Rate source: current RESQ demo fare card</Text>
+                </>
+              ) : null}
+              <Text style={styles.fareLine}>Payment method: Cash (demo only)</Text>
+            </Card>
+          ) : (
+          /* Trip Stats — recorded values only */
           <Card elevation="md" style={styles.statsCard}>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
@@ -168,8 +230,9 @@ const ArrivalScreen: React.FC = () => {
               </Text>
             )}
           </Card>
+          )}
 
-          {(!canPersist || demoRun) && (
+          {!demoTrip && (!canPersist || demoRun) && (
             <Text style={styles.noticeText}>
               {demoRun
                 ? 'Demo mode — nothing was saved for this trip.'
@@ -177,14 +240,33 @@ const ArrivalScreen: React.FC = () => {
             </Text>
           )}
 
-          <Button
-            title={canPersist ? 'Complete trip & rate' : 'Rate this trip'}
-            onPress={handleComplete}
-            fullWidth
-            size="lg"
-            loading={finishing}
-            style={styles.finishButton}
-          />
+          {demoTrip ? (
+            <>
+              <Button
+                title="View Receipt"
+                onPress={() => navigation.navigate('ShareReceipt', { demoTrip })}
+                fullWidth
+                size="lg"
+                style={styles.finishButton}
+              />
+              <Button
+                title="Continue to Rating"
+                onPress={handleComplete}
+                fullWidth
+                size="lg"
+                style={styles.finishButton}
+              />
+            </>
+          ) : (
+            <Button
+              title={canPersist ? 'Complete trip & rate' : 'Rate this trip'}
+              onPress={handleComplete}
+              fullWidth
+              size="lg"
+              loading={finishing}
+              style={styles.finishButton}
+            />
+          )}
           <Button
             title="Back to trips"
             onPress={() => navigation.popTo('Activity')}
@@ -236,6 +318,9 @@ const styles = StyleSheet.create({
   statItem: { alignItems: 'center', flex: 1 },
   statValue: { ...typography.h2, color: colors.primary },
   statLabel: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center' },
+  demoValue: { ...typography.bodySmall, color: colors.text, fontWeight: '600', textAlign: 'center', marginBottom: spacing.xs },
+  fareTotal: { ...typography.h2, color: colors.primary, textAlign: 'center', marginVertical: spacing.xs },
+  fareLine: { ...typography.caption, color: colors.textSecondary, textAlign: 'center' },
   statDivider: { width: 1, height: 40, backgroundColor: colors.border },
   statsNote: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.md, textAlign: 'center' },
 

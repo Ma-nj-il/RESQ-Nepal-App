@@ -112,29 +112,10 @@ const PhoneRegistrationScreen: React.FC<PhoneRegistrationScreenProps> = ({ navig
               style={styles.socialIconButton}
               onPress={() => handleSocialLogin('Google')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Continue with Google"
             >
               <Text style={styles.socialIcon}>G</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.socialIconButton}
-              onPress={() => handleSocialLogin('Apple')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.socialIcon}>🍎</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.socialIconButton}
-              onPress={() => handleSocialLogin('Facebook')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.socialIcon}>f</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.socialIconButton}
-              onPress={() => handleSocialLogin('X')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.socialIcon}>𝕏</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

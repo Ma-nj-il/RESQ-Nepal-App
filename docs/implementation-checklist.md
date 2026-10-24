@@ -68,8 +68,8 @@ backend or external service by design (not built — see `docs/known-limitations
 | Item | Status | Notes |
 | --- | --- | --- |
 | Location permission handling | ✅ | `LocationPermissionScreen`, `expo-location` |
-| Real map rendering | ⛔ | requires a Google Maps API key per platform; labelled config state shown instead — never fake tiles |
-| Route/driver preview | 🟡 | schematic preview with a "requires API key" note; live positions come from `trip_locations` breadcrumbs when a driver streams them |
+| Real map rendering | ✅ | OpenStreetMap tiles via Leaflet in `react-native-webview`; no Google key required; attribution always visible |
+| Route/driver preview | 🟡 | dashed straight-line previews labelled as such; live positions come from `trip_locations` breadcrumbs when a driver streams them |
 
 ## 6. Payments & Wallet
 

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, Act
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Card, Badge, EmptyState } from '../../components/ui';
+import { Button, Card, Badge, EmptyState } from '../../components/ui';
 import { colors, spacing, typography, radii } from '../../constants/theme';
 import { bookingsService } from '../../services/database/bookings';
 import { isSupabaseConfigured } from '../../services/database/client';
@@ -37,9 +37,7 @@ const ActivityScreen: React.FC = () => {
 
   const loadBookings = useCallback(async () => {
     try {
-      // The demo session user is local-only (not a database UUID): show the
-      // labelled sample list instead of querying the database with it.
-      if (!isSupabaseConfigured || !userId || isDemoMode() || !UUID_RE.test(userId)) {
+      if (isDemoMode() || !isSupabaseConfigured) {
         setUsingSampleData(true);
         setBookings(SAMPLE_BOOKINGS);
         setError(null);
@@ -47,6 +45,11 @@ const ActivityScreen: React.FC = () => {
       }
 
       setUsingSampleData(false);
+      if (!userId || !UUID_RE.test(userId)) {
+        setBookings([]);
+        setError('Sign in to view your trip history.');
+        return;
+      }
       const data = await bookingsService.getByUser(userId);
       setError(null);
       setBookings(data);
@@ -90,13 +93,18 @@ const ActivityScreen: React.FC = () => {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
+    if (!dateStr || !Number.isFinite(date.getTime())) return 'Date not recorded';
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
+    if (!dateStr || !Number.isFinite(date.getTime())) return '';
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
+
+  const formatCategory = (category: Booking['category']) =>
+    category === 'icu' ? 'ICU / Emergency Ambulance' : 'Basic Patient Delivery';
 
   const formatFare = (booking: Booking) => {
     const fare = booking.final_fare ?? booking.estimated_fare;
@@ -128,8 +136,10 @@ const ActivityScreen: React.FC = () => {
           <Text style={styles.ambulanceIcon}>🚑</Text>
           <View style={styles.tripInfo}>
             <Text style={styles.dateTime}>
-              {formatDate(item.created_at)} • {formatTime(item.created_at)}
+              {formatDate(item.created_at)}
+              {formatTime(item.created_at) ? ` · ${formatTime(item.created_at)}` : ''}
             </Text>
+            <Text style={styles.category}>{formatCategory(item.category)}</Text>
           </View>
           {getStatusBadge(item.status)}
         </View>
@@ -143,10 +153,10 @@ const ActivityScreen: React.FC = () => {
           </View>
           <View style={styles.routeFields}>
             <Text style={styles.routeValue} numberOfLines={1}>
-              {item.pickup_address}
+              {item.pickup_address || 'Pickup not recorded'}
             </Text>
             <Text style={[styles.routeValue, styles.routeValueDest]} numberOfLines={1}>
-              {item.destination_address}
+              {item.destination_address || 'Destination not recorded'}
             </Text>
           </View>
         </View>
@@ -159,7 +169,9 @@ const ActivityScreen: React.FC = () => {
             <Text style={styles.price}>{formatFare(item)}</Text>
           </View>
           <View style={styles.footerActions}>
-            <Text style={styles.paymentTag}>Cash</Text>
+            {item.payment_method ? (
+              <Text style={styles.paymentTag}>{item.payment_method.toUpperCase()}</Text>
+            ) : null}
             <Text style={styles.chevron}>›</Text>
           </View>
         </View>
@@ -174,7 +186,27 @@ const ActivityScreen: React.FC = () => {
       canceled: { icon: '❌', title: 'No canceled trips', message: 'Trips you cancel will appear here.' },
     };
     const config = emptyConfig[activeTab];
-    return <EmptyState icon={config.icon} title={config.title} message={config.message} />;
+    const hasNoHistory = bookings.length === 0;
+    return (
+      <EmptyState
+        icon={config.icon}
+        title={hasNoHistory ? 'No trip history yet' : config.title}
+        message={
+          hasNoHistory
+            ? 'Your ambulance bookings will appear here once you request a trip.'
+            : config.message
+        }
+        action={
+          hasNoHistory ? (
+            <Button
+              title="Return to Home"
+              onPress={() => navigation.navigate('Home')}
+              style={styles.homeButton}
+            />
+          ) : undefined
+        }
+      />
+    );
   };
 
   const renderNotices = () => (
@@ -186,11 +218,6 @@ const ActivityScreen: React.FC = () => {
             : 'Sample mode — database not configured. Showing example bookings.'}
         </Text>
       )}
-      {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>{error}</Text>
-        </View>
-      )}
     </>
   );
 
@@ -200,6 +227,29 @@ const ActivityScreen: React.FC = () => {
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading your trips…</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorState}>
+          <Text style={styles.errorTitle}>Trip history unavailable</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <Button
+            title="Try again"
+            onPress={() => {
+              setRefreshing(true);
+              void loadBookings();
+            }}
+            loading={refreshing}
+          />
+          <Button
+            title="Return to Home"
+            variant="ghost"
+            onPress={() => navigation.navigate('Home')}
+            style={styles.homeButton}
+          />
         </View>
       );
     }
@@ -230,7 +280,7 @@ const ActivityScreen: React.FC = () => {
         >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Your trips</Text>
+        <Text style={styles.headerTitle}>My Trips History</Text>
       </View>
 
       {/* Tab Bar */}
@@ -298,6 +348,20 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
+  errorState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xxl,
+  },
+  errorTitle: { ...typography.h3, color: colors.text, textAlign: 'center' },
+  errorMessage: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginVertical: spacing.md,
+  },
+  homeButton: { marginTop: spacing.sm },
 
   // Bottom padding keeps the last trip card clear of the fixed tab bar.
   listContent: { padding: spacing.md, paddingBottom: spacing.xxxl, flexGrow: 1 },
@@ -325,6 +389,7 @@ const styles = StyleSheet.create({
   ambulanceIcon: { fontSize: 24 },
   tripInfo: { flex: 1 },
   dateTime: { ...typography.caption, color: colors.textSecondary },
+  category: { ...typography.caption, color: colors.text, fontWeight: '600', marginTop: 2 },
 
   routeBlock: { flexDirection: 'row', marginBottom: spacing.md },
   rail: { alignItems: 'center', width: 16, paddingVertical: 6 },

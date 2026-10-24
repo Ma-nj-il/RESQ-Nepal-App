@@ -88,7 +88,7 @@ If you use email magic links later, add your deep-link redirect.
    ```
    EXPO_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
    EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR-ANON-KEY
-   EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=
+   EXPO_PUBLIC_OSM_TILE_URL=
    ```
 
 4. Restart Metro (env changes need a restart):
@@ -162,13 +162,20 @@ column or update the application status independently of `drivers.status`.
 | `ambulances` | Available ones + own | Owner driver only |
 | `bookings` | Patient, assigned driver, or any verified driver while `pending` | Patient creates; involved parties update |
 | `booking_status_history` | Involved parties | Involved parties (auto-logged on status change) |
-| `trip_locations` | Involved parties | Assigned driver only |
+| `trip_locations` | Involved parties (base schema; active trips after tracking migration) | Assigned driver only (active trips after tracking migration) |
 | `ratings` | Involved parties | Passenger's own booking, matched to its recorded driver |
 | `notifications` / `saved_places` / `support_requests` | Own rows | Own rows |
 | `identity_documents` | Own rows only | Own rows only (`UPLOADED`/`REMOVED` metadata; owner trigger enforced) |
 | `registration_applications` | Own rows only | Submitted via RPC only; status mirrored from `drivers.status` |
 | `storage.objects` (`identity-documents`) | Own UID folder only | Own UID folder only; bucket is private |
 | `hospitals` | Everyone | Admin only (no client policy) |
+
+`supabase/migrations/20261024_secure_active_trip_tracking.sql` locally tightens the
+`trip_locations` policies to active bookings and binds writes to the authenticated assigned
+driver. It has not been applied to the hosted project; owner review and approval are required
+before deployment or any production tracking claim. The mobile
+`EXPO_PUBLIC_SECURE_TRIP_TRACKING_ENABLED` switch defaults off and should be enabled only after
+the migration is applied and authenticated access is verified; it does not replace RLS.
 
 ## 9. Limitations of the client-only model
 

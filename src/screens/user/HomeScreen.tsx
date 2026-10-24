@@ -1,16 +1,25 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, LayoutAnimation } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  LayoutAnimation,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
 import { Button } from '../../components/ui';
 import { MapCanvas } from '../../components/map/MapCanvas';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LIST } from '../../constants/serviceCategories';
 import { estimateFare } from '../../constants/fares';
+import { hospitalsService } from '../../services/database';
 import { locationService } from '../../services/location/locationService';
+import { getRoadRoute, RoadRoute } from '../../services/location/routeService';
 import { useAuthStore } from '../../store/authStore';
 import { useBookingStore } from '../../store/bookingStore';
-import { AmbulanceCategory } from '../../types';
+import { AmbulanceCategory, Hospital } from '../../types';
 import { buildCategoryOption } from '../../utils/categoryOption';
 import { formatKm, straightLineKm } from '../../utils/geo';
 
@@ -42,8 +51,37 @@ const HomeScreen: React.FC = () => {
   const { pickup, destination, selectedCategory, setPickup, setCategory } = useBookingStore();
   const [isLocating, setIsLocating] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const processingNavigation = useRef(false);
+  const [routeResponse, setRouteResponse] = useState<{
+    key: string;
+    status: 'ready' | 'no-route' | 'unavailable';
+    route?: RoadRoute;
+  } | null>(null);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [hospitalLoadFailed, setHospitalLoadFailed] = useState(false);
   // The device's own position, only ever set from a real location read.
   const [devicePoint, setDevicePoint] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    hospitalsService
+      .search('', 100)
+      .then((rows) => {
+        if (active) {
+          setHospitals(rows);
+          setHospitalLoadFailed(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHospitals([]);
+          setHospitalLoadFailed(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const applyCurrentLocation = useCallback(
     async (silent = false) => {
@@ -86,13 +124,98 @@ const HomeScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const routeDistanceKm =
-    pickup?.lat != null && pickup?.lng != null && destination?.lat != null && destination?.lng != null
-      ? straightLineKm(
-          { lat: pickup.lat, lng: pickup.lng },
-          { lat: destination.lat, lng: destination.lng },
-        )
+  useFocusEffect(
+    useCallback(() => {
+      processingNavigation.current = false;
+    }, []),
+  );
+
+  const pickupLat = pickup?.lat ?? null;
+  const pickupLng = pickup?.lng ?? null;
+  const destinationLat = destination?.lat ?? null;
+  const destinationLng = destination?.lng ?? null;
+  const routeKey =
+    pickupLat !== null &&
+    pickupLng !== null &&
+    destinationLat !== null &&
+    destinationLng !== null
+      ? `${pickupLat},${pickupLng};${destinationLat},${destinationLng}`
       : null;
+
+  useEffect(() => {
+    if (
+      routeKey === null ||
+      pickupLat === null ||
+      pickupLng === null ||
+      destinationLat === null ||
+      destinationLng === null
+    ) return;
+
+    const controller = new AbortController();
+    let active = true;
+
+    const debounce = setTimeout(() => {
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      void getRoadRoute(
+        { lat: pickupLat, lng: pickupLng },
+        { lat: destinationLat, lng: destinationLng },
+        controller.signal,
+      )
+        .then((result) => {
+          clearTimeout(timeout);
+          if (!active) return;
+          if (result) {
+            setRouteResponse({ key: routeKey, status: 'ready', route: result });
+          } else {
+            setRouteResponse({ key: routeKey, status: 'no-route' });
+          }
+        })
+        .catch(() => {
+          clearTimeout(timeout);
+          if (active) setRouteResponse({ key: routeKey, status: 'unavailable' });
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(debounce);
+      controller.abort();
+    };
+  }, [destinationLat, destinationLng, pickupLat, pickupLng, routeKey]);
+
+  const currentRouteResponse = routeResponse?.key === routeKey ? routeResponse : null;
+  const roadRoute = currentRouteResponse?.route ?? null;
+  const routeStatus =
+    routeKey === null ? 'idle' : currentRouteResponse?.status ?? 'loading';
+  const routeDistanceKm = roadRoute?.distanceKm ?? null;
+  const nearbyHospitals = useMemo(() => {
+    const origin =
+      pickupLat != null && pickupLng != null
+        ? { lat: pickupLat, lng: pickupLng }
+        : devicePoint;
+    if (!origin) return [];
+
+    return hospitals
+      .filter((hospital) => hospital.lat != null && hospital.lng != null)
+      .map((hospital) => ({
+        name: hospital.name,
+        lat: Number(hospital.lat),
+        lng: Number(hospital.lng),
+        distance: straightLineKm(origin, {
+          lat: Number(hospital.lat),
+          lng: Number(hospital.lng),
+        }),
+      }))
+      .filter(
+        (hospital) =>
+          Number.isFinite(hospital.lat) &&
+          Number.isFinite(hospital.lng) &&
+          hospital.distance <= 20,
+      )
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, 12)
+      .map(({ name, lat, lng }) => ({ name, lat, lng }));
+  }, [devicePoint, hospitals, pickupLat, pickupLng]);
 
   const handleSelectCategory = (key: AmbulanceCategory) => {
     if (key === selectedCategory) return;
@@ -115,12 +238,11 @@ const HomeScreen: React.FC = () => {
       return;
     }
 
-    // The route preview, category choice and primary action all live on this
-    // screen. Continue straight into the search instead of repeating the same
-    // trip information through extra explainer/confirmation screens.
+    if (processingNavigation.current) return;
+    processingNavigation.current = true;
+
     const ambulance = buildCategoryOption(SERVICE_CATEGORIES[selectedCategory]);
     const fare = estimateFare(selectedCategory, routeDistanceKm);
-
     navigation.navigate('Processing', {
       bookingData: {
         ambulance,
@@ -148,8 +270,11 @@ const HomeScreen: React.FC = () => {
               : null
           }
           current={devicePoint}
+          hospitals={nearbyHospitals}
+          route={roadRoute?.coordinates}
           pickupLabel={pickup?.address}
           destinationLabel={destination?.address}
+          interactive
           style={styles.map}
         />
 
@@ -235,11 +360,25 @@ const HomeScreen: React.FC = () => {
 
             {isLocating ? (
               <Text style={styles.metaLine}>Reading your current location…</Text>
-            ) : routeDistanceKm !== null ? (
-              <Text style={styles.metaLine}>{`Approx: ${formatKm(routeDistanceKm)} (straight line)`}</Text>
+            ) : routeStatus === 'loading' ? (
+              <Text style={styles.metaLine}>Calculating road route…</Text>
+            ) : roadRoute ? (
+              <Text style={styles.metaLine}>
+                Road estimate: {formatKm(routeDistanceKm)} · about {roadRoute.durationMinutes} min
+                {' '}(no live traffic)
+              </Text>
+            ) : routeStatus === 'no-route' ? (
+              <Text style={styles.metaLine}>No drivable route was found; distance and ETA are unavailable.</Text>
+            ) : routeStatus === 'unavailable' ? (
+              <Text style={styles.metaLine}>Road route unavailable; distance and ETA are unknown.</Text>
             ) : null}
 
             {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+            {hospitalLoadFailed ? (
+              <Text style={styles.metaLine}>
+                Nearby hospital pins are unavailable. Search the directory to choose a destination.
+              </Text>
+            ) : null}
 
             <Text style={styles.sectionLabel}>Select Ambulance Type</Text>
 

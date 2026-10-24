@@ -6,15 +6,17 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  TouchableOpacity } from 'react-native';
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Badge, EmptyState } from '../../components/ui';
 import { colors, spacing, typography, radii } from '../../constants/theme';
 import { Booking } from '../../types';
-import { supabase, isSupabaseConfigured } from '../../services/database';
+import { supabase } from '../../services/database';
 import { isDemoMode } from '../../utils/demoMode';
 import { useDriverDemoStore } from '../../store/driverDemoStore';
+import { useAuthStore } from '../../store/authStore';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
 const REQUEST_EXPIRY_SECONDS = 60;
 
@@ -23,7 +25,8 @@ const DriverRequestsScreen: React.FC = () => {
 
   // Demo walkthrough — sample requests live in an isolated in-memory store;
   // accepting or declining here never touches the real database.
-  const walkthrough = isDemoMode() || !isSupabaseConfigured;
+  const isDemoDriver = useAuthStore((state) => state.isDemoDriver);
+  const walkthrough = isDemoMode() && isDemoDriver;
   const demoRequests = useDriverDemoStore((s) => s.requests);
   const acceptDemoRequest = useDriverDemoStore((s) => s.acceptRequest);
   const declineDemoRequest = useDriverDemoStore((s) => s.declineRequest);
@@ -33,7 +36,6 @@ const DriverRequestsScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
-  const [usingSampleData, setUsingSampleData] = useState(false);
 
   // The walkthrough requests are projected into the same shape the card
   // renders, so both paths share one presentation.
@@ -73,11 +75,9 @@ const DriverRequestsScreen: React.FC = () => {
     setError(null);
     try {
       if (walkthrough) {
-        setUsingSampleData(true);
         setLoading(false);
         return;
       }
-      setUsingSampleData(false);
       const { data, error: fetchError } = await supabase
         .from('bookings')
         .select('*')
@@ -187,6 +187,7 @@ const DriverRequestsScreen: React.FC = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <DriverNavigationHeader title="Requests" showBack />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading requests...</Text>
@@ -198,6 +199,7 @@ const DriverRequestsScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
+        <DriverNavigationHeader title="Requests" showBack />
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <Button title="Retry" variant="outline" onPress={loadRequests} />
@@ -209,31 +211,16 @@ const DriverRequestsScreen: React.FC = () => {
   if (displayRequests.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.headerBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-          >
-            <Text style={styles.headerBackText}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Requests</Text>
-        </View>
+        <DriverNavigationHeader title="Requests" showBack />
         <View style={styles.emptyWrap}>
           <EmptyState
             icon="📋"
-            title={walkthrough ? 'No Walkthrough Requests Left' : 'No Incoming Requests'}
-            message={
-              walkthrough
-                ? 'Every sample request was accepted or declined. Restart the walkthrough to bring them back.'
-                : 'New booking requests will appear here when patients request ambulances near you.'
-            }
+            title="No Incoming Requests"
+            message="New booking requests will appear here when patients request ambulances near you."
           />
           {walkthrough && (
             <Button
-              title="Restart walkthrough"
+              title="Refresh Requests"
               variant="outline"
               onPress={() => useDriverDemoStore.getState().restart()}
               style={styles.restartButton}
@@ -246,37 +233,13 @@ const DriverRequestsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.headerBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-        >
-          <Text style={styles.headerBackText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Requests</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{displayRequests.length}</Text>
-        </View>
-      </View>
+      <DriverNavigationHeader title={`Requests (${displayRequests.length})`} showBack />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {usingSampleData && (
-          <Card elevation="sm" style={styles.sampleCard}>
-            <Text style={styles.sampleText}>
-              {isDemoMode()
-                ? 'Walkthrough — sample requests for this demo session. Accepting or declining does not touch real bookings.'
-                : '⚠️ Sample build — database not configured. Showing example requests.'}
-            </Text>
-          </Card>
-        )}
-
         {displayRequests.map((request) => (
           <Card key={request.id} elevation="sm" style={styles.requestCard}>
             {/* Header Row */}
@@ -381,10 +344,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
   },
-  restartButton: {
-    alignSelf: 'center',
-    marginTop: spacing.md,
-  },
+  restartButton: { alignSelf: 'center', marginTop: spacing.md },
   loadingText: {
     ...typography.body,
     color: colors.textSecondary,
@@ -421,21 +381,6 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text,
   },
-  countBadge: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.full,
-    minWidth: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-    paddingHorizontal: 6,
-  },
-  countText: {
-    color: colors.surface,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   scrollView: {
     flex: 1,
   },
@@ -443,11 +388,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xxxl,
   },
-  sampleCard: {
-    backgroundColor: colors.amberLight,
-    marginBottom: spacing.lg,
-  },
-  sampleText: { ...typography.bodySmall, color: colors.warning },
   requestCard: {
     marginBottom: spacing.lg,
   },

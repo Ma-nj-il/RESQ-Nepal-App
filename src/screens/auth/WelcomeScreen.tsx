@@ -42,7 +42,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           <Text style={styles.subheading}>Let&apos;s dive in to your account</Text>
         </View>
 
-        {/* Social Login Buttons */}
+        {/* Google is shown as an option but reports that OAuth is not configured. */}
         <View style={styles.socialContainer}>
           <TouchableOpacity
             style={styles.socialButton}
@@ -53,32 +53,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
             <Text style={styles.socialText}>Continue with Google</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={() => handleSocialLogin('Apple')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.socialIcon}>🍎</Text>
-            <Text style={styles.socialText}>Continue with Apple</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={() => handleSocialLogin('Facebook')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.socialIcon}>f</Text>
-            <Text style={styles.socialText}>Continue with Facebook</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={() => handleSocialLogin('X')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.socialIcon}>𝕏</Text>
-            <Text style={styles.socialText}>Continue with X</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Or Divider */}
@@ -93,6 +67,17 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           <Button title="Sign up" onPress={handleSignUp} fullWidth size="lg" />
           <View style={styles.spacer} />
           <Button title="Sign in" onPress={handleSignIn} fullWidth size="lg" variant="outline" />
+        </View>
+
+        <View style={styles.driverEntry}>
+          <Text style={styles.driverPrompt}>Are you an ambulance driver?</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('DriverLogin')}
+            accessibilityRole="button"
+            accessibilityLabel="Driver Login"
+          >
+            <Text style={styles.driverLink}>🚑  Driver Login</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Footer Links */}
@@ -207,6 +192,9 @@ const styles = StyleSheet.create({
   actionContainer: {
     marginBottom: spacing.xl,
   },
+  driverEntry: { alignItems: 'center', marginBottom: spacing.md },
+  driverPrompt: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs },
+  driverLink: { ...typography.body, color: colors.primary, fontWeight: '700', padding: spacing.sm },
   spacer: {
     height: spacing.md,
   },

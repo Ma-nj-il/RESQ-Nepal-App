@@ -4,7 +4,7 @@ import { BookingStatusHistory } from '../../types';
 export interface TripLocation {
   id?: number;
   booking_id: string;
-  driver_id?: string;
+  driver_id: string;
   lat: number;
   lng: number;
   heading?: number;
@@ -14,21 +14,21 @@ export interface TripLocation {
 
 export const tripsService = {
   /**
-   * Appends a GPS breadcrumb for an active trip. Only the assigned
-   * driver can insert (enforced by RLS "trip_locations_insert_driver").
+   * Appends a GPS breadcrumb for an active trip. The database RLS policy
+   * verifies the authenticated driver's assignment and active booking status.
    */
   async recordLocation(location: TripLocation): Promise<void> {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) throw new Error('Trip tracking is unavailable.');
     const { error } = await supabase.from('trip_locations').insert(location);
     if (error) throw error;
   },
 
   /** Latest breadcrumb for the live tracking map. */
   async getLatestLocation(bookingId: string): Promise<TripLocation | null> {
-    if (!isSupabaseConfigured) return null;
+    if (!isSupabaseConfigured) throw new Error('Trip tracking is unavailable.');
     const { data, error } = await supabase
       .from('trip_locations')
-      .select('*')
+      .select('id, booking_id, driver_id, lat, lng, heading, speed_kmh, recorded_at')
       .eq('booking_id', bookingId)
       .order('recorded_at', { ascending: false })
       .limit(1)

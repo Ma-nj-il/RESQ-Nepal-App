@@ -9,6 +9,7 @@ import DriverRegistrationScreen from '../screens/driver/DriverRegistrationScreen
 import VehicleManagementScreen from '../screens/driver/VehicleManagementScreen';
 import DriverTripScreen from '../screens/driver/DriverTripScreen';
 import DriverSettingsScreen from '../screens/driver/DriverSettingsScreen';
+import DriverDrawerScreen from '../screens/driver/DriverDrawerScreen';
 import ApplicationStatusScreen from '../screens/user/ApplicationStatusScreen';
 import CitizenshipRegistrationScreen from '../screens/user/CitizenshipRegistrationScreen';
 
@@ -30,6 +31,11 @@ export const DriverNavigator = () => {
       <Stack.Screen name="VehicleManagement" component={VehicleManagementScreen} />
       <Stack.Screen name="DriverTrip" component={DriverTripScreen} />
       <Stack.Screen name="DriverSettings" component={DriverSettingsScreen} />
+      <Stack.Screen
+        name="DriverDrawer"
+        component={DriverDrawerScreen}
+        options={{ presentation: 'transparentModal', animation: 'none' }}
+      />
       <Stack.Screen name="Help" component={HelpScreen} />
       <Stack.Screen name="FAQ" component={FAQScreen} />
       <Stack.Screen name="Language" component={LanguageScreen} />

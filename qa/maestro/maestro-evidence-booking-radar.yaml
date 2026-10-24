@@ -5,16 +5,10 @@ appId: host.exp.Exponent
 # Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-evidence-booking-radar.yaml
 - tapOn: ".*Find Ambulance.*"
 - extendedWaitUntil:
-    visible: ".*Booking Status.*"
+    visible: ".*Finding an Ambulance.*"
     timeout: 30000
-- assertVisible: ".*Cancel request.*"
+- assertNotVisible: ".*Booking Status.*"
 - takeScreenshot: after-searching-radar-a
 - waitForAnimationToEnd:
     timeout: 1200
 - takeScreenshot: after-searching-radar-b
-- tapOn:
-    text: "←"
-    index: 0
-- extendedWaitUntil:
-    visible: ".*Find Ambulance.*"
-    timeout: 20000

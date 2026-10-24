@@ -1,53 +1,30 @@
 appId: host.exp.Exponent
 ---
-# UI-refinement verification — ambulance sheet, trip history, rating,
+# UI-refinement verification — User drawer, trip history, rating,
 # notifications and SOS (Flow B), self-contained.
 # Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-verify-history-rating-sos.yaml
 - runFlow: maestro-signin-demo.yaml
 
-# ── Ambulance selection sheet (categories first) ────────────────────────────
-# The bottom tab bar is gone (map-first home); every destination is reached
-# through the top-left menu drawer now.
+# ── Simplified User drawer ───────────────────────────────────────────────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 20000
-- scrollUntilVisible:
-    element:
-      text: "^Ambulance$"
-    direction: DOWN
-    timeout: 20000
-    centerElement: true
-- tapOn: "^Ambulance$"
-- extendedWaitUntil:
-    visible: ".*Book by service.*"
-    timeout: 20000
-- takeScreenshot: ui-04b-ambulance-list-live
-# Let the native map settle, then capture again to check for transient artifacts.
-- extendedWaitUntil:
-    notVisible: "ZZZ-never-visible-zzz"
-    timeout: 5000
-- takeScreenshot: ui-04c-ambulance-list-settled
-# The back control is an accessibility button label ("Go back").
-- tapOn: "Go back"
-- extendedWaitUntil:
-    visible: ".*Find Ambulance.*"
-    timeout: 20000
+- assertNotVisible: "Tips"
+- assertNotVisible: "^Ambulance$"
+- assertNotVisible: "Safety & SOS"
+- assertNotVisible: "Become a Driver"
+- takeScreenshot: ui-user-drawer
+- tapOn: "Close menu"
 
 # ── Trip history (Activity) ─────────────────────────────────────────────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 20000
-- scrollUntilVisible:
-    element:
-      text: "^My Trips$"
-    direction: DOWN
-    timeout: 20000
-    centerElement: true
-- tapOn: "^My Trips$"
+- tapOn: "My Trips History"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: ".*My Trips History.*"
     timeout: 20000
 - takeScreenshot: ui-09-activity-ongoing
 - tapOn: "Completed"
@@ -114,13 +91,9 @@ appId: host.exp.Exponent
 # mid-transition (which swallowed it once on a first run).
 - waitForAnimationToEnd:
     timeout: 10000
-- tapOn: "Done"
-- extendedWaitUntil:
-    visible: ".*Your trips.*"
-    timeout: 20000
-# Return Home via the Activity header back button, then reach Account through
-# the drawer (the bottom tab bar no longer exists).
-- tapOn: "Go back"
+- tapOn: "Back to Home"
+# Rating completion returns directly to Home; reach Account through the drawer
+# (the bottom tab bar no longer exists).
 - extendedWaitUntil:
     visible: ".*Find Ambulance.*"
     timeout: 20000
@@ -128,7 +101,7 @@ appId: host.exp.Exponent
 # ── Notifications inbox ─────────────────────────────────────────────────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 20000
 - scrollUntilVisible:
     element:

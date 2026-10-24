@@ -1,8 +1,8 @@
 appId: host.exp.Exponent
 ---
 # UI-refinement verification — booking journey (A), self-contained.
-# Launches Expo Go, signs in via demo OTP, then walks the compact booking flow:
-# Home (route preview + category) -> searching (animated radar) -> assigned.
+# Launches Expo Go, signs in via demo OTP, then walks the existing booking flow:
+# Home (route preview + category) -> Processing radar and same-screen search.
 # Preconditions: demo dev server on 8081, Expo Go installed.
 # Run: maestro test --udid <SIM_UDID> qa/maestro/maestro-verify-booking.yaml
 - launchApp
@@ -10,6 +10,10 @@ appId: host.exp.Exponent
 - extendedWaitUntil:
     visible: ".*Let's dive in to your account.*"
     timeout: 120000
+- tapOn: "Driver Login"
+- assertVisible: "Login via Demo"
+- tapOn: "Return to User Mode"
+- assertVisible: ".*Let's dive in to your account.*"
 - tapOn: "Sign in"
 - extendedWaitUntil:
     visible: ".*Welcome Back.*"
@@ -48,6 +52,9 @@ appId: host.exp.Exponent
 - tapOn: "Maybe Later"
 - assertVisible: ".*Find Ambulance.*"
 - takeScreenshot: ui-01-home
+- tapOn: "Open menu"
+- assertVisible: "RESQ Nepal"
+- tapOn: "Close menu"
 # Simulator GPS can be flaky — if the pickup did not auto-fill, set it here.
 - tapOn:
     text: ".*Tap to set pickup location.*"
@@ -86,41 +93,124 @@ appId: host.exp.Exponent
 - takeScreenshot: ui-04b-home-icu-selected
 - tapOn: ".*Transport for routine hospital visits and patient transfers.*"
 - takeScreenshot: ui-04c-home-patient-selected-again
-# ── Primary action goes straight to the map-first search state ──────────────
+# ── Primary action keeps the existing Processing radar open while searching ─
 - tapOn: ".*Find Ambulance.*"
 - extendedWaitUntil:
-    visible: ".*Booking Status.*"
-    timeout: 30000
-- takeScreenshot: ui-05-searching
-# The searching screen must offer cancellation while the radar runs.
-- assertVisible: ".*Cancel request.*"
-- assertVisible: ".*not live GPS.*"
-- assertNotVisible: ".*Payment Method.*"
-# ── Demo timeline: assigned state (clearly labelled sample, no fake plate) ──
-- extendedWaitUntil:
-    visible: ".*Track Ambulance.*"
-    timeout: 40000
-- takeScreenshot: ui-06-status-assigned
-- tapOn: ".*Track Ambulance.*"
-- extendedWaitUntil:
-    visible: ".*Demo walkthrough.*"
-    timeout: 15000
-- tapOn: "OK"
-- assertVisible: ".*Sample crew state.*"
-- assertVisible: ".*no real driver, vehicle or registration.*"
-# No contact number is ever rendered as text; on real bookings the number is
-# only handed to the native dialer.
-- assertNotVisible: '.*\+977.*'
-- takeScreenshot: ui-07-assigned-crew
-- tapOn: ".*Call Driver.*"
-- extendedWaitUntil:
-    visible: ".*No call is placed in the demo.*"
+    visible: ".*Finding an Ambulance.*"
+    timeout: 20000
+- assertVisible: ".*Demo mode — no booking was sent to dispatch.*"
+- assertNotVisible: ".*Booking Status.*"
+- assertNotVisible: ".*Ambulance Assigned.*"
+- takeScreenshot: ui-05-processing-radar-searching
+- scrollUntilVisible:
+    element:
+      text: "Preview Assigned Ambulance"
+    direction: DOWN
     timeout: 10000
+- tapOn: "Preview Assigned Ambulance"
+- assertVisible: ".*Ambulance Assigned.*"
+- scrollUntilVisible:
+    element:
+      text: "DEMO PREVIEW"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "DEMO PREVIEW"
+- assertVisible: "Maya Demo"
+- assertVisible: ".*DEMO-AMB-001.*"
+- assertVisible: ".*simulated local coordinates.*"
+- assertNotVisible: ".*Booking Status.*"
+- takeScreenshot: ui-06-processing-demo-assigned
+- tapOn: "Open menu"
+- assertVisible: "RESQ Nepal"
+- tapOn: "Close menu"
+- scrollUntilVisible:
+    element:
+      text: "Call Driver"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Call Driver"
+- assertVisible: "Driver calling is not connected in this demo."
 - tapOn: "OK"
-# ── Back to Home ────────────────────────────────────────────────────────────
-- tapOn:
-    text: "←"
-    index: 0
+- scrollUntilVisible:
+    element:
+      text: "Complete Demo Trip"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Complete Demo Trip"
+- assertVisible: "Trip Completed"
+- scrollUntilVisible:
+    element:
+      text: "DEMO-TRIP-001"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "DEMO-TRIP-001"
+- assertVisible: ".*DEMO PREVIEW.*"
+- scrollUntilVisible:
+    element:
+      text: "Duration"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "Duration"
+- scrollUntilVisible:
+    element:
+      text: "View Receipt"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "View Receipt"
+- takeScreenshot: ui-07-trip-completed
+- tapOn: "View Receipt"
+- assertVisible: "Demo Trip Receipt"
+- scrollUntilVisible:
+    element:
+      text: "Cash · demo only"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "Cash · demo only"
+- assertVisible: "Driver / vehicle"
+- scrollUntilVisible:
+    element:
+      text: "Continue to Rating"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "Continue to Rating"
+- takeScreenshot: ui-08-demo-receipt
+- tapOn: "Continue to Rating"
+- assertVisible: "Rate your driver"
+- assertVisible: ".*Sample driver.*"
+- tapOn: "5 stars"
+- assertVisible: "Excellent"
+- scrollUntilVisible:
+    element:
+      text: "Submit Rating"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Submit Rating"
+- assertVisible: "Rating submitted"
+- assertVisible: ".*No driver was notified.*"
+- takeScreenshot: ui-09-rating-submitted
+- tapOn: "Back to Home"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- scrollUntilVisible:
+    element:
+      text: "Switch to Driver Mode"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Switch to Driver Mode"
+- assertVisible: "Login via Demo"
+- tapOn: "Login via Demo"
+- extendedWaitUntil:
+    visible: ".*DEMO DRIVER.*"
+    timeout: 30000
+- tapOn: "☰"
+- scrollUntilVisible:
+    element:
+      text: "Switch to User Mode"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Switch to User Mode"
 - extendedWaitUntil:
     visible: ".*Find Ambulance.*"
     timeout: 20000

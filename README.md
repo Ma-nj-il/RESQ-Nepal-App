@@ -36,7 +36,7 @@ All values are public client values — never commit secrets.
 | --- | --- |
 | `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon (public) key — protected by RLS |
-| `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` | Google Maps key for live map tiles (iOS + Android keys as needed) |
+| `EXPO_PUBLIC_OSM_TILE_URL` | Optional OpenStreetMap XYZ tile template (HTTPS, `{z}/{x}/{y}`); defaults to community OSM tiles for development |
 
 After editing `.env`, restart `npx expo start` (Expo reads env at bundle time).
 
@@ -59,10 +59,13 @@ After editing `.env`, restart `npx expo start` (Expo reads env at bundle time).
 
 ### Maps
 
-Maps render through `react-native-maps`. Live tiles need a Google Maps key
-(Android: `app.json`; iOS: dev-build required). Without a key the app shows a
-clearly-labelled schematic preview instead of fake tiles. Setup details:
-[`docs/maps-setup.md`](docs/maps-setup.md).
+Maps use real **OpenStreetMap** raster tiles rendered by Leaflet inside a
+`react-native-webview`. There is **no Google Maps SDK, API key or billing**
+involved on either platform. The attribution “© OpenStreetMap contributors”
+is always visible on the map, and map data is never fabricated. The community
+tile service is intended for development and light use; set
+`EXPO_PUBLIC_OSM_TILE_URL` to your own or a commercial OSM-derived provider
+before shipping. See [`docs/maps-setup.md`](docs/maps-setup.md).
 
 ## Running the app
 
@@ -107,8 +110,8 @@ resq-nepal-mobile/
 ├── supabase/reset.sql       # destructive reset (dedicated dev projects only)
 ├── docs/                    # design, database, maps, testing, limitations
 └── src/
-    ├── components/ui/       # Button, Card, Input, Header, Badge, …
-    ├── constants/           # theme tokens, fare rate card
+    ├── components/          # UI primitives (ui/) and OSM map wrapper (map/)
+    ├── constants/           # theme tokens, fare rate card, map configuration
     ├── navigation/          # Auth / User / Driver navigators
     ├── screens/
     │   ├── auth/            # onboarding, phone, OTP, registration, …
@@ -149,7 +152,7 @@ Supabase platform enforces) or openly documented as unimplemented:
 | `docs/design-system.md` | Colors, type, spacing, components |
 | `docs/database-setup.md` | Supabase setup, admin verification SQL |
 | `docs/database-schema.md` | Tables, relationships, RLS summary |
-| `docs/maps-setup.md` | Google Maps keys, config states |
+| `docs/maps-setup.md` | OpenStreetMap tiles, provider configuration, tile policy |
 | `docs/testing-report.md` | What was verified, how, and the results |
 | `docs/implementation-checklist.md` | Requirement-by-requirement status |
 | `docs/known-limitations.md` | Honest boundaries of this build |

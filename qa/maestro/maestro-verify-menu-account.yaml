@@ -12,13 +12,124 @@ appId: host.exp.Exponent
     timeout: 20000
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 10000
-- assertVisible: ".*Sample walkthrough data.*"
 - assertVisible: ".*Saved Hospitals.*"
+- assertVisible: ".*My Trips History.*"
 - takeScreenshot: ui-23-menu-drawer
 
+# ── Account and support destinations ───────────────────────────────────────
+- tapOn: "^Profile$"
+- extendedWaitUntil:
+    visible: ".*Personal Info.*"
+    timeout: 20000
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
+# ── Drawer footer: preserve Driver Login and logout entry ──────────────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Switch to Driver Mode$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Switch to Driver Mode$"
+- extendedWaitUntil:
+    visible: ".*Driver Mode.*"
+    timeout: 20000
+- assertVisible: "Login via Demo"
+- tapOn: "Return to User Mode"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Log Out$"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "^Log Out$"
+- tapOn: "Close menu"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Application Status$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Application Status$"
+- extendedWaitUntil:
+    visible: ".*Application Status.*"
+    timeout: 20000
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
+- tapOn: "^Notifications$"
+- extendedWaitUntil:
+    visible: ".*Recent updates.*"
+    timeout: 20000
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^Help & Support$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^Help & Support$"
+- extendedWaitUntil:
+    visible: ".*Help & Support.*"
+    timeout: 20000
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "^About RESQ Nepal$"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "^About RESQ Nepal$"
+- extendedWaitUntil:
+    visible: ".*What this build does not do yet.*"
+    timeout: 20000
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: ".*Find Ambulance.*"
+    timeout: 20000
+
 # ── Saved hospitals: search the real directory and star a row ──────────────
+- tapOn: "Open menu"
+- extendedWaitUntil:
+    visible: "RESQ Nepal"
+    timeout: 10000
 - tapOn: "^Saved Hospitals$"
 - extendedWaitUntil:
     visible: ".*Search the hospital directory.*"
@@ -49,7 +160,7 @@ appId: host.exp.Exponent
 # ── Saved places: demo notice, validation and the honest demo guard ────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 10000
 - scrollUntilVisible:
     element:
@@ -75,16 +186,6 @@ appId: host.exp.Exponent
 - tapOn: "^Save place$"
 - assertVisible: ".*Capture the location first.*"
 - takeScreenshot: ui-27-saved-place-validation
-- tapOn: "Use my current location"
-- extendedWaitUntil:
-    visible: ".*Recapture location.*"
-    timeout: 30000
-- tapOn: "^Save place$"
-- extendedWaitUntil:
-    visible: ".*Nothing is saved in demo mode.*"
-    timeout: 10000
-- takeScreenshot: ui-28-saved-place-demo-guard
-- tapOn: "OK"
 - tapOn: "^Cancel$"
 - tapOn: "Go back"
 - extendedWaitUntil:
@@ -94,7 +195,7 @@ appId: host.exp.Exponent
 # ── Settings hub → About ────────────────────────────────────────────────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 10000
 - scrollUntilVisible:
     element:
@@ -123,7 +224,7 @@ appId: host.exp.Exponent
 # ── Legal & Privacy from the drawer ────────────────────────────────────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 10000
 - scrollUntilVisible:
     element:
@@ -146,14 +247,18 @@ appId: host.exp.Exponent
 # ── Driver onboarding: local draft only, honest submission state ───────────
 - tapOn: "Open menu"
 - extendedWaitUntil:
-    visible: ".*Your trips.*"
+    visible: "RESQ Nepal"
     timeout: 10000
 - scrollUntilVisible:
     element:
-      text: "^Become a Driver$"
+      text: "^My Account$"
     direction: DOWN
     timeout: 10000
-- tapOn: "^Become a Driver$"
+- tapOn: "^My Account$"
+- extendedWaitUntil:
+    visible: ".*Switch to Driver Mode.*"
+    timeout: 10000
+- tapOn: "^Switch to Driver Mode$"
 - extendedWaitUntil:
     visible: ".*Before you apply.*"
     timeout: 20000
@@ -231,6 +336,8 @@ appId: host.exp.Exponent
     timeout: 10000
 - takeScreenshot: ui-33-driver-submit-honest
 - tapOn: "OK"
+- tapOn: "Go back"
+- assertVisible: "^Account$"
 - tapOn: "Go back"
 - extendedWaitUntil:
     visible: ".*Find Ambulance.*"

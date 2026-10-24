@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Badge, Button, Card, Toggle } from '../../components/ui';
+import { Button, Card, Toggle } from '../../components/ui';
 import { MapCanvas } from '../../components/map/MapCanvas';
 import { colors, spacing, typography, radii } from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
@@ -19,23 +19,18 @@ import { Driver, Ambulance } from '../../types';
 import { driversService, bookingsService, ambulancesService, isSupabaseConfigured } from '../../services/database';
 import { locationService } from '../../services/location/locationService';
 import { isDemoMode } from '../../utils/demoMode';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
-type TabKey = 'home' | 'requests' | 'earnings' | 'profile';
-
-// Fictional driver identity used ONLY by the Driver Mode demo walkthrough
-// (demo builds or a build without Supabase credentials). Every screen that
-// shows it labels it as sample data, nothing is ever written to a database,
-// and the plate is not a real registration. The patient-side demo uses the
-// same fictional crew so both sides tell one consistent story.
+// Fictional profile used only after explicit demo-driver login; it is never
+// written to the database.
 const WALKTHROUGH_DRIVER: Driver = {
   id: 'walkthrough-driver',
   user_id: 'walkthrough-user',
   license_number: 'WALKTHROUGH-LIC',
   license_expiry: '2030-12-31',
-  status: 'verified',
+  status: 'pending',
   rating: 0,
   total_rides: 0,
-  verified_at: '2026-01-01',
   created_at: '2026-01-01',
 };
 
@@ -43,34 +38,33 @@ const WALKTHROUGH_AMBULANCE: Ambulance = {
   id: 'walkthrough-ambulance',
   driver_id: 'walkthrough-driver',
   category: 'icu',
-  plate_number: 'BA 2 KHA 4321',
-  model: 'Force Traveller',
+  plate_number: '—',
+  model: 'Ambulance',
   color: 'White',
-  status: 'available',
+  status: 'offline',
   equipment: ['Oxygen', 'Stretcher', 'Ventilator', 'Defibrillator', 'First Aid Kit'],
-  hospital_affiliation: 'Walkthrough sample',
+  hospital_affiliation: '',
   created_at: '2026-01-01',
 };
 
 const DriverHomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { user } = useAuthStore();
+  const { user, returnToUserMode } = useAuthStore();
+  const isDemoDriver = useAuthStore((state) => state.isDemoDriver);
 
   const [isOnline, setIsOnline] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [driver, setDriver] = useState<Driver | null>(null);
   const [ambulance, setAmbulance] = useState<Ambulance | null>(null);
   const [incomingCount, setIncomingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [usingSampleData, setUsingSampleData] = useState(false);
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayTrips, setTodayTrips] = useState(0);
 
   // Demo walkthrough runs only in demo/sample builds (never production) and
   // is fully in-memory: sample requests come from the isolated store, and
   // the online toggle never touches real availability.
-  const walkthrough = isDemoMode() || !isSupabaseConfigured;
+  const walkthrough = isDemoMode() && isDemoDriver;
   const demoRequests = useDriverDemoStore((s) => s.requests);
   const demoCompletedTrips = useDriverDemoStore((s) => s.completedTrips);
   const demoOnline = useDriverDemoStore((s) => s.isOnline);
@@ -91,7 +85,7 @@ const DriverHomeScreen: React.FC = () => {
     loadDriverData();
     // Load exactly once on mount — loadDriverData reads fresh state internally.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [walkthrough]);
 
   // The dashboard map shows the device's own position only when the OS
   // actually provides one — never a simulated feed, and never a claim of
@@ -126,11 +120,8 @@ const DriverHomeScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (isDemoMode() || !isSupabaseConfigured) {
-        // Walkthrough mode — fictional sample data so the whole driver
-        // journey is reviewable without touching the database. Every screen
-        // labels it as sample data.
-        setUsingSampleData(!isDemoMode());
+      if (walkthrough) {
+        // This profile and its actions remain local to the demo session.
         setDriver(WALKTHROUGH_DRIVER);
         setAmbulance(WALKTHROUGH_AMBULANCE);
         setTodayEarnings(0);
@@ -138,7 +129,6 @@ const DriverHomeScreen: React.FC = () => {
         return;
       }
 
-      setUsingSampleData(false);
       const userId = user?.id;
       if (!userId) {
         setDriver(null);
@@ -207,65 +197,10 @@ const DriverHomeScreen: React.FC = () => {
     void handleOnlineChange(true);
   };
 
-  const handleRestartWalkthrough = () => {
-    useDriverDemoStore.getState().restart();
-  };
-
-  const handleHamburgerPress = () => {
-    navigation.navigate('DriverSettings');
-  };
-
-  const renderBottomNav = () => {
-    const tabs: { key: TabKey; label: string; icon: string }[] = [
-      { key: 'home', label: 'Home', icon: '🏠' },
-      { key: 'requests', label: 'Requests', icon: '📋' },
-      { key: 'earnings', label: 'Earnings', icon: '💰' },
-      { key: 'profile', label: 'Profile', icon: '👤' },
-    ];
-
-    return (
-      <View style={styles.bottomNav}>
-        {tabs.map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={styles.bottomNavItem}
-            onPress={() => {
-              if (tab.key === 'home') {
-                setActiveTab('home');
-              } else {
-                navigation.navigate(
-                  tab.key === 'requests'
-                    ? 'DriverRequests'
-                    : tab.key === 'earnings'
-                    ? 'DriverEarnings'
-                    : 'DriverProfile'
-                );
-              }
-            }}
-          >
-            <Text style={styles.bottomNavIcon}>{tab.icon}</Text>
-            <Text
-              style={[
-                styles.bottomNavLabel,
-                activeTab === tab.key && styles.bottomNavLabelActive,
-              ]}
-            >
-              {tab.label}
-            </Text>
-            {tab.key === 'requests' && incomingRequests > 0 && (
-              <View style={styles.badgeDot}>
-                <Text style={styles.badgeDotText}>{incomingRequests}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <DriverNavigationHeader title="Driver" />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading driver data...</Text>
@@ -279,15 +214,7 @@ const DriverHomeScreen: React.FC = () => {
   if (isSupabaseConfigured && !driver) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={handleHamburgerPress} style={styles.menuButton}>
-            <Text style={styles.menuIcon}>☰</Text>
-          </TouchableOpacity>
-          <View style={styles.driverBadge}>
-            <Text style={styles.driverBadgeText}>🚨 Driver Mode</Text>
-          </View>
-          <View style={styles.onlineIndicator} />
-        </View>
+        <DriverNavigationHeader title="Driver" />
         <View style={styles.centered}>
           <Text style={styles.gateIcon}>🚑</Text>
           <Text style={styles.gateTitle}>Become a RESQ Driver</Text>
@@ -304,7 +231,7 @@ const DriverHomeScreen: React.FC = () => {
           <Button
             title="Switch to User Mode"
             variant="ghost"
-            onPress={() => useAuthStore.getState().setMode('user')}
+            onPress={returnToUserMode}
             style={{ marginTop: spacing.sm }}
           />
         </View>
@@ -315,25 +242,7 @@ const DriverHomeScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       {/* Top Bar */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={handleHamburgerPress} style={styles.menuButton}>
-          <Text style={styles.menuIcon}>☰</Text>
-        </TouchableOpacity>
-        <View style={styles.driverBadgeRow}>
-          <View style={styles.driverBadge}>
-            <Text style={styles.driverBadgeText}>🚨 Driver Mode</Text>
-          </View>
-          {walkthrough && <Badge label="DEMO" variant="info" />}
-        </View>
-        <View style={styles.onlineIndicator}>
-          <View
-            style={[
-              styles.onlineDot,
-              { backgroundColor: online ? colors.success : colors.offline },
-            ]}
-          />
-        </View>
-      </View>
+      <DriverNavigationHeader title="Driver" />
 
       {/* Position map — the device's own GPS only, never a simulated feed */}
       <View style={styles.mapContainer}>
@@ -363,16 +272,7 @@ const DriverHomeScreen: React.FC = () => {
           </Card>
         )}
 
-        {usingSampleData && (
-          <Card elevation="sm" style={styles.sampleCard}>
-            <Text style={styles.sampleText}>
-              ⚠️ Sample build — database not configured. Showing example driver data. Add
-              Supabase credentials in .env to load real records.
-            </Text>
-          </Card>
-        )}
-
-        {driver && driver.status !== 'verified' && (
+        {driver && driver.status !== 'verified' && !walkthrough && (
           <Card elevation="sm" style={styles.verifyCard}>
             <Text style={styles.verifyTitle}>
               {driver.status === 'pending'
@@ -398,11 +298,7 @@ const DriverHomeScreen: React.FC = () => {
           </View>
           <Text style={styles.toggleSubtitle}>
             {online
-              ? walkthrough
-                ? 'Walkthrough open — sample requests are listed below. No real patient is notified.'
-                : 'You will receive booking requests from nearby patients.'
-              : walkthrough
-              ? 'Go online to open the walkthrough and see the sample requests.'
+              ? 'You will receive booking requests from nearby patients.'
               : 'Go online to start receiving booking requests.'}
           </Text>
         </Card>
@@ -437,25 +333,6 @@ const DriverHomeScreen: React.FC = () => {
           </Card>
         )}
 
-        {/* Walkthrough controls — demo/sample builds only */}
-        {walkthrough && (
-          <Card elevation="sm" style={styles.walkthroughCard}>
-            <Text style={styles.walkthroughTitle}>Driver walkthrough</Text>
-            <Text style={styles.walkthroughText}>
-              Sample requests and a sample trip for trying Driver Mode end-to-end. Nothing is
-              saved and no real patient or driver is involved.
-            </Text>
-            <Button
-              title="Restart walkthrough"
-              variant="outline"
-              size="sm"
-              fullWidth
-              onPress={handleRestartWalkthrough}
-              style={styles.walkthroughButton}
-            />
-          </Card>
-        )}
-
         {/* Earnings Summary */}
         <Text style={styles.sectionTitle}>Today&apos;s Summary</Text>
         <View style={styles.earningsGrid}>
@@ -465,7 +342,7 @@ const DriverHomeScreen: React.FC = () => {
               NPR {walkthrough ? '0' : todayEarnings.toLocaleString('en-IN')}
             </Text>
             <Text style={styles.earningsSubtext}>
-              {walkthrough ? 'walkthrough — no real earnings' : 'from completed trips'}
+              from completed trips
             </Text>
           </Card>
           <Card elevation="sm" style={styles.earningsCard}>
@@ -474,7 +351,7 @@ const DriverHomeScreen: React.FC = () => {
               {walkthrough ? demoCompletedTrips : todayTrips}
             </Text>
             <Text style={styles.earningsSubtext}>
-              {walkthrough ? 'walkthrough trips completed' : 'completed today'}
+              completed today
             </Text>
           </Card>
           <Card elevation="sm" style={styles.earningsCard}>
@@ -483,9 +360,7 @@ const DriverHomeScreen: React.FC = () => {
               {walkthrough ? '—' : `★ ${driver?.rating ?? 0}`}
             </Text>
             <Text style={styles.earningsSubtext}>
-              {walkthrough
-                ? 'available after real trips'
-                : `${(driver?.total_rides ?? 0).toLocaleString('en-IN')} rides`}
+              {`${(driver?.total_rides ?? 0).toLocaleString('en-IN')} rides`}
             </Text>
           </Card>
         </View>
@@ -506,7 +381,6 @@ const DriverHomeScreen: React.FC = () => {
                     : ''}
                 </Text>
               </View>
-              {walkthrough && <Badge label="SAMPLE" variant="info" />}
               <Button
                 title="Manage"
                 variant="outline"
@@ -551,8 +425,6 @@ const DriverHomeScreen: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* Bottom Navigation */}
-      {renderBottomNav()}
     </SafeAreaView>
   );
 };
@@ -581,32 +453,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  menuButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuIcon: {
-    fontSize: 24,
-    color: colors.text,
-  },
-  driverBadge: {
-    backgroundColor: colors.redLight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.full,
-  },
-  driverBadgeText: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  driverBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   onlineIndicator: {
     width: 40,
@@ -649,21 +495,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
   },
-  sampleCard: {
-    backgroundColor: colors.amberLight,
-    marginBottom: spacing.lg,
-  },
-  sampleText: { ...typography.bodySmall, color: colors.warning },
-  walkthroughCard: {
-    marginBottom: spacing.lg,
-  },
-  walkthroughTitle: { ...typography.body, fontWeight: '600' },
-  walkthroughText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  walkthroughButton: { marginTop: spacing.md },
   verifyCard: {
     backgroundColor: colors.amberLight,
     marginBottom: spacing.lg,
@@ -763,48 +594,6 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     fontWeight: '600',
     color: colors.text,
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingVertical: spacing.sm,
-  },
-  bottomNavItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-    position: 'relative',
-  },
-  bottomNavIcon: {
-    fontSize: 20,
-  },
-  bottomNavLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  bottomNavLabelActive: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  badgeDot: {
-    position: 'absolute',
-    top: -2,
-    right: 16,
-    backgroundColor: colors.primary,
-    borderRadius: radii.full,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeDotText: {
-    color: colors.surface,
-    fontSize: 10,
-    fontWeight: '700',
   },
 });
 

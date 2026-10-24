@@ -1,4 +1,4 @@
-import { AmbulanceCategory } from '../types';
+import type { AmbulanceCategory } from '../types/index';
 
 /**
  * Indicative fare rate card (NPR).

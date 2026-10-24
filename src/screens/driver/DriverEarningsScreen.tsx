@@ -9,13 +9,13 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { Button, Card, Header, EmptyState } from '../../components/ui';
+import { Button, Card, EmptyState } from '../../components/ui';
 import { colors, spacing, typography, radii} from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
-import { driversService, bookingsService, isSupabaseConfigured } from '../../services/database';
+import { driversService, bookingsService } from '../../services/database';
 import { isDemoMode } from '../../utils/demoMode';
 import { Booking } from '../../types';
+import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
 
 interface TripHistoryItem {
   id: string;
@@ -28,56 +28,14 @@ interface TripHistoryItem {
   rating: number;
 }
 
-// Development sample history — only shown when Supabase is not configured
-// (clearly labelled in the UI).
-const daysAgo = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
-};
-
-const SAMPLE_TRIPS: TripHistoryItem[] = [
-  {
-    id: 't1',
-    date: daysAgo(0),
-    pickup: 'Thamel, Kathmandu',
-    destination: 'Norvic International Hospital',
-    fare: 2500,
-    distance: 4.2,
-    duration: 18,
-    rating: 5,
-  },
-  {
-    id: 't2',
-    date: daysAgo(0),
-    pickup: 'Boudha, Kathmandu',
-    destination: 'Grande International Hospital',
-    fare: 1200,
-    distance: 6.5,
-    duration: 25,
-    rating: 4,
-  },
-  {
-    id: 't3',
-    date: daysAgo(1),
-    pickup: 'Lazimpat, Kathmandu',
-    destination: 'Medicare Hospital',
-    fare: 1800,
-    distance: 3.8,
-    duration: 15,
-    rating: 5,
-  },
-];
-
 const DriverEarningsScreen: React.FC = () => {
-  const navigation = useNavigation<any>();
   const { user } = useAuthStore();
+  const isDemoDriver = useAuthStore((state) => state.isDemoDriver);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
-  const [usingSampleData, setUsingSampleData] = useState(false);
 
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [weeklyEarnings, setWeeklyEarnings] = useState(0);
@@ -108,16 +66,14 @@ const DriverEarningsScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (isDemoMode() || !isSupabaseConfigured) {
-        setUsingSampleData(true);
-        setTodayEarnings(4250);
-        setWeeklyEarnings(28750);
-        setMonthlyEarnings(98500);
-        setTripHistory(SAMPLE_TRIPS);
+      if (isDemoMode() && isDemoDriver) {
+        setTodayEarnings(0);
+        setWeeklyEarnings(0);
+        setMonthlyEarnings(0);
+        setTripHistory([]);
         return;
       }
 
-      setUsingSampleData(false);
       const userId = user?.id;
       if (!userId) {
         setTripHistory([]);
@@ -155,6 +111,10 @@ const DriverEarningsScreen: React.FC = () => {
   }
 
   const handleWithdraw = async () => {
+    if (isDemoDriver) {
+      Alert.alert('Demo preview', 'Payouts are disabled in the local driver demo.');
+      return;
+    }
     setWithdrawing(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 600));
@@ -209,7 +169,7 @@ const DriverEarningsScreen: React.FC = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="Earnings" showBack onBack={() => navigation.goBack()} />
+        <DriverNavigationHeader title="Earnings" showBack />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading earnings...</Text>
@@ -221,7 +181,7 @@ const DriverEarningsScreen: React.FC = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="Earnings" showBack onBack={() => navigation.goBack()} />
+        <DriverNavigationHeader title="Earnings" showBack />
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <Button title="Retry" variant="outline" onPress={loadEarnings} />
@@ -232,22 +192,12 @@ const DriverEarningsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Earnings" showBack onBack={() => navigation.goBack()} />
+      <DriverNavigationHeader title="Earnings" showBack />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {usingSampleData && (
-          <Card elevation="sm" style={styles.sampleCard}>
-            <Text style={styles.sampleText}>
-              {isDemoMode()
-                ? 'Walkthrough — sample earnings for this demo session. These figures are examples, not records.'
-                : '⚠️ Sample build — database not configured. Showing example earnings.'}
-            </Text>
-          </Card>
-        )}
-
         {/* Today's Earnings Card */}
         <Card elevation="md" style={styles.todayCard}>
           <Text style={styles.todayLabel}>Today&apos;s Earnings</Text>

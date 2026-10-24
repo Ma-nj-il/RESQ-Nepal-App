@@ -1,0 +1,64 @@
+appId: host.exp.Exponent
+---
+# Inspect the Driver Login entry and clean Driver Home without demo labels.
+# Preconditions: Expo Go and the demo-enabled Metro server on port 8081.
+- launchApp
+- openLink: "exp://127.0.0.1:8081"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 120000
+- tapOn: "Driver Login"
+- assertVisible: "Login via Demo"
+- takeScreenshot: ui-driver-login
+- tapOn: "Login via Demo"
+- extendedWaitUntil:
+    visible: "Driver"
+    timeout: 30000
+- assertNotVisible: "DEMO DRIVER"
+- assertNotVisible: "DEMO MODE"
+- takeScreenshot: ui-driver-home
+- tapOn: "Open driver menu"
+- takeScreenshot: ui-driver-drawer
+- tapOn: "Requests & Alerts"
+- assertVisible: ".*Ram Bahadur Thapa.*"
+- assertNotVisible: "DEMO DRIVER"
+- tapOn:
+    text: "Accept"
+    index: 0
+- extendedWaitUntil:
+    visible: ".*Heading to Pickup.*"
+    timeout: 30000
+- assertNotVisible: "DEMO DRIVER"
+- tapOn: "Simulate pickup arrival"
+- assertVisible: ".*Pickup location reached.*confirm arrival.*"
+- tapOn: "Arrived at Pickup"
+- assertVisible: "Arrived at Pickup"
+- tapOn: "Patient Onboard"
+- assertVisible: "Trip In Progress"
+- tapOn: "Simulate hospital arrival"
+- assertVisible: ".*Hospital location reached.*confirm arrival.*"
+- tapOn: "Arrived at Hospital"
+- assertVisible: "Arrived at Hospital"
+- takeScreenshot: ui-driver-hospital-arrival
+- tapOn: "Complete Trip"
+- extendedWaitUntil:
+    visible: "Trip Completed"
+    timeout: 15000
+- tapOn: "OK"
+- tapOn: "Open driver menu"
+- tapOn: "Profile"
+- assertVisible: "Driver Profile"
+- assertNotVisible: "DEMO DRIVER"
+- tapOn: "Open driver menu"
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- tapOn: "Open driver menu"
+- scrollUntilVisible:
+    element:
+      text: "Switch to User Mode"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Switch to User Mode"
+- extendedWaitUntil:
+    visible: ".*Let's dive in to your account.*"
+    timeout: 20000

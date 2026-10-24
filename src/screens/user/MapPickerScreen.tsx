@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
 import { Button } from '../../components/ui';
-import { MapCanvas, isNativeMapAvailable } from '../../components/map/MapCanvas';
+import { MapCanvas, isOsmMapAvailable } from '../../components/map/MapCanvas';
 import { locationService } from '../../services/location/locationService';
 import { useBookingStore } from '../../store/bookingStore';
 import { RoutePoint } from '../../types';
@@ -134,16 +134,16 @@ const MapPickerScreen: React.FC = () => {
         <Text style={styles.panelAddress} numberOfLines={2}>
           {addressLine}
         </Text>
-        {!isNativeMapAvailable ? (
+        {!isOsmMapAvailable ? (
           <Text style={styles.panelWarning}>
-            The interactive map needs a real device build; pin selection is unavailable here.
+            The interactive map is unavailable in this build. Choose a location with search instead.
           </Text>
         ) : null}
         <Button
           title={mode === 'pickup' ? 'Use this pickup point' : 'Use this destination'}
           onPress={confirm}
           fullWidth
-          disabled={!center || !isNativeMapAvailable}
+          disabled={!center || !isOsmMapAvailable}
           style={styles.confirmButton}
         />
       </View>

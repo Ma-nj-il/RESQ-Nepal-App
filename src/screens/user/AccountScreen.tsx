@@ -4,10 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Avatar } from '../../components/ui';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
+import { driversService, isSupabaseConfigured } from '../../services/database';
 import { useAuthStore } from '../../store/authStore';
 import { useWalletStore } from '../../store/walletStore';
 import { authService } from '../../services/auth/authService';
 import { useTripCounts } from '../../hooks/useTripCounts';
+import { isDemoMode } from '../../utils/demoMode';
+import { isAuthorizedDriverStatus } from '../../utils/homeBooking';
 
 interface AccountMenuItem {
   id: string;
@@ -59,9 +62,29 @@ export const AccountScreen: React.FC = () => {
     ]);
   }, [logout]);
 
-  const handleSwitchToDriver = useCallback(() => {
-    setMode('driver');
-  }, [setMode]);
+  const handleSwitchToDriver = useCallback(async () => {
+    if (!user?.id || !isSupabaseConfigured || isDemoMode()) {
+      navigation.navigate('DriverOnboarding');
+      return;
+    }
+    try {
+      const driver = await driversService.getByUserId(user.id);
+      if (isAuthorizedDriverStatus(driver?.status)) {
+        setMode('driver');
+      } else {
+        navigation.navigate('DriverOnboarding');
+      }
+    } catch {
+      Alert.alert(
+        'Driver access unavailable',
+        'We could not verify driver authorization. Please try again or continue with driver registration.',
+        [
+          { text: 'Try registration', onPress: () => navigation.navigate('DriverOnboarding') },
+          { text: 'Close', style: 'cancel' },
+        ],
+      );
+    }
+  }, [navigation, setMode, user]);
 
   const handleMenuPress = useCallback(
     (route: string, params?: Record<string, unknown>) => {

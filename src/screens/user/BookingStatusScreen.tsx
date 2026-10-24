@@ -18,12 +18,26 @@ import { TripTimeline } from '../../components/booking/TripTimeline';
 import { MapCanvas } from '../../components/map/MapCanvas';
 import { SearchRadar } from '../../components/booking/SearchRadar';
 import { BOOKING_TIMELINE_STEPS } from '../../constants/bookingTimeline';
-import { bookingsService, isSupabaseConfigured, assignedCrewService } from '../../services/database';
+import {
+  bookingsService,
+  isSupabaseConfigured,
+  assignedCrewService,
+  tripsService,
+} from '../../services/database';
 import type { AssignedCrew } from '../../services/database/assignedCrew';
+import { useTrackingRoute } from '../../hooks/useTrackingRoute';
 import { SERVICE_CATEGORIES } from '../../constants/serviceCategories';
 import { useBookingStore } from '../../store/bookingStore';
 import { isDemoMode } from '../../utils/demoMode';
 import { openNativeDialer } from '../../utils/dialer';
+import {
+  isAssignedDriverLocation,
+  isFreshTrackingLocation,
+  isTrackableBookingStatus,
+  SECURE_TRIP_TRACKING_ENABLED,
+  trackingAgeLabel,
+  TrackingCoordinate,
+} from '../../utils/tracking';
 import { Booking, BookingStatus } from '../../types';
 
 const STATUS_STEPS = BOOKING_TIMELINE_STEPS;
@@ -118,6 +132,11 @@ const BookingStatusScreen: React.FC = () => {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [crew, setCrew] = useState<AssignedCrew | null>(null);
+  const [latestLocation, setLatestLocation] = useState<
+    Awaited<ReturnType<typeof tripsService.getLatestLocation>>
+  >(null);
+  const [trackingError, setTrackingError] = useState(false);
+  const [trackingNow, setTrackingNow] = useState(0);
 
   // Live booking: poll the real row while this screen is focused so the UI
   // always reflects the database without a background polling loop.
@@ -132,8 +151,32 @@ const BookingStatusScreen: React.FC = () => {
         setBooking(record);
         setCurrentStatus(record.status);
         setStatusError(null);
+        if (
+          SECURE_TRIP_TRACKING_ENABLED &&
+          record.driver_id &&
+          isTrackableBookingStatus(record.status)
+        ) {
+          try {
+            const location = await tripsService.getLatestLocation(record.id);
+            if (!active) return;
+            setLatestLocation(
+              isAssignedDriverLocation(location, record.driver_id) ? location : null,
+            );
+            setTrackingError(false);
+          } catch {
+            if (active) {
+              setLatestLocation(null);
+              setTrackingError(true);
+            }
+          }
+        } else {
+          setLatestLocation(null);
+          setTrackingError(false);
+        }
       } catch {
         if (active) setStatusError('Could not refresh the booking status. Retrying automatically…');
+      } finally {
+        if (active) setTrackingNow(Date.now());
       }
     };
 
@@ -192,16 +235,16 @@ const BookingStatusScreen: React.FC = () => {
   const canTrack = ['assigned', 'arriving', 'arrived', 'started'].includes(currentStatus);
   // The crew's contact number is only shared while the trip is operationally
   // active (see supabase/patches/assigned_crew_visibility.sql), so the call
-  // action appears in exactly that window. Demo always shows it with a
-  // no-call explanation.
-  const canCallDriver = !isLiveBooking || canTrack;
+  // action appears only in that window for real assignments.
+  const canCallDriver = isLiveBooking && canTrack;
   const isCompleted = currentStatus === 'completed';
   const isCancelled = currentStatus === 'cancelled';
 
   const category = SERVICE_CATEGORIES[(bookingData?.ambulance?.category ?? 'basic') as 'basic' | 'icu'];
   const hasDriverAssigned = isLiveBooking
-    ? Boolean(booking?.driver_id)
+    ? Boolean(booking?.driver_id || booking?.ambulance_id)
     : ['assigned', 'arriving', 'arrived', 'started', 'completed'].includes(currentStatus);
+  const isSearching = currentStatus === 'pending' && !hasDriverAssigned;
 
   // Real fare data only: rate-card estimate from the confirmation step, the
   // database estimate, or a "pending" label. Never a made-up number.
@@ -226,6 +269,33 @@ const BookingStatusScreen: React.FC = () => {
       : destination && destination.lat != null && destination.lng != null
         ? { lat: destination.lat, lng: destination.lng }
         : null;
+  const liveLocation =
+    isLiveBooking &&
+    SECURE_TRIP_TRACKING_ENABLED &&
+    booking?.driver_id &&
+    isTrackableBookingStatus(booking.status) &&
+    isAssignedDriverLocation(latestLocation, booking.driver_id) &&
+    isFreshTrackingLocation(latestLocation, trackingNow)
+      ? latestLocation
+      : null;
+  const ambulancePoint: TrackingCoordinate | null = liveLocation
+    ? { lat: liveLocation.lat, lng: liveLocation.lng }
+    : null;
+  const trackingTarget =
+    currentStatus === 'started' ? mapDestination : mapPickup;
+  const trackingRoute = useTrackingRoute(
+    ambulancePoint,
+    trackingTarget,
+    booking
+      ? `${booking.id}:${currentStatus}:${trackingTarget?.lat}:${trackingTarget?.lng}`
+      : '',
+    Boolean(
+      SECURE_TRIP_TRACKING_ENABLED &&
+      isLiveBooking &&
+      ambulancePoint &&
+      trackingTarget,
+    ),
+  );
 
   // Addresses shown in Trip Details — the stored booking row first, then the
   // in-progress selection. Nothing is invented when both are missing.
@@ -309,7 +379,7 @@ const BookingStatusScreen: React.FC = () => {
     navigation.navigate('AmbulanceList');
   };
 
-  return currentStatus === 'pending' ? (
+  return isSearching ? (
     <SafeAreaView style={styles.container}>
       <View style={styles.searchMapArea}>
         <MapCanvas
@@ -490,8 +560,9 @@ const BookingStatusScreen: React.FC = () => {
                 <View style={styles.actionRow}>
                   {canCallDriver && (
                     <Button
-                      title="Call Driver"
+                      title={crew?.driverPhone ? 'Call Driver' : 'Driver contact unavailable'}
                       onPress={() => void handleCallDriver()}
+                      disabled={!crew?.driverPhone}
                       size="sm"
                       style={styles.actionButton}
                       icon={<Text style={styles.callIcon}>📞</Text>}
@@ -547,12 +618,6 @@ const BookingStatusScreen: React.FC = () => {
 
                 <View style={styles.actionRow}>
                   <Button
-                    title="Call Driver"
-                    onPress={() => void handleCallDriver()}
-                    style={styles.actionButton}
-                    icon={<Text style={styles.callIcon}>📞</Text>}
-                  />
-                  <Button
                     title="Track Ambulance"
                     onPress={handleTrackLive}
                     variant="secondary"
@@ -596,19 +661,44 @@ const BookingStatusScreen: React.FC = () => {
           </Card>
         )}
 
-        {/* Map context — real pickup/destination markers, straight-line only */}
-        {(mapPickup || mapDestination) && (
+        {/* Tracking map uses only the assigned driver's fresh GPS and a routed road path. */}
+        {(mapPickup || mapDestination || ambulancePoint) && (
           <Card style={styles.mapCard} elevation="sm">
             <View style={styles.mapWrap}>
               <MapCanvas
                 pickup={mapPickup}
                 destination={mapDestination}
+                ambulance={ambulancePoint}
+                route={trackingRoute.route?.coordinates}
                 pickupLabel={pickup?.address || booking?.pickup_address}
                 destinationLabel={destination?.address || booking?.destination_address}
-                caption="Pickup and destination — straight-line preview, not live GPS"
+                caption={
+                  liveLocation?.recorded_at
+                    ? `Live ambulance · ${trackingAgeLabel(liveLocation.recorded_at, trackingNow) ?? 'location received'}`
+                    : 'Live location unavailable'
+                }
                 style={styles.mapFill}
               />
             </View>
+            {liveLocation && trackingRoute.route ? (
+              <Text style={styles.trackingSummary}>
+                {currentStatus === 'started' ? 'To destination' : 'To pickup'}: {trackingRoute.route.distanceKm.toFixed(1)} km · ETA about {trackingRoute.route.durationMinutes} min
+              </Text>
+            ) : (
+              <Text style={styles.trackingUnavailable}>
+                {trackingError
+                  ? 'Live location could not be refreshed. Distance and ETA are unavailable.'
+                  : liveLocation && trackingRoute.loading
+                    ? 'Live ambulance location received. Calculating road distance and ETA…'
+                    : liveLocation && trackingRoute.unavailable
+                      ? 'Live location is available, but the road route could not be calculated. Distance and ETA are unavailable.'
+                      : liveLocation
+                        ? 'Live location is available. Road distance and ETA are unavailable.'
+                        : SECURE_TRIP_TRACKING_ENABLED && isLiveBooking
+                          ? 'Waiting for a fresh ambulance location; distance and ETA are unavailable.'
+                          : 'Live location unavailable.'}
+              </Text>
+            )}
           </Card>
         )}
 
@@ -866,6 +956,18 @@ const styles = StyleSheet.create({
   },
   mapWrap: { height: 150 },
   mapFill: { flex: 1 },
+  trackingSummary: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontWeight: '600',
+    marginTop: spacing.sm,
+  },
+  trackingUnavailable: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 17,
+    marginTop: spacing.sm,
+  },
 
   previewHeader: {
     flexDirection: 'row',
