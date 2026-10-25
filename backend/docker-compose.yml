@@ -1,0 +1,703 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: ridehailing-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ridehailing
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ridehailing-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ridehailing-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ridehailing-network
+
+  nats:
+    image: nats:2-alpine
+    container_name: ridehailing-nats
+    command: ['--js', '--sd', '/data', '-m', '8222']
+    ports:
+      - '4222:4222' # Client connections
+      - '8222:8222' # HTTP monitoring
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8222/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ridehailing-network
+
+  kong-database:
+    image: postgres:15-alpine
+    container_name: ridehailing-kong-db
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: kong
+      POSTGRES_DB: kong
+    volumes:
+      - kong_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kong']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  kong-migration:
+    image: kong:3.9.1
+    container_name: ridehailing-kong-migration
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+      KONG_PG_DATABASE: kong
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - ridehailing-network
+    restart: on-failure
+
+  kong:
+    image: kong:3.9.1
+    container_name: ridehailing-kong
+    environment:
+      # Database
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+      KONG_PG_DATABASE: kong
+      # Logging
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      # Listeners
+      KONG_PROXY_LISTEN: '0.0.0.0:8000, 0.0.0.0:8443 ssl'
+      KONG_ADMIN_LISTEN: '0.0.0.0:8001, 0.0.0.0:8444 ssl'
+      # Kong Manager GUI (Official)
+      KONG_ADMIN_GUI_LISTEN: '0.0.0.0:8002'
+      KONG_ADMIN_GUI_URL: 'http://localhost:8002'
+    ports:
+      - '8000:8000' # Proxy HTTP
+      - '8443:8443' # Proxy HTTPS
+      - '8001:8001' # Admin API HTTP
+      - '8444:8444' # Admin API HTTPS
+      - '8002:8002' # Kong Manager GUI
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'kong', 'health']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: auth
+    container_name: ridehailing-auth
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: auth-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      JWT_EXPIRATION: 24
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: auth-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8081:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  rides-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: rides
+    container_name: ridehailing-rides
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: rides-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      PROMOS_SERVICE_URL: http://promos-service:8080
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: rides-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8082:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  geo-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: geo
+    container_name: ridehailing-geo
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: geo-service
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: geo-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8083:8080'
+    depends_on:
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  payments-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: payments
+    container_name: ridehailing-payments
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: payments-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: payments-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8084:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  notifications-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: notifications
+    container_name: ridehailing-notifications
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: notifications-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@ridehailing.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-RideHailing}
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: notifications-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8085:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  realtime-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: realtime
+    container_name: ridehailing-realtime
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: realtime-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: realtime-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8086:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  mobile-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: mobile
+    container_name: ridehailing-mobile
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: mobile-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: mobile-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8087:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: admin
+    container_name: ridehailing-admin
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: admin-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: admin-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8088:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  promos-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: promos
+    container_name: ridehailing-promos
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: promos-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: promos-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8089:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  scheduler-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: scheduler
+    container_name: ridehailing-scheduler
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: scheduler-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: scheduler-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8090:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: analytics
+    container_name: ridehailing-analytics
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: analytics-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: analytics-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8091:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  fraud-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: fraud
+    container_name: ridehailing-fraud
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: fraud-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: fraud-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8092:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  ml-eta-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: ml-eta
+    container_name: ridehailing-ml-eta
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      SERVICE_NAME: ml-eta-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: ridehailing
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # OpenTelemetry
+      OTEL_ENABLED: 'true'
+      OTEL_SERVICE_NAME: ml-eta-service
+      OTEL_SERVICE_VERSION: '1.0.0'
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    ports:
+      - '8093:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ridehailing-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    ports:
+      - '9090:9090'
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ridehailing-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_INSTALL_PLUGINS: ''
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: ridehailing-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: ridehailing-tempo
+    command: ['-config.file=/etc/tempo.yml']
+    user: 'root'
+    volumes:
+      - ./deploy/tempo.yml:/etc/tempo.yml
+      - tempo_data:/tmp/tempo
+    ports:
+      - '3200:3200' # Tempo HTTP
+      - '9096:9096' # Tempo gRPC
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: ridehailing-otel-collector
+    command: ['--config=/etc/otel-collector.yml']
+    volumes:
+      - ./deploy/otel-collector.yml:/etc/otel-collector.yml
+    ports:
+      - '4317:4317' # OTLP gRPC receiver
+      - '4318:4318' # OTLP HTTP receiver
+      - '8888:8888' # Prometheus metrics exposed by the collector
+      - '8889:8889' # Prometheus exporter
+      - '13133:13133' # Health check
+      - '55679:55679' # zpages
+    depends_on:
+      - tempo
+    networks:
+      - ridehailing-network
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: development
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+  kong_data:
+  prometheus_data:
+  grafana_data:
+  minio_data:
+  tempo_data:
+
+networks:
+  ridehailing-network:
+    driver: bridge

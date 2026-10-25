@@ -1,0 +1,737 @@
+package rides
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"time"
+
+	"github.com/bikky-kc013/medi-ambulance/internal/pricing"
+	"github.com/bikky-kc013/medi-ambulance/pkg/common"
+	"github.com/bikky-kc013/medi-ambulance/pkg/config"
+	"github.com/bikky-kc013/medi-ambulance/pkg/eventbus"
+	"github.com/bikky-kc013/medi-ambulance/pkg/httpclient"
+	"github.com/bikky-kc013/medi-ambulance/pkg/logger"
+	"github.com/bikky-kc013/medi-ambulance/pkg/models"
+	"github.com/bikky-kc013/medi-ambulance/pkg/resilience"
+	"github.com/bikky-kc013/medi-ambulance/pkg/tracing"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+)
+
+type PricingConfig struct {
+	BaseFarePerKm     float64
+	BaseFarePerMinute float64
+	MinimumFare       float64
+	CommissionRate    float64
+}
+
+func DefaultPricingConfig() *PricingConfig {
+	return &PricingConfig{
+		BaseFarePerKm:     1.5,
+		BaseFarePerMinute: 0.25,
+		MinimumFare:       5.0,
+		CommissionRate:    0.20,
+	}
+}
+
+type Service struct {
+	repo            *Repository
+	promosClient    *httpclient.Client
+	promosBreaker   *resilience.CircuitBreaker
+	surgeCalculator SurgeCalculator
+	mlEtaClient     *httpclient.Client
+	mlEtaBreaker    *resilience.CircuitBreaker
+	matcher         *Matcher
+	eventBus        *eventbus.Bus
+	pricingConfig   *PricingConfig
+	pricingService  *pricing.Service
+}
+
+type SurgeCalculator interface {
+	CalculateSurgeMultiplier(ctx context.Context, latitude, longitude float64) (float64, error)
+	GetCurrentSurgeInfo(ctx context.Context, latitude, longitude float64) (map[string]interface{}, error)
+}
+
+func NewService(timeOutCfg config.TimeoutConfig, repo *Repository, promosServiceURL string, breaker *resilience.CircuitBreaker, httpClientTimeout ...time.Duration) *Service {
+	if repo == nil {
+		panic("rides: repository cannot be nil")
+	}
+	return &Service{
+		repo:            repo,
+		promosClient:    httpclient.NewClient(timeOutCfg, promosServiceURL, httpClientTimeout...),
+		promosBreaker:   breaker,
+		surgeCalculator: nil,
+		pricingConfig:   DefaultPricingConfig(),
+	}
+}
+
+func (s *Service) SetPricingConfig(config *PricingConfig) {
+	if config != nil {
+		s.pricingConfig = config
+	}
+}
+
+func (s *Service) SetSurgeCalculator(calculator SurgeCalculator) {
+	s.surgeCalculator = calculator
+}
+
+func (s *Service) SetMatcher(matcher *Matcher) {
+	s.matcher = matcher
+}
+
+func (s *Service) SetEventBus(bus *eventbus.Bus) {
+	s.eventBus = bus
+}
+
+func (s *Service) SetPricingService(svc *pricing.Service) {
+	s.pricingService = svc
+}
+
+func (s *Service) publishEvent(subject string, eventType, source string, data interface{}) {
+	if s.eventBus == nil {
+		return
+	}
+	go func() {
+		evt, err := eventbus.NewEvent(eventType, source, data)
+		if err != nil {
+			logger.Warn("failed to create event", zap.String("type", eventType), zap.Error(err))
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.eventBus.Publish(ctx, subject, evt); err != nil {
+			logger.Warn("failed to publish event", zap.String("type", eventType), zap.Error(err))
+		}
+	}()
+}
+
+func (s *Service) MatchDrivers(ctx context.Context, pickupLatitude, pickupLongitude float64) ([]*DriverCandidate, error) {
+	if s.matcher == nil {
+		return nil, common.NewInternalServerError("matching engine not configured")
+	}
+	return s.matcher.FindBestDrivers(ctx, pickupLatitude, pickupLongitude)
+}
+
+func (s *Service) EnableMLPredictions(client *httpclient.Client, breaker *resilience.CircuitBreaker) {
+	s.mlEtaClient = client
+	s.mlEtaBreaker = breaker
+}
+
+func (s *Service) RequestRide(ctx context.Context, riderID uuid.UUID, req *models.RideRequest) (*models.Ride, error) {
+	ctx, span := tracing.StartSpan(ctx, "rides-service", "RequestRide")
+	defer span.End()
+
+	tracing.AddSpanAttributes(ctx,
+		tracing.UserIDKey.String(riderID.String()),
+		tracing.LocationLatitudeKey.Float64(req.PickupLatitude),
+		tracing.LocationLongitudeKey.Float64(req.PickupLongitude),
+	)
+
+	distance := calculateDistance(
+		req.PickupLatitude, req.PickupLongitude,
+		req.DropoffLatitude, req.DropoffLongitude,
+	)
+
+	duration := estimateDuration(distance)
+	if mlDuration, ok := s.predictETAFromML(ctx, req); ok && mlDuration > 0 {
+		duration = int(math.Round(mlDuration))
+	}
+
+	var fare float64
+	var surgeMultiplier float64
+	var rideTypeID *uuid.UUID
+	var currencyCode string
+	var pricingVersionID *uuid.UUID
+	var countryID, regionID, cityID, pickupZoneID, dropoffZoneID *uuid.UUID
+
+	rideTypeID = req.RideTypeID
+
+	if s.pricingService != nil {
+		calculation, err := s.pricingService.CalculateFare(ctx, pricing.CalculateInput{
+			PickupLatitude:   req.PickupLatitude,
+			PickupLongitude:  req.PickupLongitude,
+			DropoffLatitude:  req.DropoffLatitude,
+			DropoffLongitude: req.DropoffLongitude,
+			DistanceKm:       distance,
+			DurationMin:      duration,
+			RideTypeID:       rideTypeID,
+			Currency:         "USD",
+		})
+		if err != nil {
+			logger.Warn("hierarchical pricing failed, falling back to flat pricing", zap.Error(err))
+			surgeMultiplier = calculateSurgeMultiplier(time.Now())
+			fare = s.calculateFare(distance, duration, surgeMultiplier)
+			currencyCode = "USD"
+		} else {
+			fare = calculation.TotalFare
+			surgeMultiplier = calculation.TotalMultiplier
+			currencyCode = calculation.Currency
+			if calculation.PricingVersionID != uuid.Nil {
+				pricingVersionID = &calculation.PricingVersionID
+			}
+		}
+	} else {
+		if s.surgeCalculator != nil {
+			var err error
+			surgeMultiplier, err = s.surgeCalculator.CalculateSurgeMultiplier(ctx, req.PickupLatitude, req.PickupLongitude)
+			if err != nil {
+				surgeMultiplier = calculateSurgeMultiplier(time.Now())
+			}
+		} else {
+			surgeMultiplier = calculateSurgeMultiplier(time.Now())
+		}
+
+		fare = s.calculateFare(distance, duration, surgeMultiplier)
+		currencyCode = "USD"
+	}
+
+	var promoCodeID *uuid.UUID
+	var discountAmount float64
+	if req.PromoCode != "" {
+		validation, err := s.validatePromoCode(ctx, req.PromoCode, riderID, fare)
+		if err == nil && validation.Valid {
+			promoCodeID = &validation.PromoCodeID
+			discountAmount = validation.DiscountAmount
+			fare = validation.FinalAmount
+		}
+	}
+
+	ride := &models.Ride{
+		ID:                uuid.New(),
+		RiderID:           riderID,
+		Status:            models.RideStatusRequested,
+		PickupLatitude:    req.PickupLatitude,
+		PickupLongitude:   req.PickupLongitude,
+		PickupAddress:     req.PickupAddress,
+		DropoffLatitude:   req.DropoffLatitude,
+		DropoffLongitude:  req.DropoffLongitude,
+		DropoffAddress:    req.DropoffAddress,
+		EstimatedDistance: distance,
+		EstimatedDuration: duration,
+		EstimatedFare:     fare,
+		SurgeMultiplier:   surgeMultiplier,
+		RequestedAt:       time.Now(),
+		RideTypeID:        rideTypeID,
+		PromoCodeID:       promoCodeID,
+		DiscountAmount:    discountAmount,
+		CountryID:         countryID,
+		RegionID:          regionID,
+		CityID:            cityID,
+		PickupZoneID:      pickupZoneID,
+		DropoffZoneID:     dropoffZoneID,
+		CurrencyCode:      currencyCode,
+		PricingVersionID:  pricingVersionID,
+	}
+
+	// Handle scheduled rides
+	if req.IsScheduled && req.ScheduledAt != nil {
+		ride.IsScheduled = true
+		ride.ScheduledAt = req.ScheduledAt
+		ride.ScheduledNotificationSent = false
+	}
+
+	if err := s.repo.CreateRide(ctx, ride); err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, common.NewInternalServerError("failed to create ride request")
+	}
+
+	tracing.AddSpanAttributes(ctx,
+		tracing.RideIDKey.String(ride.ID.String()),
+		tracing.FareAmountKey.Float64(fare),
+		tracing.DistanceKey.Float64(distance),
+		tracing.DurationKey.Int(duration),
+		attribute.Float64("surge_multiplier", surgeMultiplier),
+	)
+
+	riderName := "Rider"
+	riderRating := 5.0
+	if rider, err := s.repo.GetUserProfile(ctx, riderID); err == nil && rider != nil {
+		if rider.FirstName != "" {
+			riderName = rider.FirstName
+			if rider.LastName != "" {
+				riderName = rider.FirstName + " " + rider.LastName
+			}
+		}
+	} else {
+		logger.WarnContext(ctx, "failed to fetch rider profile for event, using defaults",
+			zap.String("rider_id", riderID.String()),
+			zap.Error(err))
+	}
+
+	rideTypeName := "Standard"
+	resolvedRideTypeID := uuid.Nil
+	if rideTypeID != nil {
+		resolvedRideTypeID = *rideTypeID
+	}
+
+	s.publishEvent(eventbus.SubjectRideRequested, "ride.requested", "rides-service", eventbus.RideRequestedData{
+		RideID:            ride.ID,
+		RiderID:           riderID,
+		RiderName:         riderName,
+		RiderRating:       riderRating,
+		PickupLatitude:    req.PickupLatitude,
+		PickupLongitude:   req.PickupLongitude,
+		PickupAddress:     req.PickupAddress,
+		DropoffLatitude:   req.DropoffLatitude,
+		DropoffLongitude:  req.DropoffLongitude,
+		DropoffAddress:    req.DropoffAddress,
+		RideTypeID:        resolvedRideTypeID,
+		RideTypeName:      rideTypeName,
+		EstimatedFare:     fare,
+		EstimatedDistance: distance,
+		EstimatedDuration: duration,
+		Currency:          currencyCode,
+		RequestedAt:       ride.RequestedAt,
+	})
+
+	return ride, nil
+}
+
+func (s *Service) GetRide(ctx context.Context, rideID uuid.UUID) (*models.Ride, error) {
+	ride, err := s.repo.GetRideByID(ctx, rideID)
+	if err != nil {
+		return nil, common.NewNotFoundError("ride not found", nil)
+	}
+
+	return ride, nil
+}
+
+func (s *Service) AcceptRide(ctx context.Context, rideID, driverID uuid.UUID) (*models.Ride, error) {
+	ctx, span := tracing.StartSpan(ctx, "rides-service", "AcceptRide")
+	defer span.End()
+
+	tracing.AddSpanAttributes(ctx,
+		tracing.RideIDKey.String(rideID.String()),
+		tracing.DriverIDKey.String(driverID.String()),
+	)
+
+	accepted, err := s.repo.AtomicAcceptRide(ctx, rideID, driverID)
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, common.NewInternalServerError("failed to accept ride")
+	}
+	if !accepted {
+		return nil, common.NewErrorWithCode(409, common.ErrCodeRideNotAvailable,
+			"ride is no longer available for acceptance", nil)
+	}
+
+	ride, err := s.repo.GetRideByID(ctx, rideID)
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, common.NewInternalServerError("failed to fetch accepted ride")
+	}
+
+	tracing.AddSpanEvent(ctx, "ride_accepted",
+		attribute.String("ride_id", rideID.String()),
+		attribute.String("driver_id", driverID.String()),
+	)
+
+	s.publishEvent(eventbus.SubjectRideAccepted, "ride.accepted", "rides-service", eventbus.RideAcceptedData{
+		RideID:           rideID,
+		RiderID:          ride.RiderID,
+		DriverID:         driverID,
+		PickupLatitude:   ride.PickupLatitude,
+		PickupLongitude:  ride.PickupLongitude,
+		DropoffLatitude:  ride.DropoffLatitude,
+		DropoffLongitude: ride.DropoffLongitude,
+		AcceptedAt:       *ride.AcceptedAt,
+	})
+
+	return ride, nil
+}
+
+func (s *Service) StartRide(ctx context.Context, rideID, driverID uuid.UUID) (*models.Ride, error) {
+	ride, err := s.repo.GetRideByID(ctx, rideID)
+	if err != nil {
+		return nil, common.NewNotFoundError("ride not found", nil)
+	}
+
+	if ride.Status != models.RideStatusAccepted {
+		return nil, common.NewBadRequestError("ride has not been accepted", nil)
+	}
+
+	if ride.DriverID == nil || *ride.DriverID != driverID {
+		return nil, common.NewBadRequestError("unauthorized driver", nil)
+	}
+
+	if err := s.repo.UpdateRideStatus(ctx, rideID, models.RideStatusInProgress, nil); err != nil {
+		return nil, common.NewInternalServerError("failed to start ride")
+	}
+
+	ride.Status = models.RideStatusInProgress
+	now := time.Now()
+	ride.StartedAt = &now
+
+	s.publishEvent(eventbus.SubjectRideStarted, "ride.started", "rides-service", eventbus.RideStartedData{
+		RideID:    rideID,
+		RiderID:   ride.RiderID,
+		DriverID:  driverID,
+		StartedAt: now,
+	})
+
+	return ride, nil
+}
+
+func (s *Service) CompleteRide(ctx context.Context, rideID, driverID uuid.UUID, actualDistance float64) (*models.Ride, error) {
+	ctx, span := tracing.StartSpan(ctx, "rides-service", "CompleteRide")
+	defer span.End()
+
+	tracing.AddSpanAttributes(ctx,
+		tracing.RideIDKey.String(rideID.String()),
+		tracing.DriverIDKey.String(driverID.String()),
+		tracing.DistanceKey.Float64(actualDistance),
+	)
+
+	ride, err := s.repo.GetRideByID(ctx, rideID)
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, common.NewNotFoundError("ride not found", nil)
+	}
+
+	if ride.Status != models.RideStatusInProgress {
+		err := fmt.Errorf("ride status is %s, not in progress", ride.Status)
+		tracing.RecordError(ctx, err)
+		return nil, common.NewBadRequestError("ride is not in progress", nil)
+	}
+
+	if ride.DriverID == nil || *ride.DriverID != driverID {
+		err := fmt.Errorf("unauthorized driver")
+		tracing.RecordError(ctx, err)
+		return nil, common.NewBadRequestError("unauthorized driver", nil)
+	}
+
+	actualDuration := int(time.Since(*ride.StartedAt).Minutes())
+
+	var finalFare float64
+	if s.pricingService != nil {
+		calculation, err := s.pricingService.CalculateFare(ctx, pricing.CalculateInput{
+			PickupLatitude:   ride.PickupLatitude,
+			PickupLongitude:  ride.PickupLongitude,
+			DropoffLatitude:  ride.DropoffLatitude,
+			DropoffLongitude: ride.DropoffLongitude,
+			DistanceKm:       actualDistance,
+			DurationMin:      actualDuration,
+			RideTypeID:       ride.RideTypeID,
+			Currency:         ride.CurrencyCode,
+		})
+		if err != nil {
+			logger.Warn("hierarchical pricing failed on completion, falling back to flat pricing", zap.Error(err))
+			finalFare = s.calculateFare(actualDistance, actualDuration, ride.SurgeMultiplier)
+		} else {
+			finalFare = calculation.TotalFare
+		}
+	} else {
+		finalFare = s.calculateFare(actualDistance, actualDuration, ride.SurgeMultiplier)
+	}
+
+	tracing.AddSpanAttributes(ctx,
+		tracing.DurationKey.Int(actualDuration),
+		tracing.FareAmountKey.Float64(finalFare),
+		attribute.Float64("estimated_fare", ride.EstimatedFare),
+	)
+
+	completed, err := s.repo.AtomicCompleteRide(ctx, rideID, driverID, actualDistance, actualDuration, finalFare)
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, common.NewInternalServerError("failed to complete ride")
+	}
+	if !completed {
+		return nil, common.NewErrorWithCode(409, common.ErrCodeRideAlreadyDone,
+			"ride is no longer in progress", nil)
+	}
+
+	ride.Status = models.RideStatusCompleted
+	ride.ActualDistance = &actualDistance
+	ride.ActualDuration = &actualDuration
+	ride.FinalFare = &finalFare
+	now := time.Now()
+	ride.CompletedAt = &now
+
+	s.publishEvent(eventbus.SubjectRideCompleted, "ride.completed", "rides-service", eventbus.RideCompletedData{
+		RideID:      rideID,
+		RiderID:     ride.RiderID,
+		DriverID:    driverID,
+		FareAmount:  finalFare,
+		DistanceKm:  actualDistance,
+		DurationMin: float64(actualDuration),
+		CompletedAt: now,
+	})
+
+	return ride, nil
+}
+
+func (s *Service) CancelRide(ctx context.Context, rideID, userID uuid.UUID, reason string) (*models.Ride, error) {
+	ride, err := s.repo.GetRideByID(ctx, rideID)
+	if err != nil {
+		return nil, common.NewNotFoundError("ride not found", nil)
+	}
+
+	isRider := ride.RiderID == userID
+	isDriver := ride.DriverID != nil && *ride.DriverID == userID
+
+	if !isRider && !isDriver {
+		return nil, common.NewBadRequestError("unauthorized to cancel this ride", nil)
+	}
+
+	if ride.Status == models.RideStatusCompleted || ride.Status == models.RideStatusCancelled {
+		return nil, common.NewBadRequestError("cannot cancel completed or already cancelled ride", nil)
+	}
+
+	if err := s.repo.UpdateRideStatus(ctx, rideID, models.RideStatusCancelled, nil); err != nil {
+		return nil, common.NewInternalServerError("failed to cancel ride")
+	}
+
+	ride.Status = models.RideStatusCancelled
+	now := time.Now()
+	ride.CancelledAt = &now
+	ride.CancellationReason = &reason
+
+	cancelledBy := "rider"
+	if isDriver {
+		cancelledBy = "driver"
+	}
+	driverID := uuid.Nil
+	if ride.DriverID != nil {
+		driverID = *ride.DriverID
+	}
+	s.publishEvent(eventbus.SubjectRideCancelled, "ride.cancelled", "rides-service", eventbus.RideCancelledData{
+		RideID:      rideID,
+		RiderID:     ride.RiderID,
+		DriverID:    driverID,
+		CancelledBy: cancelledBy,
+		Reason:      reason,
+		CancelledAt: now,
+	})
+
+	return ride, nil
+}
+
+func (s *Service) RateRide(ctx context.Context, rideID, riderID uuid.UUID, req *models.RideRatingRequest) error {
+	ride, err := s.repo.GetRideByID(ctx, rideID)
+	if err != nil {
+		return common.NewNotFoundError("ride not found", nil)
+	}
+
+	if ride.RiderID != riderID {
+		return common.NewBadRequestError("unauthorized to rate this ride", nil)
+	}
+
+	if ride.Status != models.RideStatusCompleted {
+		return common.NewBadRequestError("can only rate completed rides", nil)
+	}
+
+	if err := s.repo.UpdateRideRating(ctx, rideID, req.Rating, req.Feedback); err != nil {
+		return common.NewInternalServerError("failed to rate ride")
+	}
+
+	return nil
+}
+
+func (s *Service) GetRiderRides(ctx context.Context, riderID uuid.UUID, limit, offset int) ([]*models.Ride, int64, error) {
+	rides, total, err := s.repo.GetRidesByRiderWithTotal(ctx, riderID, limit, offset)
+	if err != nil {
+		return nil, 0, common.NewInternalServerError("failed to get rides")
+	}
+
+	return rides, total, nil
+}
+
+func (s *Service) GetDriverRides(ctx context.Context, driverID uuid.UUID, limit, offset int) ([]*models.Ride, int64, error) {
+	rides, total, err := s.repo.GetRidesByDriverWithTotal(ctx, driverID, limit, offset)
+	if err != nil {
+		return nil, 0, common.NewInternalServerError("failed to get rides")
+	}
+
+	return rides, total, nil
+}
+
+func (s *Service) GetAvailableRides(ctx context.Context) ([]models.Ride, error) {
+	rides, err := s.repo.GetPendingRides(ctx)
+	if err != nil {
+		return nil, common.NewInternalServerError("failed to get available rides")
+	}
+
+	return rides, nil
+}
+
+func calculateDistance(latitude1, longitude1, latitude2, longitude2 float64) float64 {
+	const earthRadius = 6371.0
+
+	deltaLatitude := (latitude2 - latitude1) * math.Pi / 180.0
+	deltaLongitude := (longitude2 - longitude1) * math.Pi / 180.0
+
+	a := math.Sin(deltaLatitude/2)*math.Sin(deltaLatitude/2) +
+		math.Cos(latitude1*math.Pi/180.0)*math.Cos(latitude2*math.Pi/180.0)*
+			math.Sin(deltaLongitude/2)*math.Sin(deltaLongitude/2)
+
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	distance := earthRadius * c
+
+	return math.Round(distance*100) / 100
+}
+
+func estimateDuration(distance float64) int {
+	const averageSpeed = 40.0
+	duration := (distance / averageSpeed) * 60
+	return int(math.Round(duration))
+}
+
+func (s *Service) calculateFare(distance float64, duration int, surgeMultiplier float64) float64 {
+	cfg := s.pricingConfig
+	if cfg == nil {
+		cfg = DefaultPricingConfig()
+	}
+
+	baseFare := (distance * cfg.BaseFarePerKm) + (float64(duration) * cfg.BaseFarePerMinute)
+	fare := baseFare * surgeMultiplier
+
+	if fare < cfg.MinimumFare {
+		fare = cfg.MinimumFare
+	}
+
+	return math.Round(fare*100) / 100
+}
+
+func calculateSurgeMultiplier(t time.Time) float64 {
+	hour := t.Hour()
+
+	if (hour >= 7 && hour < 9) || (hour >= 17 && hour < 20) {
+		return 1.5
+	}
+
+	if hour >= 23 || hour < 5 {
+		return 1.3
+	}
+
+	return 1.0
+}
+
+func (s *Service) GetUserProfile(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+	return s.repo.GetUserProfile(ctx, userID)
+}
+
+func (s *Service) UpdateUserProfile(ctx context.Context, userID uuid.UUID, firstName, lastName, phoneNumber string) error {
+	return s.repo.UpdateUserProfile(ctx, userID, firstName, lastName, phoneNumber)
+}
+
+type PromoCodeValidation struct {
+	Valid          bool      `json:"valid"`
+	PromoCodeID    uuid.UUID `json:"promo_code_id"`
+	DiscountAmount float64   `json:"discount_amount"`
+	FinalAmount    float64   `json:"final_amount"`
+	Message        string    `json:"message"`
+}
+
+func (s *Service) validatePromoCode(ctx context.Context, code string, riderID uuid.UUID, rideAmount float64) (*PromoCodeValidation, error) {
+	requestBody := map[string]interface{}{
+		"code":        code,
+		"ride_amount": rideAmount,
+	}
+
+	headers := make(map[string]string)
+
+	respBody, err := s.postToPromos(ctx, "/api/v1/promo-codes/validate", requestBody, headers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate promo code: %w", err)
+	}
+
+	var validation PromoCodeValidation
+	if err := json.Unmarshal(respBody, &validation); err != nil {
+		return nil, fmt.Errorf("failed to parse validation response: %w", err)
+	}
+
+	return &validation, nil
+}
+
+type mlEtaPredictRequest struct {
+	PickupLatitude   float64 `json:"pickup_latitude"`
+	PickupLongitude  float64 `json:"pickup_longitude"`
+	DropoffLatitude  float64 `json:"dropoff_latitude"`
+	DropoffLongitude float64 `json:"dropoff_longitude"`
+	TrafficLevel     string  `json:"traffic_level"`
+	Weather          string  `json:"weather"`
+	DriverID         string  `json:"driver_id"`
+	RideTypeID       int     `json:"ride_type_id"`
+}
+
+type mlEtaPredictResponse struct {
+	EstimatedMinutes float64 `json:"estimated_minutes"`
+	EstimatedSeconds int     `json:"estimated_seconds"`
+}
+
+func (s *Service) predictETAFromML(ctx context.Context, req *models.RideRequest) (float64, bool) {
+	if s.mlEtaClient == nil {
+		return 0, false
+	}
+
+	payload := mlEtaPredictRequest{
+		PickupLatitude:   req.PickupLatitude,
+		PickupLongitude:  req.PickupLongitude,
+		DropoffLatitude:  req.DropoffLatitude,
+		DropoffLongitude: req.DropoffLongitude,
+		TrafficLevel:     "medium",
+		Weather:          "clear",
+		DriverID:         "",
+	}
+	if req.RideTypeID != nil {
+		payload.RideTypeID = 1
+	}
+
+	call := func(ctx context.Context) (interface{}, error) {
+		body, err := s.mlEtaClient.Post(ctx, "/api/v1/eta/predict", payload, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp mlEtaPredictResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+		return &resp, nil
+	}
+
+	var (
+		result interface{}
+		err    error
+	)
+
+	if s.mlEtaBreaker != nil {
+		result, err = s.mlEtaBreaker.Execute(ctx, call)
+	} else {
+		result, err = call(ctx)
+	}
+
+	if err != nil {
+		return 0, false
+	}
+
+	resp, ok := result.(*mlEtaPredictResponse)
+	if !ok || resp == nil || resp.EstimatedMinutes <= 0 {
+		return 0, false
+	}
+
+	return resp.EstimatedMinutes, true
+}
+
+func (s *Service) postToPromos(ctx context.Context, path string, body interface{}, headers map[string]string) ([]byte, error) {
+	if s.promosBreaker == nil {
+		return s.promosClient.Post(ctx, path, body, headers)
+	}
+
+	result, err := s.promosBreaker.Execute(ctx, func(ctx context.Context) (interface{}, error) {
+		return s.promosClient.Post(ctx, path, body, headers)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	bytes, ok := result.([]byte)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type from promos service")
+	}
+
+	return bytes, nil
+}

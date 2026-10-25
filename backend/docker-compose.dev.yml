@@ -1,0 +1,40 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: medi-ambulance-redis-dev
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - medi-ambulance-dev
+
+  nats:
+    image: nats:2-alpine
+    container_name: medi-ambulance-nats-dev
+    ports:
+      - '4222:4222'
+      - '8222:8222'
+    command: ['--jetstream', '--store_dir=/data', '-m', '8222']
+    volumes:
+      - nats_dev_data:/data
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8222/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - medi-ambulance-dev
+
+volumes:
+  redis_dev_data:
+  nats_dev_data:
+
+networks:
+  medi-ambulance-dev:
+    driver: bridge

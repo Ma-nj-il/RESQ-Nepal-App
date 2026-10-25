@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+*.md
+*.test
+*_test.go
+test/
+docs/
+.vscode/
+.idea/
+tmp/
+logs/
+coverage.*

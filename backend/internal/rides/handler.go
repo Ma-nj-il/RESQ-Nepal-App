@@ -1,0 +1,551 @@
+package rides
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/bikky-kc013/medi-ambulance/pkg/common"
+	"github.com/bikky-kc013/medi-ambulance/pkg/config"
+	"github.com/bikky-kc013/medi-ambulance/pkg/jwtkeys"
+	"github.com/bikky-kc013/medi-ambulance/pkg/middleware"
+	"github.com/bikky-kc013/medi-ambulance/pkg/models"
+	"github.com/bikky-kc013/medi-ambulance/pkg/pagination"
+	"github.com/bikky-kc013/medi-ambulance/pkg/ratelimit"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+type Handler struct {
+	service *Service
+}
+
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
+}
+
+func (h *Handler) RequestRide(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req models.RideRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ride, err := h.service.RequestRide(c.Request.Context(), userID, &req)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to request ride")
+		return
+	}
+
+	common.CreatedResponse(c, ride)
+}
+
+func (h *Handler) GetRide(c *gin.Context) {
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	ride, err := h.service.GetRide(c.Request.Context(), rideID)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to get ride")
+		return
+	}
+
+	common.SuccessResponse(c, ride)
+}
+
+func (h *Handler) AcceptRide(c *gin.Context) {
+	driverID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	ride, err := h.service.AcceptRide(c.Request.Context(), rideID, driverID)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to accept ride")
+		return
+	}
+
+	common.SuccessResponse(c, ride)
+}
+
+func (h *Handler) StartRide(c *gin.Context) {
+	driverID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	ride, err := h.service.StartRide(c.Request.Context(), rideID, driverID)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to start ride")
+		return
+	}
+
+	common.SuccessResponse(c, ride)
+}
+
+func (h *Handler) CompleteRide(c *gin.Context) {
+	driverID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	var req struct {
+		ActualDistance float64 `json:"actual_distance" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ride, err := h.service.CompleteRide(c.Request.Context(), rideID, driverID, req.ActualDistance)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to complete ride")
+		return
+	}
+
+	common.SuccessResponse(c, ride)
+}
+
+func (h *Handler) CancelRide(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ride, err := h.service.CancelRide(c.Request.Context(), rideID, userID, req.Reason)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to cancel ride")
+		return
+	}
+
+	common.SuccessResponse(c, ride)
+}
+
+func (h *Handler) RateRide(c *gin.Context) {
+	riderID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	var req models.RideRatingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.service.RateRide(c.Request.Context(), rideID, riderID, &req); err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to rate ride")
+		return
+	}
+
+	common.SuccessResponse(c, gin.H{"message": "ride rated successfully"})
+}
+
+func (h *Handler) GetMyRides(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	role, err := middleware.GetUserRole(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	params := pagination.ParseParams(c)
+
+	var rides []*models.Ride
+	var total int64
+
+	if role == models.RoleRider {
+		rides, total, err = h.service.GetRiderRides(c.Request.Context(), userID, params.Limit, params.Offset)
+	} else if role == models.RoleDriver {
+		rides, total, err = h.service.GetDriverRides(c.Request.Context(), userID, params.Limit, params.Offset)
+	} else {
+		common.ErrorResponse(c, http.StatusForbidden, "invalid role")
+		return
+	}
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to get rides")
+		return
+	}
+
+	if rides == nil {
+		rides = []*models.Ride{}
+	}
+
+	meta := pagination.BuildMeta(params.Limit, params.Offset, total)
+	common.SuccessResponseWithMeta(c, rides, meta)
+}
+
+func (h *Handler) GetAvailableRides(c *gin.Context) {
+	rides, err := h.service.GetAvailableRides(c.Request.Context())
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to get available rides")
+		return
+	}
+
+	if rides == nil {
+		rides = []models.Ride{}
+	}
+
+	common.SuccessResponse(c, rides)
+}
+
+func (h *Handler) GetRideHistory(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	status := c.Query("status")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+	params := pagination.ParseParams(c)
+
+	filters := &RideFilters{}
+	if status != "" {
+		filters.Status = &status
+	}
+	if startDate != "" {
+		t, err := time.Parse("2006-01-02", startDate)
+		if err == nil {
+			filters.StartDate = &t
+		}
+	}
+	if endDate != "" {
+		t, err := time.Parse("2006-01-02", endDate)
+		if err == nil {
+			filters.EndDate = &t
+		}
+	}
+
+	var ridesList []*models.Ride
+	var total int
+	var err error
+
+	if role == models.RoleDriver {
+		ridesList, total, err = h.service.repo.GetRidesByRiderWithFilters(
+			c.Request.Context(),
+			userID.(uuid.UUID),
+			filters,
+			params.Limit,
+			params.Offset,
+		)
+	} else {
+		ridesList, total, err = h.service.repo.GetRidesByRiderWithFilters(
+			c.Request.Context(),
+			userID.(uuid.UUID),
+			filters,
+			params.Limit,
+			params.Offset,
+		)
+	}
+
+	if err != nil {
+		common.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch ride history")
+		return
+	}
+
+	if ridesList == nil {
+		ridesList = []*models.Ride{}
+	}
+
+	meta := pagination.BuildMeta(params.Limit, params.Offset, int64(total))
+	common.SuccessResponseWithMeta(c, gin.H{
+		"rides": ridesList,
+	}, meta)
+}
+
+func (h *Handler) GetRideReceipt(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid ride ID")
+		return
+	}
+
+	ride, err := h.service.repo.GetRideByID(c.Request.Context(), rideID)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusNotFound, "ride not found")
+		return
+	}
+
+	if ride.RiderID != userID && (ride.DriverID == nil || *ride.DriverID != userID) {
+		common.ErrorResponse(c, http.StatusForbidden, "unauthorized")
+		return
+	}
+
+	if ride.Status != models.RideStatusCompleted {
+		common.ErrorResponse(c, http.StatusBadRequest, "ride is not completed")
+		return
+	}
+
+	paymentMethod, err := h.service.repo.GetPaymentByRideID(c.Request.Context(), rideID)
+	if err != nil {
+		paymentMethod = "unknown"
+	}
+
+	receipt := gin.H{
+		"ride_id":          ride.ID,
+		"date":             ride.CompletedAt,
+		"pickup_address":   ride.PickupAddress,
+		"dropoff_address":  ride.DropoffAddress,
+		"distance":         ride.ActualDistance,
+		"duration":         ride.ActualDuration,
+		"base_fare":        ride.EstimatedFare,
+		"surge_multiplier": ride.SurgeMultiplier,
+		"final_fare":       ride.FinalFare,
+		"payment_method":   paymentMethod,
+		"rider_id":         ride.RiderID,
+		"driver_id":        ride.DriverID,
+	}
+
+	common.SuccessResponse(c, receipt)
+}
+
+func (h *Handler) GetUserProfile(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	user, err := h.service.GetUserProfile(c.Request.Context(), userID)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to get user profile")
+		return
+	}
+
+	common.SuccessResponse(c, user)
+}
+
+func (h *Handler) UpdateUserProfile(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		FirstName   string `json:"first_name" binding:"required"`
+		LastName    string `json:"last_name" binding:"required"`
+		PhoneNumber string `json:"phone_number" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = h.service.UpdateUserProfile(c.Request.Context(), userID, req.FirstName, req.LastName, req.PhoneNumber)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to update user profile")
+		return
+	}
+
+	common.SuccessResponse(c, gin.H{
+		"message": "Profile updated successfully",
+	})
+}
+
+func (h *Handler) GetSurgeInfo(c *gin.Context) {
+	latStr := c.Query("latitude")
+	lonStr := c.Query("longitude")
+
+	if latStr == "" || lonStr == "" {
+		common.ErrorResponse(c, http.StatusBadRequest, "latitude and longitude are required")
+		return
+	}
+
+	latitude, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid latitude")
+		return
+	}
+
+	longitude, err := strconv.ParseFloat(lonStr, 64)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid longitude")
+		return
+	}
+
+	if h.service.surgeCalculator == nil {
+		multiplier := calculateSurgeMultiplier(time.Now())
+		common.SuccessResponse(c, gin.H{
+			"surge_multiplier": multiplier,
+			"is_surge_active":  multiplier > 1.0,
+			"message":          "Time-based surge pricing active",
+		})
+		return
+	}
+
+	surgeInfo, err := h.service.surgeCalculator.GetCurrentSurgeInfo(c.Request.Context(), latitude, longitude)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to get surge information")
+		return
+	}
+
+	common.SuccessResponse(c, surgeInfo)
+}
+
+func (h *Handler) MatchDrivers(c *gin.Context) {
+	latStr := c.Query("latitude")
+	lngStr := c.Query("longitude")
+	if latStr == "" || lngStr == "" {
+		common.ErrorResponse(c, http.StatusBadRequest, "latitude and longitude are required")
+		return
+	}
+
+	latitude, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid latitude")
+		return
+	}
+	longitude, err := strconv.ParseFloat(lngStr, 64)
+	if err != nil {
+		common.ErrorResponse(c, http.StatusBadRequest, "invalid longitude")
+		return
+	}
+
+	candidates, err := h.service.MatchDrivers(c.Request.Context(), latitude, longitude)
+	if err != nil {
+		if appErr, ok := err.(*common.AppError); ok {
+			common.AppErrorResponse(c, appErr)
+			return
+		}
+		common.ErrorResponse(c, http.StatusInternalServerError, "failed to match drivers")
+		return
+	}
+
+	common.SuccessResponse(c, gin.H{
+		"drivers": candidates,
+		"count":   len(candidates),
+	})
+}
+
+func (h *Handler) RegisterRoutes(r *gin.Engine, jwtProvider jwtkeys.KeyProvider, limiter *ratelimit.Limiter, rateCfg config.RateLimitConfig) {
+	api := r.Group("/api/v1")
+	api.Use(middleware.AuthMiddlewareWithProvider(jwtProvider))
+
+	if rateCfg.Enabled && limiter != nil {
+		api.Use(middleware.RateLimit(limiter, rateCfg))
+	}
+
+	riders := api.Group("/rides")
+	riders.Use(middleware.RequireRole(models.RoleRider, models.RoleDriver))
+	{
+		riders.POST("", h.RequestRide)
+		riders.GET("/:id", h.GetRide)
+		riders.GET("", h.GetMyRides)
+		riders.GET("/surge-info", h.GetSurgeInfo)
+		riders.POST("/:id/cancel", h.CancelRide)
+		riders.POST("/:id/rate", h.RateRide)
+		riders.GET("/match-drivers", h.MatchDrivers)
+		riders.GET("/:id/receipt", h.GetRideReceipt)
+	}
+
+	drivers := api.Group("/driver/rides")
+	drivers.Use(middleware.RequireRole(models.RoleDriver))
+	{
+		drivers.GET("/available", h.GetAvailableRides)
+		drivers.POST("/:id/accept", h.AcceptRide)
+		drivers.POST("/:id/start", h.StartRide)
+		drivers.POST("/:id/complete", h.CompleteRide)
+	}
+}

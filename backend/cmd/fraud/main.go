@@ -1,0 +1,166 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/bikky-kc013/medi-ambulance/internal/fraud"
+	"github.com/bikky-kc013/medi-ambulance/pkg/common"
+	"github.com/bikky-kc013/medi-ambulance/pkg/config"
+	"github.com/bikky-kc013/medi-ambulance/pkg/database"
+	"github.com/bikky-kc013/medi-ambulance/pkg/jwtkeys"
+	"github.com/bikky-kc013/medi-ambulance/pkg/logger"
+	"github.com/bikky-kc013/medi-ambulance/pkg/middleware"
+	"github.com/bikky-kc013/medi-ambulance/pkg/tracing"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+)
+
+const (
+	serviceName = "fraud-service"
+	version     = "1.0.0"
+)
+
+func main() {
+	if os.Getenv("PORT") == "" {
+		os.Setenv("PORT", "8092")
+	}
+	cfg, err := config.Load(serviceName)
+	if err != nil {
+		panic(fmt.Sprintf("failed to load config: %v", err))
+	}
+	defer cfg.Close()
+
+	rootCtx, cancelKeys := context.WithCancel(context.Background())
+	defer cancelKeys()
+
+	if err := logger.Init(cfg.Server.Environment); err != nil {
+		panic(fmt.Sprintf("failed to initialize logger: %v", err))
+	}
+	defer logger.Sync()
+
+	logger.Info("Starting fraud detection service",
+		zap.String("service", serviceName),
+		zap.String("version", version),
+		zap.String("environment", cfg.Server.Environment),
+	)
+
+	tracerEnabled := os.Getenv("OTEL_ENABLED") == "true"
+	if tracerEnabled {
+		tracerCfg := tracing.Config{
+			ServiceName:    os.Getenv("OTEL_SERVICE_NAME"),
+			ServiceVersion: os.Getenv("OTEL_SERVICE_VERSION"),
+			Environment:    cfg.Server.Environment,
+			OTLPEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+			Enabled:        true,
+		}
+
+		tp, err := tracing.InitTracer(tracerCfg, logger.Get())
+		if err != nil {
+			logger.Warn("Failed to initialize tracer, continuing without tracing", zap.Error(err))
+		} else {
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := tp.Shutdown(shutdownCtx); err != nil {
+					logger.Warn("Failed to shutdown tracer", zap.Error(err))
+				}
+			}()
+			logger.Info("OpenTelemetry tracing initialized successfully")
+		}
+	}
+
+	db, err := database.NewDBPool(&cfg.Database, []string{})
+	if err != nil {
+		logger.Fatal("Failed to connect to database", zap.Error(err))
+	}
+	defer db.Close()
+	logger.Info("Connected to database")
+
+	repo := fraud.NewRepository(db)
+	service := fraud.NewService(repo)
+	handler := fraud.NewHandler(service)
+
+	jwtProvider, err := jwtkeys.NewManagerFromConfig(rootCtx, cfg.JWT, true)
+	if err != nil {
+		logger.Fatal("Failed to initialize JWT key manager", zap.Error(err))
+	}
+	jwtProvider.StartAutoRefresh(rootCtx, time.Duration(cfg.JWT.RefreshMinutes)*time.Minute)
+
+	if cfg.Server.Environment == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	router := gin.New()
+	router.HandleMethodNotAllowed = true
+	router.NoRoute(common.NoRouteHandler())
+	router.NoMethod(common.NoMethodHandler())
+	router.Use(middleware.CorrelationID())
+	router.Use(middleware.RequestTimeout(&cfg.Timeout))
+	router.Use(middleware.RequestLogger(serviceName))
+	router.Use(middleware.CORS())
+	router.Use(middleware.SecurityHeaders())
+	router.Use(middleware.MaxBodySize(10 << 20))
+	router.Use(middleware.SanitizeRequest())
+
+	if tracerEnabled {
+		router.Use(middleware.TracingMiddleware(serviceName))
+	}
+
+	router.Use(middleware.ErrorHandler())
+
+	router.GET("/healthz", common.HealthCheck(serviceName, version))
+	router.GET("/health/live", common.LivenessProbe(serviceName, version))
+
+	healthChecks := make(map[string]func() error)
+	healthChecks["database"] = func() error {
+		pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		return db.Ping(pingCtx)
+	}
+
+	router.GET("/health/ready", common.ReadinessProbe(serviceName, version, healthChecks))
+
+	router.GET("/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"service": serviceName,
+			"version": version,
+		})
+	})
+
+	handler.RegisterRoutes(router, jwtProvider)
+
+	srv := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      router,
+		ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
+	}
+
+	go func() {
+		logger.Info("Server starting", zap.String("port", cfg.Server.Port))
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Failed to start server", zap.Error(err))
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Fatal("Server forced to shutdown", zap.Error(err))
+	}
+
+	logger.Info("Server stopped")
+}

@@ -1,0 +1,26 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+bin = "tmp/app"
+clean_on_exit = false
+cmd = "go build -o ./tmp/app ./cmd/${SERVICE}"
+ignore = ["tmp/*", "vendor/*", ".git/*", "node_modules/*"]
+
+[watch]
+exclude = ["*_test.go", "vendor", "tmp", ".git", "node_modules", "logs"]
+include = ["cmd/**/*.go", "internal/**/*.go", "pkg/**/*.go"]
+
+delay = 500
+kill_delay = 500
+send_interrupt = true
+stop_on_error = true
+
+[log]
+time = true
+
+[color]
+build = "green"
+main = "cyan"
+runner = "magenta"
+watcher = "yellow"
