@@ -81,6 +81,18 @@ export interface ApplicationConfig {
     readonly patientDataEncryptionKeyBase64?: string;
     readonly patientDataEncryptionKeyId?: string;
   };
+  readonly documents: {
+    readonly timeoutMs: number;
+    readonly storage?: {
+      readonly bucket: string;
+      readonly region: string;
+      readonly accessKeyId: string;
+      readonly secretAccessKey: string;
+      readonly sessionToken?: string;
+      readonly kmsKeyId?: string;
+    };
+    readonly clamdSocket?: string;
+  };
   readonly migration: {
     readonly expectedCurrent?: string;
     readonly operator?: string;
@@ -124,6 +136,23 @@ const rawEnvironmentSchema = z
     RESQ_KAFKA_SASL_USERNAME: z.string().min(1).max(256).optional(),
     RESQ_KAFKA_SASL_PASSWORD: z.string().min(1).max(4096).optional(),
     RESQ_OBJECT_STORAGE_ENDPOINT: z.url().default('http://localhost:9000'),
+    RESQ_DOCUMENT_BUCKET: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
+      .optional(),
+    RESQ_DOCUMENT_REGION: z
+      .string()
+      .regex(/^[a-z0-9-]{1,64}$/)
+      .default('us-east-1'),
+    RESQ_DOCUMENT_ACCESS_KEY_ID: z.string().min(1).max(256).optional(),
+    RESQ_DOCUMENT_SECRET_ACCESS_KEY: z.string().min(1).max(4096).optional(),
+    RESQ_DOCUMENT_SESSION_TOKEN: z.string().min(1).max(16384).optional(),
+    RESQ_DOCUMENT_KMS_KEY_ID: z.string().min(1).max(2048).optional(),
+    RESQ_DOCUMENT_CLAMD_SOCKET: z
+      .string()
+      .regex(/^\/[^\0\r\n]{1,100}$/)
+      .optional(),
+    RESQ_DOCUMENT_TIMEOUT_MS: integerValue(1000, 120000).default(30000),
     RESQ_CORS_ORIGINS: z.string().default('http://localhost:8081'),
     RESQ_METRICS_ENABLED: booleanValue.default(true),
     RESQ_OTEL_ENABLED: booleanValue.default(false),
@@ -273,6 +302,9 @@ function validateProduction(
       'RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID must identify a managed production key',
     );
   }
+  if (raw.RESQ_DOCUMENT_BUCKET !== undefined && raw.RESQ_DOCUMENT_KMS_KEY_ID === undefined) {
+    issues.push('RESQ_DOCUMENT_KMS_KEY_ID is required for configured production document storage');
+  }
 
   let mfaKey: Buffer | undefined;
   try {
@@ -380,6 +412,31 @@ export function loadApplicationConfig(
   }
 
   const raw = parsed.data;
+  const documentStorageValues = [
+    raw.RESQ_DOCUMENT_BUCKET,
+    raw.RESQ_DOCUMENT_ACCESS_KEY_ID,
+    raw.RESQ_DOCUMENT_SECRET_ACCESS_KEY,
+  ];
+  if (
+    documentStorageValues.some((value) => value !== undefined) &&
+    documentStorageValues.some((value) => value === undefined)
+  ) {
+    throw new ConfigurationError([
+      'document bucket, access key ID, and secret access key must be configured together',
+    ]);
+  }
+  if (
+    raw.RESQ_DOCUMENT_BUCKET === undefined &&
+    [
+      raw.RESQ_DOCUMENT_CLAMD_SOCKET,
+      raw.RESQ_DOCUMENT_SESSION_TOKEN,
+      raw.RESQ_DOCUMENT_KMS_KEY_ID,
+    ].some((value) => value !== undefined)
+  ) {
+    throw new ConfigurationError([
+      'document scanner and key settings require document storage configuration',
+    ]);
+  }
   const saslValues = [
     raw.RESQ_KAFKA_SASL_MECHANISM,
     raw.RESQ_KAFKA_SASL_USERNAME,
@@ -555,6 +612,30 @@ export function loadApplicationConfig(
         : {
             patientDataEncryptionKeyBase64: raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64,
             patientDataEncryptionKeyId: raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID,
+          }),
+    }),
+    documents: Object.freeze({
+      timeoutMs: raw.RESQ_DOCUMENT_TIMEOUT_MS,
+      ...(raw.RESQ_DOCUMENT_CLAMD_SOCKET === undefined
+        ? {}
+        : { clamdSocket: raw.RESQ_DOCUMENT_CLAMD_SOCKET }),
+      ...(raw.RESQ_DOCUMENT_BUCKET === undefined ||
+      raw.RESQ_DOCUMENT_ACCESS_KEY_ID === undefined ||
+      raw.RESQ_DOCUMENT_SECRET_ACCESS_KEY === undefined
+        ? {}
+        : {
+            storage: Object.freeze({
+              bucket: raw.RESQ_DOCUMENT_BUCKET,
+              region: raw.RESQ_DOCUMENT_REGION,
+              accessKeyId: raw.RESQ_DOCUMENT_ACCESS_KEY_ID,
+              secretAccessKey: raw.RESQ_DOCUMENT_SECRET_ACCESS_KEY,
+              ...(raw.RESQ_DOCUMENT_SESSION_TOKEN === undefined
+                ? {}
+                : { sessionToken: raw.RESQ_DOCUMENT_SESSION_TOKEN }),
+              ...(raw.RESQ_DOCUMENT_KMS_KEY_ID === undefined
+                ? {}
+                : { kmsKeyId: raw.RESQ_DOCUMENT_KMS_KEY_ID }),
+            }),
           }),
     }),
     migration: Object.freeze({

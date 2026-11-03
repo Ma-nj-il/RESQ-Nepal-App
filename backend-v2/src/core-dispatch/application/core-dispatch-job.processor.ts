@@ -265,6 +265,7 @@ export class CoreDispatchJobProcessor {
       correlationId: job.correlationId,
       causationId: job.jobIntentId,
       source: 'JOB',
+      ...(job.executionId === undefined ? {} : { jobExecutionId: job.executionId }),
       ...(job.tenantId === undefined
         ? {}
         : {

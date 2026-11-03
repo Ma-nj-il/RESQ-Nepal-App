@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/fleet/fleet.ambulance-readiness.changed/v1/schema.json",
+  "allOf": [
+    { "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "fleet.ambulance-readiness.changed.v1" },
+        "schemaVersion": { "const": 1 },
+        "producer": { "const": "provider-operations-worker" },
+        "aggregate": {
+          "type": "object",
+          "properties": { "type": { "const": "ambulanceReadiness" } }
+        },
+        "stream": { "type": "object", "properties": { "type": { "const": "ambulance" } } },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reasons"],
+          "properties": {
+            "status": { "enum": ["READY", "BLOCKED"] },
+            "reasons": {
+              "type": "array",
+              "maxItems": 32,
+              "items": { "type": "string", "pattern": "^[A-Z][A-Z_]{1,127}$" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

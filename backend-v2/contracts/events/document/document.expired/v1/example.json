@@ -1,0 +1,21 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000001",
+  "eventType": "document.expired.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "documents",
+  "aggregate": {
+    "type": "documentObject",
+    "id": "018f0000-0000-7000-8000-000000000002",
+    "version": 5
+  },
+  "stream": { "type": "document", "id": "018f0000-0000-7000-8000-000000000003", "sequence": 4 },
+  "correlationId": "document-job-example",
+  "causationId": "document-command-example",
+  "actor": { "type": "SYSTEM_POLICY" },
+  "data": {
+    "linkId": "018f0000-0000-7000-8000-000000000003",
+    "uploadStatus": "READY",
+    "reviewStatus": "EXPIRED"
+  }
+}

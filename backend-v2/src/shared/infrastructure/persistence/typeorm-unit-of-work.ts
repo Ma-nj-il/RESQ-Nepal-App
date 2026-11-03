@@ -60,6 +60,8 @@ export class TypeOrmUnitOfWork implements UnitOfWork {
       ['app.authority_grant_id', context.scope.authorityGrantId ?? ''],
       ['app.authority_target_grant_id', context.scope.authorityTargetGrantId ?? ''],
       ['app.correlation_id', context.correlationId],
+      ['app.job_intent_id', context.source === 'JOB' ? (context.causationId ?? '') : ''],
+      ['app.job_execution_id', context.source === 'JOB' ? (context.jobExecutionId ?? '') : ''],
     ];
 
     for (const [name, value] of claims) {

@@ -71,6 +71,34 @@ describe('application configuration', () => {
     );
   });
 
+  it('requires complete document storage credentials and storage for the scanner', () => {
+    expect(() =>
+      loadApplicationConfig({ RESQ_DOCUMENT_BUCKET: 'incomplete-bucket' }, 'api'),
+    ).toThrow(/configured together/);
+    expect(() =>
+      loadApplicationConfig({ RESQ_DOCUMENT_CLAMD_SOCKET: '/run/clamav/clamd.sock' }, 'worker'),
+    ).toThrow(/require document storage/);
+    expect(() =>
+      loadApplicationConfig({ RESQ_DOCUMENT_CLAMD_SOCKET: 'relative.sock' }, 'worker'),
+    ).toThrow(ConfigurationError);
+  });
+
+  it('requires a managed encryption key for configured production document storage', () => {
+    const environment = {
+      ...secureProductionEnvironment(),
+      RESQ_DOCUMENT_BUCKET: 'resq-documents',
+      RESQ_DOCUMENT_ACCESS_KEY_ID: 'synthetic-access',
+      RESQ_DOCUMENT_SECRET_ACCESS_KEY: 'synthetic-secret',
+    };
+    expect(() => loadApplicationConfig(environment, 'api')).toThrow(/RESQ_DOCUMENT_KMS_KEY_ID/);
+    expect(
+      loadApplicationConfig(
+        { ...environment, RESQ_DOCUMENT_KMS_KEY_ID: 'synthetic-managed-key' },
+        'api',
+      ).documents.storage?.kmsKeyId,
+    ).toBe('synthetic-managed-key');
+  });
+
   it('rejects plaintext, shared, local production dependencies and wildcard CORS', () => {
     const environment = secureProductionEnvironment();
     environment['RESQ_DATABASE_URL'] = 'postgresql://runtime:secret@localhost:5432/resq';

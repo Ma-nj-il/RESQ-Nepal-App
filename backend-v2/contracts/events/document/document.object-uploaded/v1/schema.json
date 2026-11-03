@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/document/document.object-uploaded/v1/schema.json",
+  "allOf": [
+    { "$ref": "https://contracts.resq-nepal.org/events/_shared/document-state/v1/schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "document.object-uploaded.v1" },
+        "data": { "type": "object", "properties": { "uploadStatus": { "const": "SCANNING" } } }
+      }
+    }
+  ]
+}

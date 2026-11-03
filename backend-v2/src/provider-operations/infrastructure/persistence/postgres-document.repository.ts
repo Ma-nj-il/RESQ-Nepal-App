@@ -349,30 +349,19 @@ export class PostgresDocumentRepository implements DocumentRepository {
     transaction: TransactionContext,
     input: Parameters<DocumentRepository['recordScanOutcome']>[1],
   ): Promise<DocumentRecord | undefined> {
-    const manager = entityManagerFor(transaction);
-    const current = await findDocument(manager, input.documentObjectId);
-    if (current === undefined) return undefined;
-    const rows: { id: string }[] = await queryRows(
-      manager,
-      `UPDATE documents.document_objects
-          SET upload_status = $3, detected_mime_type = COALESCE($4, detected_mime_type),
-              scanner_code = $5, scanned_at = $6, version = version + 1, updated_at = $6
-        WHERE id = $1 AND version = $2 AND upload_status = 'SCANNING'
-        RETURNING id`,
+    const rows: { changed: boolean }[] = await entityManagerFor(transaction).query(
+      'SELECT documents.record_worker_scan($1,$2,$3,$4,$5) AS changed',
       [
         input.documentObjectId,
         input.expectedVersion,
         input.outcome,
         input.detectedMimeType ?? null,
         input.safeScannerCode,
-        input.now,
       ],
     );
-    if (rows[0] === undefined) return undefined;
-    if (input.outcome === 'READY') {
-      await changeReviewStatus(manager, current, 'PENDING', input.now);
-    }
-    return this.findDocument(transaction, rows[0].id);
+    return rows[0]?.changed === true
+      ? this.findDocument(transaction, input.documentObjectId)
+      : undefined;
   }
 
   async recordReview(
@@ -423,34 +412,12 @@ export class PostgresDocumentRepository implements DocumentRepository {
     transaction: TransactionContext,
     input: Parameters<DocumentRepository['expireIfDue']>[1],
   ): Promise<DocumentRecord | undefined> {
-    const manager = entityManagerFor(transaction);
-    const current = await findDocument(manager, input.documentObjectId);
-    if (
-      current === undefined ||
-      current.reviewStatus !== 'APPROVED' ||
-      current.expiresOn === undefined ||
-      current.expiresOn >= input.evaluatedOn
-    ) {
-      return current;
-    }
-    const versionRows: { id: string }[] = await queryRows(
-      manager,
-      `UPDATE documents.document_objects
-          SET version = version + 1, updated_at = $3
-        WHERE id = $1 AND version = $2 AND upload_status = 'READY'
-        RETURNING id`,
-      [input.documentObjectId, input.expectedVersion, input.now],
+    const rows: { changed: boolean }[] = await entityManagerFor(transaction).query(
+      'SELECT documents.expire_worker_document($1,$2) AS changed',
+      [input.documentObjectId, input.expectedVersion],
     );
-    if (versionRows[0] === undefined) return undefined;
-    const changed = await changeReviewStatus(
-      manager,
-      current,
-      'EXPIRED',
-      input.now,
-      "AND review_status = 'APPROVED' AND expires_on < $4::date",
-      [input.evaluatedOn],
-    );
-    if (!changed) return undefined;
-    return this.findDocument(transaction, input.documentObjectId);
+    return rows[0]?.changed === true
+      ? this.findDocument(transaction, input.documentObjectId)
+      : undefined;
   }
 }

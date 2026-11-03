@@ -78,11 +78,19 @@ async function emittedEventTypes() {
   const sourceFiles = await filesBelow(eventSourceRoot, (file) => file.endsWith('.ts'));
   sourceFiles.push(
     path.join(backendRoot, 'migrations', '1793664000005-create-product-services.ts'),
+    path.join(backendRoot, 'src', 'provider-operations', 'application', 'document.service.ts'),
+    path.join(
+      backendRoot,
+      'src',
+      'provider-operations',
+      'application',
+      'document-job.processor.ts',
+    ),
   );
   const eventLike = new Set();
   const jobs = new Set();
   const eventPattern =
-    /['"]((?:booking|dispatch|trip|safety|communication|support|billing)\.[a-z0-9.-]+\.v[1-9][0-9]*)['"]/g;
+    /['"]((?:booking|dispatch|trip|safety|communication|support|billing|document|fleet)\.[a-z0-9.-]+\.v[1-9][0-9]*)['"]/g;
   const jobPattern = /jobType:\s*['"]([^'"]+)['"]/g;
   for (const file of sourceFiles) {
     const source = await readFile(file, 'utf8');

@@ -11,6 +11,12 @@
 
 ## Implemented scope
 
+The subsequent [document-worker implementation](document-workers.md) adds migration 0006,
+shared execution fencing, restricted personal/tenant document access, scan/expiry/readiness
+processors, S3/ClamAV adapters, and targeted PostgreSQL/concurrency tests. The tables below retain
+historical Phase 4 evidence; consult the linked worker notes and exact-revision CI results for the
+new work. Provider/staging acceptance and Gate 4 remain open.
+
 | Area              | Implementation                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Provider registry | Applicant draft/submission/withdrawal, province information/recommendation/rejection, separate platform approval, atomic organization/facility/membership/admin activation |

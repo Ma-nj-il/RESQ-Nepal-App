@@ -51,6 +51,7 @@ export interface RequestContextValues {
   readonly correlationId: string;
   readonly causationId?: string;
   readonly source: RequestSource;
+  readonly jobExecutionId?: string;
   readonly actor?: RequestActor;
   readonly sessionId?: string;
   readonly authentication?: {
@@ -70,6 +71,7 @@ export class RequestContext {
   readonly correlationId: string;
   readonly causationId: string | undefined;
   readonly source: RequestSource;
+  readonly jobExecutionId: string | undefined;
   readonly actor: Readonly<RequestActor> | undefined;
   readonly sessionId: string | undefined;
   readonly authentication:
@@ -90,6 +92,7 @@ export class RequestContext {
     this.correlationId = values.correlationId;
     this.causationId = values.causationId;
     this.source = values.source;
+    this.jobExecutionId = values.jobExecutionId;
     this.actor = values.actor === undefined ? undefined : Object.freeze({ ...values.actor });
     this.sessionId = values.sessionId;
     this.authentication =

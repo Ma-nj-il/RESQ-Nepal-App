@@ -1,0 +1,19 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000001",
+  "eventType": "fleet.ambulance-readiness.changed.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "provider-operations-worker",
+  "aggregate": {
+    "type": "ambulanceReadiness",
+    "id": "018f0000-0000-7000-8000-000000000002",
+    "version": 3
+  },
+  "stream": { "type": "ambulance", "id": "018f0000-0000-7000-8000-000000000002", "sequence": 2 },
+  "tenantId": "018f0000-0000-7000-8000-000000000003",
+  "facilityId": "018f0000-0000-7000-8000-000000000004",
+  "correlationId": "document-job-example",
+  "causationId": "document-command-example",
+  "actor": { "type": "SYSTEM_POLICY" },
+  "data": { "status": "BLOCKED", "reasons": ["DOCUMENTS_NOT_CURRENT"] }
+}

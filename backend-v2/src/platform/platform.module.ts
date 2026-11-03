@@ -7,6 +7,7 @@ import {
 } from '../core-dispatch/core-dispatch.module.js';
 import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
 import { ProviderOperationsModule } from '../provider-operations/provider-operations.module.js';
+import { ProviderOperationsWorkerModule } from '../provider-operations/provider-operations-worker.module.js';
 import { ProductServicesModule } from '../product-services/product-services.module.js';
 import { ConfigurationModule } from '../shared/infrastructure/config/configuration.module.js';
 import type { RuntimeRole } from '../shared/infrastructure/config/application-config.js';
@@ -46,7 +47,7 @@ export class PlatformModule implements NestModule {
               ProductServicesModule,
             ]
           : []),
-        ...(role === 'worker' ? [CoreDispatchWorkerModule] : []),
+        ...(role === 'worker' ? [CoreDispatchWorkerModule, ProviderOperationsWorkerModule] : []),
         ...(role === 'outbox-relay' ? [OutboxRelayModule] : []),
       ],
       controllers: role === 'api' ? [HealthController, MetricsController] : [],

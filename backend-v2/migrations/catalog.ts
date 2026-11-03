@@ -26,6 +26,10 @@ import {
   PRODUCT_SERVICES_SQL,
   CreateProductServices1793664000005,
 } from './1793664000005-create-product-services.js';
+import {
+  DOCUMENT_WORKERS_SQL,
+  BindDocumentWorkers1793664000006,
+} from './1793664000006-bind-document-workers.js';
 
 type MigrationConstructor = new () => MigrationInterface;
 
@@ -36,6 +40,7 @@ export const MIGRATIONS: readonly MigrationConstructor[] = Object.freeze([
   CreateProviderOperations1793664000003,
   CreateCoreDispatch1793664000004,
   CreateProductServices1793664000005,
+  BindDocumentWorkers1793664000006,
 ]);
 
 function checksum(sql: string): string {
@@ -49,4 +54,5 @@ export const MIGRATION_CHECKSUMS: Readonly<Record<string, string>> = Object.free
   CreateProviderOperations1793664000003: checksum(PROVIDER_OPERATIONS_SQL),
   CreateCoreDispatch1793664000004: checksum(CORE_DISPATCH_SQL),
   CreateProductServices1793664000005: checksum(PRODUCT_SERVICES_SQL),
+  BindDocumentWorkers1793664000006: checksum(DOCUMENT_WORKERS_SQL),
 });

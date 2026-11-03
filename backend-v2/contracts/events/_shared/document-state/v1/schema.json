@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/_shared/document-state/v1/schema.json",
+  "allOf": [
+    { "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "producer": { "const": "documents" },
+        "aggregate": { "type": "object", "properties": { "type": { "const": "documentObject" } } },
+        "stream": { "type": "object", "properties": { "type": { "const": "document" } } },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["linkId", "uploadStatus", "reviewStatus"],
+          "properties": {
+            "linkId": { "type": "string", "format": "uuid" },
+            "uploadStatus": { "enum": ["SCANNING", "READY", "QUARANTINED", "FAILED"] },
+            "reviewStatus": {
+              "enum": [
+                "NOT_SUBMITTED",
+                "PENDING",
+                "APPROVED",
+                "NEEDS_INFORMATION",
+                "REJECTED",
+                "EXPIRED",
+                "REVOKED"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

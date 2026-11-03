@@ -22,8 +22,9 @@ HOLD; these tools do not authorize or perform production migration.
 | Migration job | `apps/migration/main.ts`    | exits after migrations |
 
 The relay publishes ordered transactional outbox events to Kafka. The worker reconciles durable job
-intents into BullMQ and processes offer/search deadlines and safety alert/escalation policy. Document/
-compliance processors remain unavailable. Redis/Kafka state is never authoritative over PostgreSQL.
+intents into BullMQ and processes offer/search deadlines, safety alert/escalation policy, and
+[document scan/expiry and compliance readiness jobs](docs/document-workers.md). Redis/Kafka state
+is never authoritative over PostgreSQL.
 
 ## Implemented API surface
 
@@ -38,8 +39,8 @@ compliance processors remain unavailable. Redis/Kafka state is never authoritati
   organization/facility activation;
 - driver affiliation/verification, independent account/duty dimensions, ambulance compliance,
   equipment, maintenance, and computed readiness;
-- private document upload/finalization/scan/review/download/expiry contracts with storage and malware
-  providers deliberately unavailable until approved adapters are configured;
+- private document upload/finalization/scan/review/download/expiry, execution-bound worker commands,
+  and configurable S3/ClamAV adapters;
 - tenant and authority provider/facility/workforce/fleet projections with facility-exact RLS.
 - coverage checks and NPR fare quotes, protected booking creation/search, tenant offers,
   contention-safe acceptance, assignment, and server-resolved cancellation actors;
@@ -51,7 +52,8 @@ compliance processors remain unavailable. Redis/Kafka state is never authoritati
 - notification preferences, requester ratings, encrypted support messages and named ticket transitions;
 - exact-fare NPR cash collections, requester receipts, scoped completion-cohort cash reports, and
   owner-only in-app notifications;
-- six product-service outbox schemas/examples (30 total) and additional local product Newman cases.
+- six product-service and six document/readiness outbox schemas/examples (36 total), plus local
+  product Newman cases.
 
 Public OTP accepts only `REGISTRATION_OR_LOGIN`. Local development uses the synthetic fixed code
 configured in `docker/local.env`; production rejects a fixed code and delivery remains fail-closed

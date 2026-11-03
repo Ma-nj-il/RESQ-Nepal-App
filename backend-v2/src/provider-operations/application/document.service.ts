@@ -187,7 +187,8 @@ export class DocumentService {
       metadata.objectKey !== existing.objectKey ||
       metadata.sizeBytes !== existing.sizeBytes ||
       metadata.sha256.toLowerCase() !== existing.expectedSha256.toLowerCase() ||
-      !ALLOWED_MIME_TYPES.has(metadata.mimeType)
+      !ALLOWED_MIME_TYPES.has(metadata.mimeType) ||
+      metadata.mimeType !== existing.declaredMimeType
     ) {
       throw new ApplicationError({
         code: 'UPLOAD.METADATA_MISMATCH',
@@ -214,7 +215,7 @@ export class DocumentService {
         if (changed === undefined) throw stale();
         await this.delivery.scheduleJob(transaction, context, {
           id: this.ids.generate(),
-          deterministicJobId: `document:${documentId}:scan:v${String(changed.version)}`,
+          deterministicJobId: `document-${documentId}-scan-v${String(changed.version)}`,
           jobType: 'document.scan-object.v1',
           queueName: 'documents',
           ...(changed.tenantId === undefined ? {} : { tenantId: changed.tenantId }),
@@ -237,7 +238,8 @@ export class DocumentService {
     expectedVersion: number,
   ): Promise<DocumentRecord> {
     const existing = await this.document(context, documentId);
-    if (existing.uploadStatus !== 'SCANNING') return existing;
+    if (existing.uploadStatus !== 'SCANNING' || existing.version !== expectedVersion)
+      return existing;
     const result = await this.scanner.scanImmutableObject({
       objectKey: existing.objectKey,
       expectedSha256: existing.expectedSha256,
@@ -251,10 +253,14 @@ export class DocumentService {
         retryable: true,
       });
     }
+    const mimeAllowed =
+      result.outcome === 'CLEAN' &&
+      ALLOWED_MIME_TYPES.has(result.detectedMimeType) &&
+      result.detectedMimeType === existing.declaredMimeType;
     const target =
-      result.outcome === 'CLEAN'
+      result.outcome === 'CLEAN' && mimeAllowed
         ? 'READY'
-        : result.outcome === 'INFECTED'
+        : result.outcome === 'INFECTED' || result.outcome === 'CLEAN'
           ? 'QUARANTINED'
           : 'FAILED';
     return this.unitOfWork.execute(context, async (transaction) => {
@@ -264,7 +270,12 @@ export class DocumentService {
         expectedVersion,
         outcome: target,
         ...(result.outcome === 'CLEAN' ? { detectedMimeType: result.detectedMimeType } : {}),
-        safeScannerCode: result.scannerCode,
+        safeScannerCode:
+          result.outcome === 'CLEAN' && !mimeAllowed
+            ? 'SCANNER.MIME_MISMATCH'
+            : /^[A-Za-z0-9._-]{1,128}$/.test(result.scannerCode)
+              ? result.scannerCode
+              : 'SCANNER.INVALID_CODE',
         now,
       });
       if (changed === undefined) throw stale();
@@ -275,6 +286,10 @@ export class DocumentService {
         now,
         target === 'READY' ? 'document.object-ready.v1' : 'document.object-quarantined.v1',
       );
+      await this.auditChange(transaction, context, changed, now, {
+        action: 'document.scan',
+        reasonCode: `DOCUMENT.${target}`,
+      });
       return changed;
     });
   }
@@ -332,12 +347,12 @@ export class DocumentService {
         if (changed.tenantId !== undefined) {
           await this.delivery.scheduleJob(transaction, context, {
             id: this.ids.generate(),
-            deterministicJobId: `document:${changed.linkId}:readiness:v${String(changed.version)}`,
+            deterministicJobId: `document-${changed.linkId}-readiness-v${String(changed.version)}`,
             jobType: 'compliance.recalculate-readiness.v1',
             queueName: 'compliance',
             tenantId: changed.tenantId,
-            resourceType: changed.subject.type.toLowerCase(),
-            resourceId: this.subjectId(changed.subject),
+            resourceType: 'documentObject',
+            resourceId: changed.id,
             resourceVersion: changed.version,
             requestedAt: now,
             runAt: now,
@@ -349,7 +364,7 @@ export class DocumentService {
           runAt.setUTCDate(runAt.getUTCDate() + 1);
           await this.delivery.scheduleJob(transaction, context, {
             id: this.ids.generate(),
-            deterministicJobId: `document:${changed.linkId}:expire:v${String(changed.version)}`,
+            deterministicJobId: `document-${changed.linkId}-expire-v${String(changed.version)}`,
             jobType: 'document.expire.v1',
             queueName: 'documents',
             ...(changed.tenantId === undefined ? {} : { tenantId: changed.tenantId }),
@@ -378,6 +393,15 @@ export class DocumentService {
   ): Promise<DocumentRecord> {
     return this.unitOfWork.execute(context, async (transaction) => {
       const now = this.clock.now();
+      const current = await this.repository.findDocument(transaction, documentId);
+      if (current === undefined) throw notFound();
+      if (
+        current.version !== expectedVersion ||
+        current.reviewStatus !== 'APPROVED' ||
+        current.expiresOn === undefined ||
+        current.expiresOn >= now.toISOString().slice(0, 10)
+      )
+        return current;
       const changed = await this.repository.expireIfDue(transaction, {
         documentObjectId: documentId,
         expectedVersion,
@@ -390,12 +414,12 @@ export class DocumentService {
       if (changed.tenantId !== undefined) {
         await this.delivery.scheduleJob(transaction, context, {
           id: this.ids.generate(),
-          deterministicJobId: `document:${changed.linkId}:expiry-readiness:v${String(changed.version)}`,
+          deterministicJobId: `document-${changed.linkId}-expiry-readiness-v${String(changed.version)}`,
           jobType: 'compliance.recalculate-readiness.v1',
           queueName: 'compliance',
           tenantId: changed.tenantId,
-          resourceType: changed.subject.type.toLowerCase(),
-          resourceId: this.subjectId(changed.subject),
+          resourceType: 'documentObject',
+          resourceId: changed.id,
           resourceVersion: changed.version,
           requestedAt: now,
           runAt: now,
@@ -544,6 +568,7 @@ export class DocumentService {
       outcome: 'ALLOWED',
       reasonCode: evidence.reasonCode,
       correlationId: context.correlationId,
+      ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
       source: context.source,
       safeContext: {
         documentType: document.documentType,
@@ -551,23 +576,6 @@ export class DocumentService {
       },
       retentionClass: 'RESTRICTED_DOCUMENT_ACCESS',
     });
-  }
-
-  private subjectId(subject: DocumentSubject): string {
-    switch (subject.type) {
-      case 'USER_IDENTITY':
-        return subject.userId;
-      case 'PROVIDER_APPLICATION':
-        return subject.applicationId;
-      case 'DRIVER_APPLICATION':
-        return subject.applicationId;
-      case 'DRIVER':
-        return subject.driverId;
-      case 'AMBULANCE':
-        return subject.ambulanceId;
-      case 'FACILITY':
-        return subject.facilityId;
-    }
   }
 
   private requireUser(context: RequestContext): string {

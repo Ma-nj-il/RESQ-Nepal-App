@@ -12,6 +12,10 @@ import {
 import { UNIT_OF_WORK, type UnitOfWork } from '../shared/application/persistence/unit-of-work.js';
 import { CLOCK, type Clock } from '../shared/domain/clock.js';
 import { ID_GENERATOR, type IdGenerator } from '../shared/domain/id-generator.js';
+import {
+  APP_CONFIG,
+  type ApplicationConfig,
+} from '../shared/infrastructure/config/application-config.js';
 import { DocumentService } from './application/document.service.js';
 import { ProviderRegistryService } from './application/provider-registry.service.js';
 import { WorkforceFleetService } from './application/workforce-fleet.service.js';
@@ -31,6 +35,8 @@ import {
   UnavailableMalwareScanner,
   UnavailableObjectStorage,
 } from './infrastructure/providers/unavailable-document-providers.js';
+import { S3DocumentStorage } from './infrastructure/providers/s3-document-storage.js';
+import { ClamAvMalwareScanner } from './infrastructure/providers/clamav-malware-scanner.js';
 import {
   DOCUMENT_SERVICE,
   PROVIDER_REGISTRY_SERVICE,
@@ -54,18 +60,6 @@ import {
 } from './presentation/http/workforce-fleet.controller.js';
 
 @Module({
-  controllers: [
-    ProviderApplicationsController,
-    AuthorityProviderApplicationsController,
-    TenantProviderDirectoryController,
-    AuthorityProviderDirectoryController,
-    DriverApplicationsController,
-    TenantWorkforceFleetController,
-    AuthorityWorkforceFleetController,
-    UploadsController,
-    TenantDocumentsController,
-    AuthorityDocumentsController,
-  ],
   providers: [
     PostgresProviderOperationsRepository,
     {
@@ -74,10 +68,26 @@ import {
     },
     PostgresDocumentRepository,
     { provide: DOCUMENT_REPOSITORY, useExisting: PostgresDocumentRepository },
-    UnavailableObjectStorage,
-    { provide: OBJECT_STORAGE, useExisting: UnavailableObjectStorage },
-    UnavailableMalwareScanner,
-    { provide: MALWARE_SCANNER, useExisting: UnavailableMalwareScanner },
+    {
+      provide: OBJECT_STORAGE,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApplicationConfig): ObjectStorage =>
+        config.documents.storage === undefined
+          ? new UnavailableObjectStorage()
+          : new S3DocumentStorage(config),
+    },
+    {
+      provide: MALWARE_SCANNER,
+      inject: [APP_CONFIG, OBJECT_STORAGE],
+      useFactory: (config: ApplicationConfig, storage: ObjectStorage): MalwareScanner =>
+        config.documents.clamdSocket !== undefined && storage instanceof S3DocumentStorage
+          ? new ClamAvMalwareScanner(
+              storage,
+              config.documents.clamdSocket,
+              config.documents.timeoutMs,
+            )
+          : new UnavailableMalwareScanner(),
+    },
     {
       provide: PROVIDER_REGISTRY_SERVICE,
       inject: [
@@ -168,5 +178,23 @@ import {
     },
   ],
   exports: [PROVIDER_REGISTRY_SERVICE, WORKFORCE_FLEET_SERVICE, DOCUMENT_SERVICE],
+})
+export class ProviderOperationsServicesModule {}
+
+@Module({
+  imports: [ProviderOperationsServicesModule],
+  controllers: [
+    ProviderApplicationsController,
+    AuthorityProviderApplicationsController,
+    TenantProviderDirectoryController,
+    AuthorityProviderDirectoryController,
+    DriverApplicationsController,
+    TenantWorkforceFleetController,
+    AuthorityWorkforceFleetController,
+    UploadsController,
+    TenantDocumentsController,
+    AuthorityDocumentsController,
+  ],
+  exports: [ProviderOperationsServicesModule],
 })
 export class ProviderOperationsModule {}

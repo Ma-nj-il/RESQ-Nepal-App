@@ -8,7 +8,7 @@ client/traffic/data migration is **0%**.
 | 0–1   | Discovery, architecture, actor/data/operations model and approval roadmap                                       | Historical implementation authorization does not replace missing owner decision records                               |
 | 2     | NestJS API/worker/relay/migration foundation, CI, observability and dependency boundaries                       | HOLD: capacity, restore, operational and independent security acceptance                                               |
 | 3     | Identity, OTP/password/MFA, rotating sessions, tenancy/RBAC/authority and RLS                                   | HOLD: full infrastructure/security review and drills                                                                  |
-| 4     | Registry/workforce/fleet/documents/readiness and scoped administrative APIs                                     | HOLD: providers, persona/segregation, object/expiry/race acceptance                                                   |
+| 4     | Registry/workforce/fleet/documents/readiness, scoped APIs, execution-bound document/compliance workers and S3/ClamAV adapters | HOLD: provider deployment, persona/segregation, object/expiry/race acceptance |
 | 5     | Dispatch/trips/cancellation/tracking/safety, jobs/events and recovery                                           | HOLD: real races/outages/capacity/SOS simulation; realtime delivery remains open                                      |
 | 6     | Preferences, support, ratings, cash/reconciliation, notification inbox, mobile API/session, secure command recovery and mutation preview | HOLD: complete mobile/portal production flows, provider integrations, device/accessibility/offline/persona acceptance |
 | 7     | Strict metadata reconciliation, deterministic IDs, encrypted checkpoint ledger and independent-rerun comparison | HOLD: actual extracts/mappings/transforms, managed KMS/transaction-bound execution ledger, full-volume migrations, client releases |
@@ -17,6 +17,7 @@ client/traffic/data migration is **0%**.
 ## Current implementation entry points
 
 - [Infrastructure-backed CI evidence](../../backend-v2/docs/ci-evidence-2026-11-03.md)
+- [Document workers, S3/ClamAV adapters, and acceptance boundaries](../../backend-v2/docs/document-workers.md)
 - [Mobile API foundation and development build instructions](mobile-api-foundation.md)
 - [Phase 6 implementation and evidence](../../backend-v2/docs/phase-6-status.md)
 - [Phase 7 executable preparation](../../backend-v2/docs/phase-7-status.md)

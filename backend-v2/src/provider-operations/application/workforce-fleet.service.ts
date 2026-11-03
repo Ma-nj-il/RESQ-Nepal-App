@@ -696,7 +696,7 @@ export class WorkforceFleetService {
         });
         await this.delivery.scheduleJob(transaction, context, {
           id: this.ids.generate(),
-          deterministicJobId: `maintenance:${maintenance.id}:readiness:v${String(maintenance.version)}`,
+          deterministicJobId: `maintenance-${maintenance.id}-readiness-v${String(maintenance.version)}`,
           jobType: 'compliance.recalculate-readiness.v1',
           queueName: 'compliance',
           tenantId,
@@ -752,7 +752,7 @@ export class WorkforceFleetService {
         });
         await this.delivery.scheduleJob(transaction, context, {
           id: this.ids.generate(),
-          deterministicJobId: `equipment:${ambulanceId}:${input.equipmentType}:${now.toISOString()}`,
+          deterministicJobId: `equipment-${ambulanceId}-${this.ids.generate()}`,
           jobType: 'compliance.recalculate-readiness.v1',
           queueName: 'compliance',
           tenantId,
@@ -763,6 +763,23 @@ export class WorkforceFleetService {
           runAt: now,
           data: { cause: 'EQUIPMENT_CHANGED' },
         });
+        if (input.expiresOn !== undefined) {
+          const runAt = new Date(`${input.expiresOn}T00:00:00.000Z`);
+          runAt.setUTCDate(runAt.getUTCDate() + 1);
+          await this.delivery.scheduleJob(transaction, context, {
+            id: this.ids.generate(),
+            deterministicJobId: `equipment-expiry-${ambulanceId}-${this.ids.generate()}`,
+            jobType: 'compliance.recalculate-readiness.v1',
+            queueName: 'compliance',
+            tenantId,
+            resourceType: 'ambulance',
+            resourceId: ambulanceId,
+            resourceVersion: ambulance.readinessVersion,
+            requestedAt: now,
+            runAt,
+            data: { cause: 'EQUIPMENT_EXPIRY' },
+          });
+        }
         return { ambulanceId, ...input };
       },
     );
