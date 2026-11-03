@@ -21,6 +21,9 @@ const tokens = (suffix = 'first') => ({
 const account = { id, status: 'ACTIVE', displayName: null, phoneMasked: '+97798******00', locale: 'ne-NP',
   version: 1, createdAt: future, updatedAt: future };
 const accepted = { challengeId: id, expiresAt: future, deliveryState: 'ACCEPTED' };
+const password = '  synthetic password  ';
+const identifier = 'admin@example.test';
+const totp = { challengeId: otherId, expiresAt: future, nextStep: 'TOTP' };
 const success = (data, status = 200) => Response.json({ data, meta: { requestId: id } }, { status });
 const failure = (code, status, retryAfter) => Response.json({
   error: { code, message: 'Request rejected.', retryable: false }, meta: { requestId: id },
@@ -53,6 +56,8 @@ function fixture(handler = () => undefined) {
     if (response) return response;
     if (call.path.endsWith('/otp-challenges')) return success(accepted, 202);
     if (call.path.endsWith('/otp-verifications')) return success(tokens(), 201);
+    if (call.path.endsWith('/password-sessions')) return success(totp);
+    if (call.path.endsWith('/verifications')) return success({ ...tokens(), assurance: 'AAL2' });
     if (call.path.endsWith('/refresh')) return success(tokens('rotated'));
     if (call.path.endsWith('/sessions/current')) return new Response(null, { status: 204 });
     return success(account);
@@ -313,4 +318,221 @@ test('preview is explicit, dev-only and validates non-secret environment configu
 
 test('web runtime refuses native token storage without a browser fallback', async () => {
   await assert.rejects(getNativeBackendRuntime(scope), { code: 'CLIENT.NATIVE_REQUIRED' });
+});
+
+async function passwordChallenge(f) {
+  await f.auth.start(); f.auth.changeMethod('PASSWORD');
+  await f.auth.requestPassword(` ${identifier} `, password);
+}
+
+test('password sign-in requires TOTP and a verified profile; only refresh credentials reach secure storage', async () => {
+  const f = fixture(), snapshots = [];
+  f.auth.store.subscribe(state => snapshots.push(JSON.stringify(state)));
+  await passwordChallenge(f);
+  assert.equal(f.session.identity(), null);
+  assert.equal(f.storage.values.size, 0);
+  assert.deepEqual(f.auth.store.getState().challenge, totp);
+  assert.deepEqual(JSON.parse(f.calls[0].body), { identifier, password, clientType: 'MOBILE' });
+  await f.auth.verifyCode('123456');
+  assert.equal(f.auth.store.getState().status, 'authenticated');
+  assert.deepEqual(f.auth.store.getState().identity, { userId: id, sessionId: id, assurance: 'AAL2' });
+  assert.deepEqual(f.auth.store.getState().profile, account);
+  assert.equal(f.calls[1].path, `/api/v1/auth/mfa-challenges/${otherId}/verifications`);
+  assert.deepEqual(JSON.parse(f.calls[1].body), { code: '123456' });
+  assert.equal(f.calls[1].headers.Authorization, undefined);
+  for (const snapshot of snapshots) for (const secret of [password, identifier, '123456', 'synthetic.access', 'synthetic-refresh']) {
+    assert.equal(snapshot.includes(secret), false);
+  }
+  assert.deepEqual(await f.vault.read(), refreshCredentials(tokens()));
+  const saved = [...f.storage.values.values()].join();
+  for (const secret of [password, identifier, '123456', 'synthetic.access']) assert.equal(saved.includes(secret), false);
+});
+
+test('password and verification duplicate presses coalesce and pending requests cannot change method', async () => {
+  const challenge = deferred(), verified = deferred();
+  const f = fixture(call => call.path.endsWith('/password-sessions') ? challenge.promise :
+    call.path.endsWith('/verifications') ? verified.promise : undefined);
+  await f.auth.start(); f.auth.changeMethod('PASSWORD');
+  const send = f.auth.requestPassword(identifier, password);
+  await f.auth.requestPassword(identifier, password); f.auth.changeMethod('OTP');
+  assert.equal(f.auth.store.getState().method, 'PASSWORD');
+  challenge.resolve(success(totp)); await send;
+  const verify = f.auth.verifyCode('123456');
+  await f.auth.verifyCode('123456'); f.auth.changePhone();
+  verified.resolve(success({ ...tokens(), assurance: 'AAL2' })); await verify;
+  assert.equal(f.calls.filter(call => call.path.endsWith('/password-sessions')).length, 1);
+  assert.equal(f.calls.filter(call => call.path.endsWith('/verifications')).length, 1);
+});
+
+test('password and code validation rejects malformed input before network dispatch', async () => {
+  const f = fixture(); await f.auth.start(); f.auth.changeMethod('PASSWORD');
+  for (const [name, value] of [['ab', password], ['a'.repeat(321), password], [identifier, 'short'], [identifier, 'p'.repeat(1025)]]) {
+    await f.auth.requestPassword(name, value);
+    assert.equal(f.auth.store.getState().issue.code, 'CLIENT.CREDENTIALS_INVALID');
+  }
+  assert.equal(f.calls.length, 0);
+  await f.auth.requestPassword(identifier, password);
+  for (const code of ['12345', '1234567', 'abcdef']) await f.auth.verifyCode(code);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.auth.store.getState().issue.code, 'CLIENT.MFA_CODE_INVALID');
+});
+
+test('password challenge decoder rejects direct tokens, wrong next steps and malformed identities', async () => {
+  for (const data of [tokens(), { ...totp, nextStep: 'WEBAUTHN' }, { ...totp, challengeId: '../other' }, { ...totp, expiresAt: 'tomorrow' }]) {
+    const f = fixture(call => call.path.endsWith('/password-sessions') ? success(data) : undefined);
+    await passwordChallenge(f);
+    assert.equal(f.auth.store.getState().status, 'signedOut');
+    assert.equal(f.auth.store.getState().issue.code, 'CLIENT.INVALID_RESPONSE');
+    assert.equal(f.auth.store.getState().challenge, null);
+    assert.equal(f.storage.values.size, 0);
+  }
+});
+
+test('password verification rejects AAL1, web/access-only and expired sessions without saving them', async () => {
+  const { refreshToken: _refresh, ...accessOnly } = { ...tokens(), assurance: 'AAL2' };
+  for (const data of [tokens(), accessOnly, { ...tokens(), assurance: 'AAL2', accessTokenExpiresAt: '2026-11-02T00:00:00Z' }]) {
+    const f = fixture(call => call.path.endsWith('/verifications') ? success(data) : undefined);
+    await passwordChallenge(f); await f.auth.verifyCode('123456');
+    assert.equal(f.auth.store.getState().status, 'signedOut');
+    assert.equal(f.auth.store.getState().issue.code, 'CLIENT.INVALID_RESPONSE');
+    assert.equal(f.auth.store.getState().challenge, null);
+    assert.equal(f.session.identity(), null);
+    assert.equal(f.storage.values.size, 0);
+    assert.equal(f.calls.some(call => call.path === '/api/v1/me'), false);
+  }
+});
+
+test('definitive MFA rejection permits correction; rate limits survive invalid input and method switching', async () => {
+  let rejected = 'AUTH.MFA_INVALID';
+  const f = fixture(call => call.path.endsWith('/verifications')
+    ? failure(rejected, rejected === 'AUTH.MFA_INVALID' ? 401 : 429, 120) : undefined);
+  await passwordChallenge(f); await f.auth.verifyCode('111111');
+  assert.equal(f.auth.store.getState().status, 'codeSent');
+  rejected = 'RATE_LIMIT.EXCEEDED'; await f.auth.verifyCode('222222');
+  const count = f.calls.length;
+  await f.auth.verifyCode('bad'); await f.auth.verifyCode('333333');
+  assert.equal(f.calls.length, count);
+  f.auth.changeMethod('OTP'); await f.auth.requestCode(phone);
+  f.auth.changeMethod('PASSWORD'); await f.auth.requestPassword(identifier, password);
+  assert.equal(f.calls.length, count);
+  f.advance(120000); await f.auth.requestPassword(identifier, password);
+  rejected = 'AUTH.MFA_ATTEMPTS_EXCEEDED'; await f.auth.verifyCode('444444');
+  assert.equal(f.auth.store.getState().status, 'signedOut');
+  assert.equal(f.auth.store.getState().challenge, null);
+});
+
+test('password challenge expiry and clock rollback fence both challenge responses and verification', async () => {
+  for (const delta of [-1, 86400001]) {
+    const f = fixture(); await passwordChallenge(f); f.advance(delta);
+    await f.auth.verifyCode('123456');
+    assert.equal(f.auth.store.getState().issue.code, 'CLIENT.CHALLENGE_EXPIRED');
+    assert.equal(f.auth.store.getState().challenge, null);
+    assert.equal(f.calls.length, 1);
+    const pending = deferred();
+    const late = fixture(call => call.path.endsWith('/password-sessions') ? pending.promise : undefined);
+    await late.auth.start(); late.auth.changeMethod('PASSWORD');
+    const send = late.auth.requestPassword(identifier, password); late.advance(delta);
+    pending.resolve(success(totp)); await send;
+    assert.equal(late.auth.store.getState().issue.code, 'CLIENT.CHALLENGE_EXPIRED');
+    assert.equal(late.auth.store.getState().challenge, null);
+  }
+});
+
+test('lost password or MFA responses never replay and do not retain secrets in error state', async () => {
+  for (const endpoint of ['/password-sessions', '/verifications']) {
+    const f = fixture(call => { if (call.path.endsWith(endpoint)) throw new Error(`lost ${password}`); });
+    await passwordChallenge(f); await f.auth.verifyCode('123456'); await f.auth.verifyCode('123456');
+    assert.equal(f.auth.store.getState().status, 'signedOut');
+    assert.equal(f.auth.store.getState().issue.code, 'CLIENT.NETWORK_ERROR');
+    assert.equal(f.auth.store.getState().challenge, null);
+    assert.equal(JSON.stringify(f.auth.store.getState()).includes(password), false);
+    assert.equal(f.calls.filter(call => call.path.endsWith(endpoint)).length, 1);
+    assert.equal(f.storage.values.size, 0);
+  }
+  const f = fixture(call => call.path.endsWith('/verifications') ? failure('AUTH.MFA_INVALID', 500) : undefined);
+  await passwordChallenge(f); await f.auth.verifyCode('123456');
+  assert.equal(f.auth.store.getState().challenge, null, 'contradictory server failure cannot authorize replay');
+});
+
+test('authenticator app switching preserves idle TOTP; changing method discards the challenge', async () => {
+  const f = fixture(); await passwordChallenge(f);
+  await f.auth.suspendPasswordSignIn();
+  assert.equal(f.auth.store.getState().status, 'codeSent');
+  assert.deepEqual(f.auth.store.getState().challenge, totp);
+  await f.auth.verifyCode('123456');
+  assert.equal(f.auth.store.getState().status, 'authenticated');
+  await f.auth.suspendPasswordSignIn();
+  assert.equal(f.auth.store.getState().status, 'authenticated', 'successful form unmount must preserve its session');
+  const other = fixture(); await passwordChallenge(other); other.auth.changeMethod('OTP');
+  await other.auth.verifyCode('123456');
+  assert.equal(other.auth.store.getState().challenge, null);
+  assert.equal(other.calls.length, 1);
+});
+
+test('suspension aborts in-flight password, MFA and profile requests and ignores late responses', async () => {
+  for (const endpoint of ['/password-sessions', '/verifications', '/me']) {
+    const entered = deferred(), response = deferred();
+    const f = fixture(call => { if (call.path.endsWith(endpoint)) { entered.resolve(call); return response.promise; } });
+    const login = (async () => { await passwordChallenge(f); await f.auth.verifyCode('123456'); })();
+    const call = await entered.promise;
+    await f.auth.suspendPasswordSignIn();
+    assert.equal(call.signal.aborted, true);
+    response.resolve(success(endpoint === '/password-sessions' ? totp : endpoint === '/me' ? account : { ...tokens(), assurance: 'AAL2' }));
+    await login;
+    assert.equal(f.auth.store.getState().status, 'signedOut');
+    assert.equal(f.auth.store.getState().profile, null);
+    assert.equal(f.session.identity(), null);
+    assert.equal(f.storage.values.size, 0);
+  }
+});
+
+test('suspension during native credential persistence queues cleanup and never publishes the late session', async () => {
+  const f = fixture(), entered = deferred(), release = deferred(), seen = [];
+  const write = f.storage.setItemAsync.bind(f.storage);
+  f.storage.setItemAsync = async (...args) => { entered.resolve(); await release.promise; return write(...args); };
+  f.session.subscribe(identity => { if (identity) seen.push(identity); });
+  await passwordChallenge(f);
+  const verification = f.auth.verifyCode('123456'); await entered.promise;
+  const cancel = f.auth.suspendPasswordSignIn(); release.resolve();
+  await Promise.all([verification, cancel]);
+  assert.deepEqual(seen, []);
+  assert.equal(f.storage.values.size, 0);
+  assert.equal(f.auth.store.getState().status, 'signedOut');
+});
+
+test('synchronous store listeners cannot dispatch cancelled sign-in work or capture logout ownership', async () => {
+  for (const stage of ['requestingCode', 'verifying', 'clearingSession', 'loadingProfile']) {
+    const f = fixture(); await f.auth.start(); f.auth.changeMethod('PASSWORD');
+    let cancelled, verifyingUpdates = 0;
+    f.auth.store.subscribe(state => {
+      if (state.status === 'verifying') verifyingUpdates++;
+      if (!cancelled && (state.status === stage || (stage === 'clearingSession' && verifyingUpdates === 2))) {
+        cancelled = true; void f.auth.suspendPasswordSignIn();
+      }
+    });
+    await f.auth.requestPassword(identifier, password); await f.auth.verifyCode('123456');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(cancelled, true, stage);
+    assert.equal(f.auth.store.getState().status, 'signedOut', stage);
+    assert.equal(f.session.identity(), null, stage);
+    assert.equal(f.storage.values.size, 0, stage);
+    const blocked = stage === 'requestingCode' ? '/password-sessions' : stage === 'loadingProfile' ? '/me' : '/verifications';
+    assert.equal(f.calls.some(call => call.path.endsWith(blocked)), false, stage);
+  }
+});
+
+test('password sessions require matching ACTIVE profiles and retry only profile reads after network failure', async () => {
+  for (const profile of [{ ...account, id: otherId }, { ...account, status: 'SUSPENDED' }]) {
+    const f = fixture(call => call.path === '/api/v1/me' ? success(profile) : undefined);
+    await passwordChallenge(f); await f.auth.verifyCode('123456');
+    assert.equal(f.auth.store.getState().status, 'profileError');
+    assert.equal(f.auth.store.getState().profile, null);
+  }
+  let offline = true;
+  const f = fixture(call => { if (offline && call.path === '/api/v1/me') throw new Error('offline'); });
+  await passwordChallenge(f); await f.auth.verifyCode('123456');
+  assert.equal(f.auth.store.getState().status, 'profileError');
+  offline = false; await f.auth.retryProfile();
+  assert.equal(f.auth.store.getState().status, 'authenticated');
+  assert.equal(f.calls.filter(call => call.path.endsWith('/verifications')).length, 1);
 });

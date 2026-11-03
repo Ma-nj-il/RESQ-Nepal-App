@@ -373,3 +373,32 @@ test('OTP challenge acceptance is distinct from delivery and verification explic
   await f.login();
   assert.deepEqual(JSON.parse(f.calls[1].body), { challengeId: id, otp: '123456', clientType: 'MOBILE' });
 });
+
+test('a reentrant logout on session clearing cancels establishment before dispatch for OTP and password', async () => {
+  for (const method of ['OTP', 'PASSWORD']) {
+    const f = fixture(() => success(sessionData('password', { assurance: 'AAL2' })));
+    let logout;
+    const remove = f.session.subscribe(identity => {
+      if (identity === null) { remove(); logout = f.session.logout(); }
+    });
+    await assert.rejects(method === 'OTP' ? f.login() : f.session.verifyPasswordMfa(id, '123456'), { code: 'CLIENT.SESSION_CHANGED' });
+    await logout;
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.vault.value, null);
+    assert.equal(f.session.identity(), null);
+  }
+});
+
+test('password cancellation before dispatch and during a native write cannot establish a session', async () => {
+  const f = fixture(() => success(sessionData('password', { assurance: 'AAL2' })));
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(f.session.verifyPasswordMfa(id, '123456', abort.signal), { code: 'CLIENT.CANCELLED' });
+  assert.equal(f.calls.length, 0);
+  const entered = deferred(), release = deferred(), writeAbort = new AbortController();
+  f.vault.write = async value => { entered.resolve(); await release.promise; f.vault.value = value; };
+  const pending = assert.rejects(f.session.verifyPasswordMfa(id, '123456', writeAbort.signal), { code: 'CLIENT.CANCELLED' });
+  await entered.promise; writeAbort.abort(); release.resolve(); await pending;
+  assert.equal(f.vault.value, null);
+  assert.equal(f.session.identity(), null);
+  assert.equal(f.calls.length, 1);
+});

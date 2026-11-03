@@ -159,3 +159,5 @@ export const otpChallenge = object({
 export const noContent: Decoder<void> = (value) => {
   if (value !== undefined) invalidResponse();
 };
+
+export const mfaChallenge = object({ challengeId: uuid, expiresAt: timestamp, nextStep: oneOf(['TOTP']) });

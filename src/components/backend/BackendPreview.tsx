@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from 'zustand';
 import { Button } from '../ui/Button';
@@ -53,11 +53,20 @@ function SignInForm({ runtime }: { runtime: NativeBackendRuntime }) {
   const state = useStore(runtime.auth.store);
   const [phone, setPhone] = useState('+977');
   const [otp, setOtp] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    const conceal = () => { setPassword(''); setOtp(''); void runtime.auth.suspendPasswordSignIn(); };
+    if (AppState.currentState !== 'active') conceal();
+    const change = AppState.addEventListener('change', value => { if (value !== 'active') conceal(); });
+    const blur = AppState.addEventListener('blur', conceal);
+    return () => { change.remove(); blur.remove(); void runtime.auth.suspendPasswordSignIn(); };
+  }, [runtime]);
   const waiting = ['idle', 'restoring', 'requestingCode', 'verifying', 'loadingProfile', 'signingOut'].includes(state.status);
   const cooldown = Math.max(0, Math.ceil((state.retryAt - clock) / 1000));
   const expired = state.challenge !== null && Date.parse(state.challenge.expiresAt) <= clock;
@@ -65,7 +74,7 @@ function SignInForm({ runtime }: { runtime: NativeBackendRuntime }) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-        <Text style={styles.heading}>Sign in with your phone</Text>
+        <Text style={styles.heading}>{state.method === 'OTP' ? 'Sign in with your phone' : 'Sign in with password and authenticator'}</Text>
         <Text style={styles.description}>Use an account in the configured test backend.</Text>
         {waiting && <ActivityIndicator color={colors.primary} accessibilityLabel="Sign-in request in progress" />}
         {state.notice && <Text style={styles.description} accessibilityLiveRegion="polite">{state.notice}</Text>}
@@ -78,6 +87,23 @@ function SignInForm({ runtime }: { runtime: NativeBackendRuntime }) {
           <Button title="Retry profile" onPress={() => { void runtime.auth.retryProfile(); }} />
           <Button title="Sign out" variant="outline" onPress={() => { void runtime.auth.logout(); }} />
         </> : <>
+          <Button title={state.method === 'OTP' ? 'Use password and authenticator' : 'Use phone sign-in'} variant="ghost" disabled={waiting}
+            onPress={() => { setPassword(''); setOtp(''); runtime.auth.changeMethod(state.method === 'OTP' ? 'PASSWORD' : 'OTP'); }} />
+          {state.method === 'PASSWORD' ? <>
+            <Text style={styles.label}>Account identifier</Text>
+            <TextInput style={styles.input} value={identifier} onChangeText={setIdentifier} autoComplete="username"
+              autoCorrect={false} autoCapitalize="none" maxLength={320} accessibilityLabel="Account identifier" editable={state.status === 'signedOut'} />
+            {state.status === 'signedOut' && <>
+              <Text style={styles.label}>Password</Text>
+              <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password"
+                autoCorrect={false} autoCapitalize="none" maxLength={1024} accessibilityLabel="Password" />
+              <Button title={cooldown > 0 ? `Try again in ${cooldown}s` : 'Continue to authenticator'}
+                disabled={cooldown > 0 || identifier.trim().length < 3 || password.length < 12} onPress={() => {
+                  const entered = password; setPassword('');
+                  if (AppState.currentState === 'active') void runtime.auth.requestPassword(identifier, entered);
+                }} />
+            </>}
+          </> : <>
           <Text style={styles.label}>Phone number including country code</Text>
           <TextInput
             style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad"
@@ -87,20 +113,21 @@ function SignInForm({ runtime }: { runtime: NativeBackendRuntime }) {
           />
           <Button title={cooldown > 0 ? `Request code in ${cooldown}s` : state.challenge ? 'Resend code' : 'Request code'}
             disabled={waiting || cooldown > 0 || !/^\+[1-9]\d{7,14}$/.test(phone)}
-            onPress={() => { setOtp(''); void runtime.auth.requestCode(phone); }} />
+             onPress={() => { setOtp(''); void runtime.auth.requestCode(phone); }} />
+          </>}
           {state.challenge && <>
-            <Text style={styles.label}>Six-digit code</Text>
+            <Text style={styles.label}>{state.method === 'PASSWORD' ? 'Six-digit authenticator code' : 'Six-digit code'}</Text>
             <TextInput
               style={styles.input} value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, ''))}
-              keyboardType="number-pad" autoComplete="one-time-code" maxLength={6}
+               keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} secureTextEntry={state.method === 'PASSWORD'}
               autoCorrect={false} accessibilityLabel="Six-digit verification code" editable={!waiting && !expired}
             />
-            {expired && <Text style={styles.error}>This code has expired. Request a new code.</Text>}
+            {expired && <Text style={styles.error}>This code has expired. Start sign-in again.</Text>}
             <Button title="Verify code" disabled={waiting || expired || !/^\d{6}$/.test(otp) ||
               (state.issue?.code === 'RATE_LIMIT.EXCEEDED' && cooldown > 0)}
-              onPress={() => { const code = otp; setOtp(''); void runtime.auth.verifyCode(code); }} />
-            <Button title="Use another phone number" variant="ghost" disabled={waiting}
-              onPress={() => { setOtp(''); runtime.auth.changePhone(); }} />
+              onPress={() => { const code = otp; setOtp(''); if (AppState.currentState === 'active') void runtime.auth.verifyCode(code); }} />
+            <Button title={state.method === 'OTP' ? 'Use another phone number' : 'Start sign-in again'} variant="ghost" disabled={waiting}
+              onPress={() => { setOtp(''); setPassword(''); runtime.auth.changePhone(); }} />
           </>}
         </>}
       </ScrollView>

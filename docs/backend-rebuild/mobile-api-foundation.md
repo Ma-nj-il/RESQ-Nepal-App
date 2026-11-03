@@ -10,7 +10,7 @@ remains 0%.
 | File under `src/services/api/backend/` | Responsibility                                                                                                          |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `transport.ts`                         | Dedicated-origin HTTP, success/error envelopes, timeout/cancellation, ETag, replay status, `Retry-After`, preconditions |
-| `session.ts`                           | Mobile OTP, restoration, one-time refresh rotation, session-scoped responses, local logout and remote revocation        |
+| `session.ts`                           | Mobile OTP/password/TOTP, restoration, one-time refresh rotation, session-scoped responses, local logout and remote revocation |
 | `decoders.ts`                          | Runtime wire validation, canonical booking/trip states, exact NPR amounts, bounded product pages                        |
 | `requester.ts`                         | Self profile, preferences, ratings, receipts, support tickets/messages, notifications/read state                        |
 | `dispatch.ts`                          | Coverage/quote, booking/cancellation, assignment/timeline, trips/tracking snapshots and safety incident adapters        |
@@ -19,7 +19,7 @@ remains 0%.
 | `secureCommandVault.ts`                | Write-ahead SecureStore payloads, bounded chunks, integrity checks and crash-safe settlement |
 | `errors.ts`                            | Structured public errors without raw transport objects                                                                  |
 | `secureRefreshVault.ts`                | One versioned SecureStore record scoped to normalized API origin and environment                                        |
-| `authController.ts`                    | Token-free canonical auth state, six-digit OTP, matching active profile, logout/revocation lifecycle                    |
+| `authController.ts`                    | Secret-free OTP/password/TOTP state, matching active profile, cancellation and logout/revocation lifecycle |
 | `mfaEnrollment.ts`                     | Component-owned TOTP setup, expiry, concealment, cancellation and ambiguous-outcome handling |
 | `nativeRuntime.native.ts`              | Module-lifetime native session/vault owner shared across component remounts                                             |
 | `nativeRuntime.ts`                     | Web refusal with `CLIENT.NATIVE_REQUIRED`                                                                               |
@@ -69,8 +69,9 @@ Enrolled-authenticator step-up keeps the new access token private to `BackendSes
 same user/session and AAL2, and retains the current rotating refresh credential. Older concurrent
 refresh completion cannot overwrite the step-up result. Access-context metadata is read from the
 server; displaying it never authorizes an operation. New TOTP enrollment is available in the
-development preview; see [enrollment semantics](mobile-mfa-enrollment.md). Password login and
-managed-context production-client flows remain open.
+development preview; see [enrollment semantics](mobile-mfa-enrollment.md).
+[Password/TOTP sign-in](mobile-password-sign-in.md) is also available there. Managed-context
+production-client flows remain open.
 An OTP challenge's `deliveryState: ACCEPTED` does not establish message delivery or authentication.
 Logout immediately removes local authentication. It returns `remoteRevocation: CONFIRMED` only after
 HTTP 204; it returns `NOT_ATTEMPTED` without an in-memory session, and rejects if remote revocation

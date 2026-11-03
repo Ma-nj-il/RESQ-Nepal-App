@@ -1,5 +1,5 @@
 import {
-  mobileSession, noContent, otpChallenge, refreshCredentials,
+  mobileSession, noContent, otpChallenge, mfaChallenge, refreshCredentials,
   object, oneOf, timestamp, uuid, text, type MobileSession, type RefreshCredentials,
 } from './decoders';
 import { BackendError, invalidResponse, sessionChanged } from './errors';
@@ -67,16 +67,41 @@ export class BackendSession {
   }
 
   async verifyOtp(challengeId: string, otp: string, deviceLabel?: string): Promise<SessionIdentity> {
+    return this.establishSession({
+      path: '/api/v1/auth/otp-verifications', method: 'POST', decode: mobileSession,
+      body: { challengeId, otp, clientType: 'MOBILE', ...(deviceLabel === undefined ? {} : { deviceLabel }) },
+    });
+  }
+
+  requestPasswordChallenge(identifier: string, password: string, signal?: AbortSignal) {
+    if (identifier.trim().length < 3 || identifier.trim().length > 320 || password.length < 12 || password.length > 1024)
+      throw new BackendError({ code: 'CLIENT.CREDENTIALS_INVALID', message: 'Enter your account identifier and password.' });
+    return this.transport.request({ path: '/api/v1/auth/password-sessions', method: 'POST', decode: mfaChallenge,
+      body: { identifier: identifier.trim(), password, clientType: 'MOBILE' }, signal });
+  }
+
+  async verifyPasswordMfa(challengeId: string, code: string, signal?: AbortSignal): Promise<SessionIdentity> {
+    if (!/^\d{6}$/.test(code)) throw new BackendError({ code: 'CLIENT.MFA_CODE_INVALID', message: 'Enter the six-digit authenticator code.' });
+    return this.establishSession({ path: `/api/v1/auth/mfa-challenges/${uuid(challengeId)}/verifications`, method: 'POST', body: { code }, signal,
+      decode: value => {
+        const session = mobileSession(value);
+        if (session.assurance !== 'AAL2') invalidResponse();
+        return session;
+      } });
+  }
+
+  private async establishSession(input: BackendRequest<MobileSession>): Promise<SessionIdentity> {
+    this.checkCancellation(input.signal);
+    // Capture ownership before clearLocal notifies synchronous lifecycle listeners.
+    const generation = this.generation + 1;
     const clearing = this.clearLocal();
-    const generation = this.generation;
     await clearing;
     this.assertCurrent(generation);
     try {
-      const result = await this.transport.request({
-        path: '/api/v1/auth/otp-verifications', method: 'POST', decode: mobileSession,
-        body: { challengeId, otp, clientType: 'MOBILE', ...(deviceLabel === undefined ? {} : { deviceLabel }) },
-      });
-      await this.persist(result.data, generation);
+      this.checkCancellation(input.signal);
+      const result = await this.transport.request(input);
+      this.checkCancellation(input.signal);
+      await this.persist(result.data, generation, input.signal);
       this.assertCurrent(generation);
       return this.identity()!;
     } catch (error) {
@@ -87,7 +112,7 @@ export class BackendSession {
 
   beginStepUp() {
     return this.request({ path: '/api/v1/auth/mfa-challenges', method: 'POST',
-      decode: object({ challengeId: uuid, expiresAt: timestamp, nextStep: oneOf(['TOTP']) }) });
+      decode: mfaChallenge });
   }
 
   /** Step-up returns access credentials only; rotating refresh credentials remain owned here. */
@@ -259,13 +284,15 @@ export class BackendSession {
     }
   }
 
-  private persist(session: MobileSession, generation: number): Promise<void> {
+  private persist(session: MobileSession, generation: number, signal?: AbortSignal): Promise<void> {
     if (Date.parse(session.accessTokenExpiresAt) <= this.now() ||
         Date.parse(session.refreshTokenExpiresAt) <= this.now()) invalidResponse();
     return this.storage(async () => {
       this.assertCurrent(generation);
+      this.checkCancellation(signal);
       await this.vault.write(refreshCredentials(session));
       this.assertCurrent(generation);
+      this.checkCancellation(signal);
       this.current = session;
       this.emitIdentity();
     });
@@ -276,8 +303,10 @@ export class BackendSession {
     this.initialized = true;
     this.current = undefined;
     this.restoring = undefined;
+    // Queue the clear before listeners can enqueue a newer sign-in's storage work.
+    const clearing = this.storage(() => this.vault.clear());
     this.emitIdentity();
-    return this.storage(() => this.vault.clear());
+    return clearing;
   }
 
   private emitIdentity(): void {

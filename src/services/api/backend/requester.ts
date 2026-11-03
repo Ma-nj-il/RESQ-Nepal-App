@@ -45,7 +45,7 @@ export interface CommandIdentity {
 /** Canonical self-scoped endpoints. Ownership is resolved by the server, never a user-ID parameter. */
 export function createRequesterApi(session: BackendSession) {
   return {
-    profile: () => session.request({ path: '/api/v1/me', decode: profile }),
+    profile: (signal?: AbortSignal) => session.request({ path: '/api/v1/me', decode: profile, signal }),
     accessContexts: () => session.request({ path: '/api/v1/me/access-contexts', decode: object({
       tenantAssignments: array(object({ assignmentId: uuid, tenantId: uuid, tenantName: text,
         profileId: uuid, profileName: text, profileVersion: integer(1), scopeType: oneOf(['TENANT', 'FACILITY_SET']),

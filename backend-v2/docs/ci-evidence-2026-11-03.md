@@ -7,6 +7,14 @@ production client, traffic and source-data migration remains **0%**.
 
 ## Verified remote runs
 
+- MFA enrollment and Kafka startup correction at `b3df6e4b2dfbadec31ef3af2607cc33f0e9e3dea`:
+  [backend run 41699468578](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41699468578)
+  **PASS**, all three jobs (quality/unit, migrations/dependencies/Newman, image/SBOM/scan).
+  This includes the corrected shared-group/two-replica Kafka/Redis integration case.
+  [Mobile run 41699468637](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41699468637)
+  **PASS**: clean installation, Expo compatibility, lint/typecheck, 152 tests, configured audit
+  and Android/iOS/web development/release exports. Run SHA and every job conclusion were
+  rechecked through the public Actions API on 2026-11-04.
 - [Mobile run 41679283466](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41679283466),
   commit `6e193d65c729a808a8cbc8841e7bc7619bcaf725`: **PASS**. Clean locked install, Expo
   compatibility, lint, typecheck, 128 unit tests, configured production dependency audit, and
@@ -134,11 +142,17 @@ complete passing run at `6ea91f6` above.
 
 ## Acceptance still required
 
-The subsequent MFA-enrollment/startup-correction worktree passes local backend **32 suites /
+The MFA-enrollment/startup-correction revision passes local backend **32 suites /
 196 tests**, lint, typecheck, build, formatting and 36 event contracts; mobile **152 tests**,
 lint and typecheck. MFA coverage includes stored expiry, AAL2/identity binding, installed HTTP
 headers/validation, concealment, expiry, effect cleanup and cancellation during refresh.
-Remote validation of the forthcoming published revision is pending.
+Exact-revision remote validation at `b3df6e4` passes as recorded above.
+
+The following mobile password/TOTP slice passes **167 mobile tests**, lint and typecheck locally.
+Its 15 added cases cover challenge-only password acceptance, mandatory AAL2/mobile credentials,
+secret-free state, duplicate submissions, expiry/rollback, rate limits, response loss, cancellation
+during transport/storage/profile reads and synchronous listener reentrancy. These use synthetic
+responses and native-storage fixtures. Its own exact-revision mobile CI is pending publication.
 
 Native binary signing/install and device crash/recovery/accessibility acceptance; complete production
 mobile and portal flows; approved provider integrations and canaries; production-role/security review;
