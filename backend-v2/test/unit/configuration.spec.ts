@@ -4,6 +4,7 @@ import {
 } from '../../src/shared/infrastructure/config/application-config.js';
 
 function secureProductionEnvironment(): NodeJS.ProcessEnv {
+  const keyPair = generateKeyPairSync('ed25519');
   return {
     NODE_ENV: 'production',
     RESQ_RELEASE: 'sha-1234567',
@@ -21,6 +22,17 @@ function secureProductionEnvironment(): NodeJS.ProcessEnv {
     RESQ_CORS_ORIGINS: 'https://portal.example,https://app.example',
     RESQ_OTEL_ENABLED: 'true',
     RESQ_OTEL_EXPORTER_OTLP_ENDPOINT: 'https://telemetry.internal.example',
+    RESQ_AUTH_SIGNING_KEY_ID: 'production-key-2026-11',
+    RESQ_AUTH_PRIVATE_KEY_BASE64: keyPair.privateKey
+      .export({ format: 'pem', type: 'pkcs8' })
+      .toString('base64'),
+    RESQ_AUTH_PUBLIC_KEY_BASE64: keyPair.publicKey
+      .export({ format: 'pem', type: 'spki' })
+      .toString('base64'),
+    RESQ_AUTH_REFRESH_HMAC_SECRET: 'synthetic-production-refresh-secret-32-bytes',
+    RESQ_AUTH_OTP_HMAC_SECRET: 'synthetic-production-otp-secret-32-bytes-long',
+    RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64: Buffer.alloc(32, 7).toString('base64'),
+    RESQ_AUTH_MFA_ENCRYPTION_KEY_ID: 'production-mfa-key-2026-11',
   };
 }
 
@@ -85,3 +97,4 @@ describe('application configuration', () => {
     expect(loadApplicationConfig(environment, 'migration').migration.expectedCurrent).toBe('NONE');
   });
 });
+import { generateKeyPairSync } from 'node:crypto';

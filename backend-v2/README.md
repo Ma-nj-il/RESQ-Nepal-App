@@ -1,7 +1,9 @@
-# RESQ Nepal backend v2 — Phase 2 foundation
+# RESQ Nepal backend v2
 
-This directory is an isolated NestJS/TypeScript foundation. It does **not** cut over a legacy route
-or implement a business workflow. Gate 2 review is required before Phase 3 begins.
+This directory contains the isolated NestJS/TypeScript rebuild. The platform foundation and the
+Phase 3 identity, tenancy, RBAC, session, MFA, audit, and idempotency implementation are present.
+No legacy route or production workflow has been cut over. Gate 2 and Gate 3 remain **HOLD** until the
+blocked infrastructure-backed and independent review evidence is approved.
 
 ## Runtime roles
 
@@ -13,7 +15,21 @@ or implement a business workflow. Gate 2 review is required before Phase 3 begin
 | Migration job | `apps/migration/main.ts`    | exits after migrations |
 
 The worker and relay currently provide lifecycle, dependency readiness, and observability plumbing;
-they intentionally process no business messages in Phase 2.
+they do not yet process a business message.
+
+## Implemented API surface
+
+- OTP registration/login, administrative password + TOTP challenge, TOTP enrollment and step-up;
+- Ed25519 access JWT/JWKS, rotating opaque refresh-token families, reuse detection, and session
+  revocation;
+- self profile, session, and resolved access-context reads;
+- tenant permission, role, role-profile, and time-bounded assignment administration;
+- province/platform authority grant creation, independent approval, revocation, and bounded scope;
+- PostgreSQL RLS for identity, tenant, assignment, authority, audit, and idempotency data.
+
+Public OTP accepts only `REGISTRATION_OR_LOGIN`. Local development uses the synthetic fixed code
+configured in `docker/local.env`; production rejects a fixed code and delivery remains fail-closed
+until an approved provider adapter is installed.
 
 ## Local verification
 
@@ -30,6 +46,7 @@ In another terminal:
 
 ```bash
 npm run postman:health
+npm run postman:identity
 npm run format:check
 npm run lint
 npm run typecheck
@@ -57,4 +74,6 @@ cache/queue URLs, pretty logs, and a migration without an expected prior version
 - Architecture is enforced by targeted ESLint rules and `test/unit/architecture.spec.ts`.
 - TypeORM synchronization and automatic migration-on-start are disabled in every runtime.
 
-See `docs/phase-2-status.md` and `docs/threat-model.md` for Gate 2 evidence and known limitations.
+See `docs/phase-2-status.md`, `docs/phase-3-status.md`, and `docs/threat-model.md` for gate evidence,
+blocked checks, and known limitations. Root authority creation is restricted to the reviewed process
+in `docs/runbooks/authority-root-bootstrap.md`.

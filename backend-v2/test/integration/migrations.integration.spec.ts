@@ -103,7 +103,7 @@ describeIntegration('forward-only governance migrations', () => {
     const migrationCount = await client.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM public.schema_migrations',
     );
-    expect(migrationCount.rows[0]?.count).toBe('2');
+    expect(migrationCount.rows[0]?.count).toBe('3');
     const run = await client.query<{ result: string; checksums: string }>(
       `SELECT result, jsonb_typeof(migration_checksums) AS checksums
        FROM governance.schema_migration_runs`,
@@ -182,6 +182,109 @@ describeIntegration('forward-only governance migrations', () => {
         'SELECT count(*)::text AS count FROM governance.idempotency_records',
       ),
     ).toMatchObject({ rows: [{ count: '0' }] });
+    await application.query('ROLLBACK');
+    await application.end();
+  });
+
+  it('isolates identity and tenant rows and clears transaction-local claims', async () => {
+    const database = await createDatabase('resq_identity_rls');
+    const config = integrationConfig(database, 'NONE');
+    await runMigrations(config);
+
+    const owner = new Client({ connectionString: config.dependencies.database.migrationUrl });
+    await owner.connect();
+    const userA = '018f0000-0000-7000-8000-000000000301';
+    const userB = '018f0000-0000-7000-8000-000000000302';
+    const tenantA = '018f0000-0000-7000-8000-000000000303';
+    const tenantB = '018f0000-0000-7000-8000-000000000304';
+    await owner.query(
+      `INSERT INTO identity.users (id, status, token_version, created_at, updated_at)
+       VALUES ($1, 'ACTIVE', 1, now(), now()), ($2, 'ACTIVE', 1, now(), now())`,
+      [userA, userB],
+    );
+    await owner.query(
+      `INSERT INTO tenancy.provider_organizations
+         (id, legal_name, display_name, operating_status, created_at, updated_at)
+       VALUES ($1, 'Tenant A Legal', 'Tenant A', 'ACTIVE', now(), now()),
+              ($2, 'Tenant B Legal', 'Tenant B', 'ACTIVE', now(), now())`,
+      [tenantA, tenantB],
+    );
+    await owner.end();
+
+    const appUrl = process.env['RESQ_DATABASE_URL'];
+    if (appUrl === undefined) throw new Error('RESQ_DATABASE_URL is required');
+    const application = new Client({ connectionString: withDatabase(appUrl, database) });
+    await application.connect();
+    await application.query('BEGIN');
+    await application.query("SELECT set_config('app.user_id', $1, true)", [userA]);
+    await application.query("SELECT set_config('app.tenant_id', $1, true)", [tenantA]);
+    await application.query("SELECT set_config('app.access_scope_type', 'TENANT', true)");
+    expect(
+      await application.query<{ id: string }>('SELECT id::text FROM identity.users ORDER BY id'),
+    ).toMatchObject({ rows: [{ id: userA }] });
+    expect(
+      await application.query<{ id: string }>(
+        'SELECT id::text FROM tenancy.provider_organizations ORDER BY id',
+      ),
+    ).toMatchObject({ rows: [{ id: tenantA }] });
+    await application.query('COMMIT');
+
+    expect(
+      await application.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM tenancy.provider_organizations',
+      ),
+    ).toMatchObject({ rows: [{ count: '0' }] });
+    await application.end();
+  });
+
+  it('withholds internal security-definer functions and rejects runtime root grants', async () => {
+    const database = await createDatabase('resq_authority_guard');
+    const config = integrationConfig(database, 'NONE');
+    await runMigrations(config);
+
+    const owner = new Client({ connectionString: config.dependencies.database.migrationUrl });
+    await owner.connect();
+    const userId = '018f0000-0000-7000-8000-000000000401';
+    await owner.query(
+      `INSERT INTO identity.users (id, status, token_version, created_at, updated_at)
+       VALUES ($1, 'ACTIVE', 1, now(), now())`,
+      [userId],
+    );
+    await owner.end();
+
+    const appUrl = process.env['RESQ_DATABASE_URL'];
+    if (appUrl === undefined) throw new Error('RESQ_DATABASE_URL is required');
+    const application = new Client({ connectionString: withDatabase(appUrl, database) });
+    await application.connect();
+    expect(
+      await application.query<{ permitted: boolean }>(
+        `SELECT has_function_privilege(
+           current_user,
+           'access_control.authority_scope_contains(uuid,uuid,uuid,timestamptz)',
+           'EXECUTE'
+         ) AS permitted`,
+      ),
+    ).toMatchObject({ rows: [{ permitted: false }] });
+
+    await application.query('BEGIN');
+    await application.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+    await expect(
+      application.query(
+        `INSERT INTO access_control.authority_grants (
+           id, subject_user_id, issued_by_user_id, role_profile_id, level, national_scope,
+           purpose, human_reason, status, valid_from, expires_at, required_assurance,
+           created_at, updated_at
+         ) VALUES (
+           '018f0000-0000-7000-8000-000000000402', $1, $1,
+           '019a45f0-0000-7000-8200-000000000010', 'PLATFORM', true,
+           'Runtime bootstrap attempt', 'Must be rejected', 'PENDING_APPROVAL', now(),
+           now() + interval '1 hour', 'AAL2', now(), now()
+         )`,
+        [userId],
+      ),
+    ).rejects.toThrow(
+      /parentless authority grants require a reviewed bootstrap migration|row-level security/i,
+    );
     await application.query('ROLLBACK');
     await application.end();
   });

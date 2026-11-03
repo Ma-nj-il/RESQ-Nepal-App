@@ -1,6 +1,7 @@
 import { MIGRATIONS, MIGRATION_CHECKSUMS } from '../../migrations/catalog.js';
 import { GOVERNANCE_CONTROL_SQL } from '../../migrations/1793664000000-create-governance-control.js';
 import { GOVERNANCE_DELIVERY_SQL } from '../../migrations/1793664000001-create-governance-delivery.js';
+import { IDENTITY_ACCESS_SQL } from '../../migrations/1793664000002-create-identity-access.js';
 
 describe('migration artifacts', () => {
   it('uses stable SHA-256 checksums for every ordered migration', () => {
@@ -20,5 +21,15 @@ describe('migration artifacts', () => {
     expect(sql).toContain('governance.job_intents');
     expect(sql).toContain('governance.event_stream_sequences');
     expect(sql).not.toMatch(/DROP\s+(?:TABLE|SCHEMA)/i);
+  });
+
+  it('contains identity, refresh rotation, RBAC hierarchy, authority, and tenant RLS controls', () => {
+    expect(IDENTITY_ACCESS_SQL).toContain('identity.refresh_tokens');
+    expect(IDENTITY_ACCESS_SQL).toContain('access_control.role_profile_roles');
+    expect(IDENTITY_ACCESS_SQL).toContain('access_control.access_assignments');
+    expect(IDENTITY_ACCESS_SQL).toContain('access_control.authority_grants');
+    expect(IDENTITY_ACCESS_SQL).toContain('FORCE ROW LEVEL SECURITY');
+    expect(IDENTITY_ACCESS_SQL).toContain('access_assignments_one_active_user_tenant_idx');
+    expect(IDENTITY_ACCESS_SQL).not.toMatch(/DROP\s+(?:TABLE|SCHEMA)/i);
   });
 });

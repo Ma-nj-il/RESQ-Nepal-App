@@ -8,6 +8,7 @@ export interface ApplicationErrorOptions {
   readonly message: string;
   readonly status: number;
   readonly retryable?: boolean;
+  readonly retryAfterSeconds?: number;
   readonly details?: readonly ErrorDetail[];
   readonly cause?: unknown;
 }
@@ -17,6 +18,7 @@ export class ApplicationError extends Error {
   readonly code: string;
   readonly status: number;
   readonly retryable: boolean;
+  readonly retryAfterSeconds: number | undefined;
   readonly details: readonly ErrorDetail[] | undefined;
   override readonly cause: unknown;
 
@@ -26,6 +28,7 @@ export class ApplicationError extends Error {
     this.code = options.code;
     this.status = options.status;
     this.retryable = options.retryable ?? false;
+    this.retryAfterSeconds = options.retryAfterSeconds;
     this.details =
       options.details === undefined
         ? undefined

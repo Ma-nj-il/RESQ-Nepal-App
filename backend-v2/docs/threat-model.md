@@ -1,6 +1,6 @@
-# Phase 2 foundation threat model
+# Phase 2–3 foundation and identity/access threat model
 
-- **Scope:** `backend-v2/` foundation only
+- **Scope:** `backend-v2/` foundation plus Phase 3 identity, tenancy, RBAC, and authority access
 - **Method:** STRIDE-informed data-flow and abuse-case review
 - **Review state:** implementation review complete; independent Gate 2 security/operations approval pending
 - **Last updated:** 2026-11-03
@@ -8,9 +8,9 @@
 ## 1. Scope and security boundary
 
 Phase 2 creates runtime, persistence, messaging, observability, migration, and delivery foundations.
-It exposes health and metrics endpoints only. It does **not** implement authentication, RBAC, tenant
-selection, a business command/query, a provider callback, an object-storage operation, or a legacy
-route. Those controls and their threat-model extensions are mandatory before later gates.
+Phase 3 adds authentication, sessions, MFA, tenant/facility context resolution, custom RBAC,
+authority grants, audit, and idempotency endpoints. It does **not** implement a provider callback,
+object-storage operation, core dispatch workflow, production OTP provider, or legacy cutover.
 
 The production boundary assumes:
 
@@ -105,6 +105,32 @@ Redis, Kafka, health, logs, and telemetry cannot declare a business outcome.
 | Supply chain and image                               | `.github/workflows/backend-v2.yml`                         |
 
 Gate 2 may approve the foundation, not production use. Open infrastructure-backed evidence, SBOM/
-image scan results, and named reviewer signoff are recorded in `phase-2-status.md`. Any later route,
-data class, identity mechanism, provider, or deployment topology changes this model and requires an
-updated review.
+image scan results, and named reviewer signoff are recorded in `phase-2-status.md`. Gate 3 evidence is
+tracked in `phase-3-status.md`.
+
+## 6. Phase 3 threat extension
+
+| ID    | Threat / abuse case                                                                  | Implemented controls                                                                                                                                                                                      | Residual risk / required evidence                                                                                                           |
+| ----- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| TM-21 | OTP enumeration, guessing, replay, or delivery abuse                                 | Generic responses, phone normalization, HMAC digests, one-time challenge consumption, attempt ceilings, Redis IP/subject buckets, short expiry, and public-purpose restriction                            | Production delivery/provider, carrier-abuse controls, Redis outage behavior, and penetration evidence are pending                           |
+| TM-22 | Access or refresh token theft creates a durable session                              | Short-lived Ed25519 JWTs, server-side session/token-version checks, HMAC-digested opaque refresh tokens, one-time rotation, idle/absolute expiry, family reuse revocation, and no-store responses         | Managed-key rotation drill, device secure-storage acceptance, browser CSRF review, and concurrent real-PostgreSQL race evidence are pending |
+| TM-23 | Password or MFA bypass/replay enables administrator access                           | Argon2 verification, mandatory verified TOTP for administrative login, encrypted TOTP secrets, atomic monotonic time-step consumption, challenge/session binding, attempt limits, and bounded AAL2        | Recovery-code/WebAuthn scope is not implemented; KMS custody, account recovery policy, and independent review are pending                   |
+| TM-24 | Caller-controlled tenant/facility/authority headers widen access                     | Bearer verification followed by server-side session and assignment/grant resolution; selectors only choose among resolved contexts; transaction-local claims drive forced RLS                             | Docker-backed cross-tenant tests, pool cancellation/reuse tests, and database-role review remain Gate 3 blockers                            |
+| TM-25 | A tenant administrator delegates permissions, scope, or validity they do not possess | Permissions → Roles → Role Profiles → Users hierarchy, permission subset checks, scope ceilings, facility subsets, mandatory expiry, TTL limits, self-elevation rejection, optimistic versions, and audit | Policy-owner acceptance and full repository/RLS concurrency evidence are pending                                                            |
+| TM-26 | A province/platform authority becomes an implicit global administrator               | Explicit resource, geography, purpose, data-capability, AAL2, and expiry bounds; active ancestor chain; independently approved grants; no bypass role; target-bound RLS                                   | Root grant requires a separately reviewed bootstrap migration; independent security review and revocation drill are pending                 |
+| TM-27 | `SECURITY DEFINER` functions bypass RLS or accept forged subjects                    | Fixed `pg_catalog` search path, caller identity bound to transaction claims, function-specific execute grants, migration-owner-only internal policies, target claims, and public execute revocation       | Must be inspected on the exact production roles and supported PostgreSQL version; Docker execution is blocked locally                       |
+| TM-28 | Retried commands duplicate privilege changes or reuse a key for another request      | Actor/tenant/operation/key identity, canonical request hash, in-progress lease, stored status/body replay, and transactional completion/audit                                                             | Timeout/crash recovery against real PostgreSQL and operational retention review remain pending                                              |
+| TM-29 | Revoked assignment/grant remains usable through an old token/session                 | Authorization resolves current rows for every protected request; revocation invalidates affected credentials; assignment/grant expiry is mandatory                                                        | Socket/cache invalidation and multi-replica revocation latency are later integration work                                                   |
+| TM-30 | Authentication or authorization evidence leaks secrets/PII                           | No OTP/refresh/MFA secret in responses, logs, audit safe context, or JWTs; masked phone projection; restricted audit RLS; private key omitted from JWKS                                                   | Trace/collector field review and production log sampling are pending                                                                        |
+
+### Phase 3 invariants
+
+- A JWT never establishes tenant, facility, permission, or authority scope by itself.
+- AAL2 is server-timed and downgrades after expiry; a stale AAL2 JWT is rejected.
+- Refresh tokens are stored only as HMAC digests and each token can rotate once.
+- A tenant assignment and an authority grant always expire.
+- A delegator cannot grant a permission, facility, geography, capability, resource class, or duration
+  beyond the resolved parent context.
+- Authority issuance and approval are performed by distinct users; neither may be the subject.
+- An application runtime cannot create a parentless authority grant.
+- RLS is forced and database claims are transaction-local.

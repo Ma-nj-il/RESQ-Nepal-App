@@ -16,6 +16,10 @@ export class RequestContextStorage {
     return this.storage.getStore();
   }
 
+  replace(context: RequestContext): void {
+    this.storage.enterWith(context);
+  }
+
   require(): RequestContext {
     const context = this.get();
     if (context === undefined) throw new Error('Request context is unavailable');

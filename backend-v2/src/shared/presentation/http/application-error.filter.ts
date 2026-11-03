@@ -82,6 +82,9 @@ export class ApplicationErrorFilter implements ExceptionFilter {
         retryable: exception.retryable,
         ...(exception.details === undefined ? {} : { details: exception.details }),
       };
+      if (exception.retryAfterSeconds !== undefined) {
+        response.setHeader('Retry-After', String(exception.retryAfterSeconds));
+      }
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       publicError = errorForHttpException(exception);

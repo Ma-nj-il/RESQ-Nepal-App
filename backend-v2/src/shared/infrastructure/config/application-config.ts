@@ -52,6 +52,30 @@ export interface ApplicationConfig {
     readonly exporterEndpoint?: string;
     readonly exportIntervalMs: number;
   };
+  readonly authentication: {
+    readonly issuer: string;
+    readonly audience: string;
+    readonly accessTokenTtlSeconds: number;
+    readonly aal2TtlSeconds: number;
+    readonly refreshTokenTtlSeconds: number;
+    readonly sessionIdleTtlSeconds: number;
+    readonly sessionAbsoluteTtlSeconds: number;
+    readonly mfaEnrollmentTtlSeconds: number;
+    readonly maximumDelegatedAssignmentTtlSeconds: number;
+    readonly maximumAuthorityGrantTtlSeconds: number;
+    readonly signingKeyId: string;
+    readonly privateKeyBase64?: string;
+    readonly publicKeyBase64?: string;
+    readonly gracePublicKeys: readonly {
+      readonly keyId: string;
+      readonly publicKeyBase64: string;
+    }[];
+    readonly refreshTokenHmacSecret: string;
+    readonly otpHmacSecret: string;
+    readonly mfaEncryptionKeyBase64: string;
+    readonly mfaEncryptionKeyId: string;
+    readonly fixedDevelopmentOtp?: string;
+  };
   readonly migration: {
     readonly expectedCurrent?: string;
     readonly operator?: string;
@@ -100,6 +124,42 @@ const rawEnvironmentSchema = z
     RESQ_OTEL_ENABLED: booleanValue.default(false),
     RESQ_OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
     RESQ_OTEL_EXPORT_INTERVAL_MS: integerValue(1_000, 300_000).default(30_000),
+    RESQ_AUTH_ISSUER: z.string().trim().min(1).max(256).default('https://local.resq.invalid'),
+    RESQ_AUTH_AUDIENCE: z.string().trim().min(1).max(256).default('resq-nepal'),
+    RESQ_AUTH_ACCESS_TOKEN_TTL_SECONDS: integerValue(60, 3_600).default(900),
+    RESQ_AUTH_AAL2_TTL_SECONDS: integerValue(60, 3_600).default(900),
+    RESQ_AUTH_REFRESH_TOKEN_TTL_SECONDS: integerValue(3_600, 31_536_000).default(2_592_000),
+    RESQ_AUTH_SESSION_IDLE_TTL_SECONDS: integerValue(300, 31_536_000).default(2_592_000),
+    RESQ_AUTH_SESSION_ABSOLUTE_TTL_SECONDS: integerValue(3_600, 63_072_000).default(7_776_000),
+    RESQ_AUTH_MFA_ENROLLMENT_TTL_SECONDS: integerValue(300, 3_600).default(600),
+    RESQ_ACCESS_MAX_ASSIGNMENT_TTL_SECONDS: integerValue(3_600, 31_536_000).default(7_776_000),
+    RESQ_ACCESS_MAX_AUTHORITY_GRANT_TTL_SECONDS: integerValue(300, 2_592_000).default(604_800),
+    RESQ_AUTH_SIGNING_KEY_ID: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._:-]{3,128}$/)
+      .default('local-ephemeral'),
+    RESQ_AUTH_PRIVATE_KEY_BASE64: z.string().min(1).optional(),
+    RESQ_AUTH_PUBLIC_KEY_BASE64: z.string().min(1).optional(),
+    RESQ_AUTH_GRACE_PUBLIC_KEYS: z.string().default('[]'),
+    RESQ_AUTH_REFRESH_HMAC_SECRET: z
+      .string()
+      .min(32)
+      .default('local-only-refresh-hmac-secret-change-me'),
+    RESQ_AUTH_OTP_HMAC_SECRET: z.string().min(32).default('local-only-otp-hmac-secret-change-me'),
+    RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64: z
+      .string()
+      .min(1)
+      .default('bG9jYWwtb25seS1tZmEtZW5jcnlwdGlvbi1rZXktMzI='),
+    RESQ_AUTH_MFA_ENCRYPTION_KEY_ID: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._:-]{3,128}$/)
+      .default('local-mfa-v1'),
+    RESQ_AUTH_FIXED_DEVELOPMENT_OTP: z
+      .string()
+      .regex(/^\d{6}$/)
+      .optional(),
     RESQ_MIGRATION_EXPECTED_CURRENT: z.string().trim().min(1).max(256).optional(),
     RESQ_MIGRATION_OPERATOR: z.string().trim().min(1).max(256).optional(),
   })
@@ -172,6 +232,37 @@ function validateProduction(
     issues.push('cache and BullMQ Redis URLs must use isolated deployments');
   }
   if (!raw.RESQ_OTEL_ENABLED) issues.push('OpenTelemetry must be enabled in production');
+  if (
+    raw.RESQ_AUTH_PRIVATE_KEY_BASE64 === undefined ||
+    raw.RESQ_AUTH_PUBLIC_KEY_BASE64 === undefined
+  ) {
+    issues.push('an explicit asymmetric authentication signing key pair is required in production');
+  }
+  if (raw.RESQ_AUTH_SIGNING_KEY_ID === 'local-ephemeral') {
+    issues.push('RESQ_AUTH_SIGNING_KEY_ID must identify a managed production key');
+  }
+  if (raw.RESQ_AUTH_REFRESH_HMAC_SECRET.startsWith('local-only-')) {
+    issues.push('RESQ_AUTH_REFRESH_HMAC_SECRET must be supplied by production secret management');
+  }
+  if (raw.RESQ_AUTH_OTP_HMAC_SECRET.startsWith('local-only-')) {
+    issues.push('RESQ_AUTH_OTP_HMAC_SECRET must be supplied by production secret management');
+  }
+  if (raw.RESQ_AUTH_MFA_ENCRYPTION_KEY_ID.startsWith('local-')) {
+    issues.push('RESQ_AUTH_MFA_ENCRYPTION_KEY_ID must identify a managed production key');
+  }
+  if (raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP !== undefined) {
+    issues.push('RESQ_AUTH_FIXED_DEVELOPMENT_OTP is forbidden in production');
+  }
+
+  let mfaKey: Buffer | undefined;
+  try {
+    mfaKey = Buffer.from(raw.RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64, 'base64');
+  } catch {
+    // The exact validation error is added below.
+  }
+  if (mfaKey?.length !== 32) {
+    issues.push('RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes');
+  }
 
   const databaseUrl = parseUrl(raw.RESQ_DATABASE_URL, 'RESQ_DATABASE_URL', issues);
   if (databaseUrl !== undefined) {
@@ -291,6 +382,36 @@ export function loadApplicationConfig(
   const productionIssues = validateProduction(raw, expectedRole);
   if (productionIssues.length > 0) throw new ConfigurationError(productionIssues);
 
+  const mfaEncryptionKey = Buffer.from(raw.RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64, 'base64');
+  if (mfaEncryptionKey.length !== 32) {
+    throw new ConfigurationError([
+      'RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes',
+    ]);
+  }
+
+  let gracePublicKeys: { keyId: string; publicKeyBase64: string }[];
+  try {
+    const parsedKeys: unknown = JSON.parse(raw.RESQ_AUTH_GRACE_PUBLIC_KEYS);
+    gracePublicKeys = z
+      .array(
+        z
+          .object({
+            keyId: z
+              .string()
+              .trim()
+              .regex(/^[A-Za-z0-9._:-]{3,128}$/),
+            publicKeyBase64: z.string().min(1),
+          })
+          .strict(),
+      )
+      .max(8)
+      .parse(parsedKeys);
+  } catch {
+    throw new ConfigurationError([
+      'RESQ_AUTH_GRACE_PUBLIC_KEYS must be a JSON array of valid public key records',
+    ]);
+  }
+
   if (expectedRole === 'migration' && raw.RESQ_MIGRATION_DATABASE_URL === undefined) {
     throw new ConfigurationError([
       'RESQ_MIGRATION_DATABASE_URL is required for the migration role',
@@ -357,6 +478,33 @@ export function loadApplicationConfig(
         ? {}
         : { exporterEndpoint: raw.RESQ_OTEL_EXPORTER_OTLP_ENDPOINT }),
       exportIntervalMs: raw.RESQ_OTEL_EXPORT_INTERVAL_MS,
+    }),
+    authentication: Object.freeze({
+      issuer: raw.RESQ_AUTH_ISSUER,
+      audience: raw.RESQ_AUTH_AUDIENCE,
+      accessTokenTtlSeconds: raw.RESQ_AUTH_ACCESS_TOKEN_TTL_SECONDS,
+      aal2TtlSeconds: raw.RESQ_AUTH_AAL2_TTL_SECONDS,
+      refreshTokenTtlSeconds: raw.RESQ_AUTH_REFRESH_TOKEN_TTL_SECONDS,
+      sessionIdleTtlSeconds: raw.RESQ_AUTH_SESSION_IDLE_TTL_SECONDS,
+      sessionAbsoluteTtlSeconds: raw.RESQ_AUTH_SESSION_ABSOLUTE_TTL_SECONDS,
+      mfaEnrollmentTtlSeconds: raw.RESQ_AUTH_MFA_ENROLLMENT_TTL_SECONDS,
+      maximumDelegatedAssignmentTtlSeconds: raw.RESQ_ACCESS_MAX_ASSIGNMENT_TTL_SECONDS,
+      maximumAuthorityGrantTtlSeconds: raw.RESQ_ACCESS_MAX_AUTHORITY_GRANT_TTL_SECONDS,
+      signingKeyId: raw.RESQ_AUTH_SIGNING_KEY_ID,
+      ...(raw.RESQ_AUTH_PRIVATE_KEY_BASE64 === undefined
+        ? {}
+        : { privateKeyBase64: raw.RESQ_AUTH_PRIVATE_KEY_BASE64 }),
+      ...(raw.RESQ_AUTH_PUBLIC_KEY_BASE64 === undefined
+        ? {}
+        : { publicKeyBase64: raw.RESQ_AUTH_PUBLIC_KEY_BASE64 }),
+      gracePublicKeys: Object.freeze(gracePublicKeys.map((key) => Object.freeze({ ...key }))),
+      refreshTokenHmacSecret: raw.RESQ_AUTH_REFRESH_HMAC_SECRET,
+      otpHmacSecret: raw.RESQ_AUTH_OTP_HMAC_SECRET,
+      mfaEncryptionKeyBase64: raw.RESQ_AUTH_MFA_ENCRYPTION_KEY_BASE64,
+      mfaEncryptionKeyId: raw.RESQ_AUTH_MFA_ENCRYPTION_KEY_ID,
+      ...(raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP === undefined
+        ? {}
+        : { fixedDevelopmentOtp: raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP }),
     }),
     migration: Object.freeze({
       ...(raw.RESQ_MIGRATION_EXPECTED_CURRENT === undefined

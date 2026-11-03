@@ -56,7 +56,9 @@ export class TypeOrmUnitOfWork implements UnitOfWork {
       ['app.session_id', context.sessionId ?? ''],
       ['app.tenant_id', context.scope.tenantId ?? ''],
       ['app.facility_scope', JSON.stringify(context.scope.facilityIds)],
+      ['app.access_scope_type', context.scope.accessScopeType ?? ''],
       ['app.authority_grant_id', context.scope.authorityGrantId ?? ''],
+      ['app.authority_target_grant_id', context.scope.authorityTargetGrantId ?? ''],
       ['app.correlation_id', context.correlationId],
     ];
 

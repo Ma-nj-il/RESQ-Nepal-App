@@ -1,0 +1,270 @@
+{
+  "info": {
+    "_postman_id": "37e6af67-26dd-4e59-8708-9041189f0865",
+    "name": "RESQ backend v2 - identity and access",
+    "description": "Phase 3 local contract checks. Uses only the synthetic local OTP and test identity; never run this collection against production.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "challengeId",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Public JWKS contains verification keys only",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/.well-known/jwks.json",
+          "host": ["{{baseUrl}}"],
+          "path": [".well-known", "jwks.json"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns HTTP 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('publishes public Ed25519 keys without private material', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.keys).to.be.an('array').that.is.not.empty;",
+              "  body.keys.forEach(function (key) {",
+              "    pm.expect(key).to.include({ kty: 'OKP', crv: 'Ed25519', use: 'sig' });",
+              "    pm.expect(key).not.to.have.property('d');",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Request synthetic local OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+9779800000001\",\n  \"purpose\": \"REGISTRATION_OR_LOGIN\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-challenges",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "otp-challenges"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('accepts the challenge without exposing an OTP', function () {",
+              "  pm.response.to.have.status(202);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.data.deliveryState).to.equal('ACCEPTED');",
+              "  pm.expect(JSON.stringify(body)).not.to.include('424242');",
+              "  pm.collectionVariables.set('challengeId', body.data.challengeId);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Consume OTP and create mobile session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"otp\": \"424242\",\n  \"clientType\": \"MOBILE\",\n  \"deviceLabel\": \"Newman synthetic device\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-verifications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "otp-verifications"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('issues an AAL1 mobile session', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.data.assurance).to.equal('AAL1');",
+              "  pm.expect(body.data.accessToken).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.data.refreshToken).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+              "});",
+              "pm.test('prevents token caching', function () { pm.expect(pm.response.headers.get('Cache-Control')).to.equal('no-store'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read self profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "me"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns only the authenticated profile', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.data.status).to.equal('ACTIVE');",
+              "  pm.expect(body.data.phoneMasked).to.match(/^\\+977\\*+/);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deny caller-selected tenant without assignment",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "X-Tenant-Id",
+            "value": "018f0000-0000-7000-8000-000000009999"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/tenant/access/roles",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "tenant", "access", "roles"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('fails closed with the stable access error', function () {",
+              "  pm.response.to.have.status(403);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.error.code).to.equal('ACCESS.PERMISSION_DENIED');",
+              "  pm.expect(body).not.to.have.property('stack');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rotate mobile refresh token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/tokens/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "tokens", "refresh"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('rotates rather than reissuing the supplied token', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.data.refreshToken).not.to.equal(pm.collectionVariables.get('refreshToken'));",
+              "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Revoke current session",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/sessions/current",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "sessions", "current"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('revokes the current session', function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
