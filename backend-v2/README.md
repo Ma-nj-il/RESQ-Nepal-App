@@ -1,9 +1,9 @@
 # RESQ Nepal backend v2
 
 This directory contains the isolated NestJS/TypeScript rebuild. The platform foundation, Phase 3
-identity/access slice, and Phase 4 provider registry, workforce, fleet, and private-document slice
-are present. No legacy route or production workflow has been cut over. Gates 2–4 remain **HOLD**
-until the blocked infrastructure-backed, provider, and independent review evidence is approved.
+identity/access, Phase 4 provider operations, and Phase 5 core dispatch/safety slices are present. No
+legacy route or production workflow has been cut over. Gates 2–5 remain **HOLD** until the blocked
+infrastructure-backed, provider, capacity, operations, and independent review evidence is approved.
 
 ## Runtime roles
 
@@ -14,8 +14,9 @@ until the blocked infrastructure-backed, provider, and independent review eviden
 | Outbox relay  | `apps/outbox-relay/main.ts` |                 `3002` |
 | Migration job | `apps/migration/main.ts`    | exits after migrations |
 
-The worker and relay currently provide lifecycle, dependency readiness, and observability plumbing;
-durable document/compliance job intents are written, but no business processor is enabled yet.
+The relay publishes ordered transactional outbox events to Kafka. The worker reconciles durable job
+intents into BullMQ and processes offer/search deadlines and safety alert/escalation policy. Document/
+compliance processors remain unavailable. Redis/Kafka state is never authoritative over PostgreSQL.
 
 ## Implemented API surface
 
@@ -33,10 +34,21 @@ durable document/compliance job intents are written, but no business processor i
 - private document upload/finalization/scan/review/download/expiry contracts with storage and malware
   providers deliberately unavailable until approved adapters are configured;
 - tenant and authority provider/facility/workforce/fleet projections with facility-exact RLS.
+- coverage checks and NPR fare quotes, protected booking creation/search, tenant offers,
+  contention-safe acceptance, assignment, and server-resolved cancellation actors;
+- every named trip milestone, completion evidence, atomic resource release, timeline projections,
+  serialized location ingestion, capture-time freshness, and relationship-bound tracking reads;
+- encrypted SOS/safety incidents, acknowledgement/escalation/resolution races, durable safety jobs,
+  ordered outbox publication, and stale-job suppression;
+- 24 versioned Phase 5 event schemas/examples plus local requester/safety Postman contracts.
 
 Public OTP accepts only `REGISTRATION_OR_LOGIN`. Local development uses the synthetic fixed code
 configured in `docker/local.env`; production rejects a fixed code and delivery remains fail-closed
 until an approved provider adapter is installed.
+
+Routing uses a labelled development estimate unless an approved production implementation is added.
+Safety alert delivery deliberately returns a retryable unavailable result; it never fabricates contact
+success. Neither path is approved for production emergency operations.
 
 ## Local verification
 
@@ -55,6 +67,8 @@ In another terminal:
 npm run postman:health
 npm run postman:identity
 npm run postman:provider-operations
+npm run postman:core-dispatch
+npm run contracts:events
 npm run format:check
 npm run lint
 npm run typecheck
@@ -82,6 +96,7 @@ cache/queue URLs, pretty logs, and a migration without an expected prior version
 - Architecture is enforced by targeted ESLint rules and `test/unit/architecture.spec.ts`.
 - TypeORM synchronization and automatic migration-on-start are disabled in every runtime.
 
-See `docs/phase-2-status.md`, `docs/phase-3-status.md`, `docs/phase-4-status.md`, and
-`docs/threat-model.md` for gate evidence, blocked checks, and known limitations. Root authority
-creation is restricted to the reviewed process in `docs/runbooks/authority-root-bootstrap.md`.
+See `docs/phase-2-status.md` through `docs/phase-5-status.md`, `docs/threat-model.md`, and
+`docs/phase-5-transition-actor-matrix.md` for gate evidence, actor rules, blocked checks, and known
+limitations. Root authority creation and dispatch/safety recovery are restricted to the reviewed
+processes under `docs/runbooks/`.

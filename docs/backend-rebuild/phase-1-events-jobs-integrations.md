@@ -1,7 +1,8 @@
 # Phase 1 — Kafka events, BullMQ jobs, and integrations
 
-**Status:** proposed contracts; no broker, queue, topic, processor, or provider adapter has been
-created in this phase.
+**Status:** Phase 1 architecture baseline. Phase 5 now implements the core-dispatch outbox relay,
+BullMQ bridge/processors, and versioned booking/dispatch/trip/safety contracts under
+`backend-v2/contracts/events/`; other catalog entries remain proposed until their phase ships.
 
 ## 1. Responsibility boundaries
 
@@ -242,6 +243,7 @@ not a portable authorization token.
 | `booking.search-started.v1` | Dispatch | Requester realtime update and search-deadline intent |
 | `booking.cancelled.v1` | Dispatch/Trips | Refresh offer/resource projections and notify actors; cancellation effects already committed |
 | `booking.unfulfilled.v1` | Dispatch | Requester notification, operations metric/escalation by policy |
+| `booking.completed.v1` | Trips | Requester/reporting projection after the trip and booking complete atomically |
 | `dispatch.offer.created.v1` | Dispatch | Tenant offer projection, expiry intent, realtime notification |
 | `dispatch.offer.accepted.v1` | Dispatch | Remove competing live-offer projections; accepted/superseded/assignment state already committed |
 | `dispatch.offer.declined.v1` | Dispatch | Continue search and record reason metric |
