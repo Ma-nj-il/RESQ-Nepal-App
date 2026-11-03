@@ -384,6 +384,7 @@ export class MultiFactorAuthenticationService {
     readonly factorId: string;
     readonly sharedSecret: string;
     readonly provisioningUri: string;
+    readonly expiresAt: Date;
   }> {
     const { userId } = this.requireAuthenticatedSession(context);
     const factorId = this.ids.generate();
@@ -419,6 +420,7 @@ export class MultiFactorAuthenticationService {
       factorId,
       sharedSecret: enrollment.sharedSecret,
       provisioningUri: enrollment.provisioningUri,
+      expiresAt: enrollmentExpiresAt,
     };
   }
 
@@ -427,6 +429,8 @@ export class MultiFactorAuthenticationService {
     factorId: string,
     code: string,
   ): Promise<{
+    readonly userId: string;
+    readonly sessionId: string;
     readonly accessToken: string;
     readonly accessTokenExpiresAt: Date;
     readonly assurance: 'AAL2';
@@ -484,6 +488,8 @@ export class MultiFactorAuthenticationService {
       accessToken: access.token,
       accessTokenExpiresAt: access.expiresAt,
       assurance: 'AAL2',
+      userId,
+      sessionId,
     };
   }
 

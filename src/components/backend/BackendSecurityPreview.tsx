@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import type { NativeBackendRuntime } from '../../services/api/backend/nativeRuntime';
 import { BackendError } from '../../services/api/backend/errors';
+import { BackendEnrollmentPreview } from './BackendEnrollmentPreview';
 
 export function BackendSecurityPreview({ runtime }: { runtime: NativeBackendRuntime }) {
   const [contexts, setContexts] = useState<Awaited<ReturnType<typeof runtime.api.accessContexts>>['data'] | null>(null);
@@ -25,6 +26,7 @@ export function BackendSecurityPreview({ runtime }: { runtime: NativeBackendRunt
     } finally { pending.current = false; if (active.current) setBusy(false); }
   };
   return <View style={{ gap: 12 }}>
+    <BackendEnrollmentPreview runtime={runtime} />
     <Text accessibilityRole="header">Access and authenticator verification</Text>
     {notice && <Text accessibilityRole="alert">{notice}</Text>}
     <Button title="Load current access contexts" disabled={busy} onPress={() => { void run(async () => {

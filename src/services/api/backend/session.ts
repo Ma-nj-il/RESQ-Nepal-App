@@ -4,6 +4,9 @@ import {
 } from './decoders';
 import { BackendError, invalidResponse, sessionChanged } from './errors';
 import { BackendTransport, type BackendRequest, type BackendResponse } from './transport';
+import { totpEnrollment } from './mfaEnrollment';
+
+const upgradedAccess = object({ userId: uuid, sessionId: uuid, assurance: oneOf(['AAL2']), accessToken: text, accessTokenExpiresAt: timestamp });
 
 /** Native integration must provide exclusive, secure, atomic storage scoped to the API origin.
  * Do not implement with AsyncStorage, localStorage, logs or a persisted UI store.
@@ -93,11 +96,30 @@ export class BackendSession {
     const generation = this.generation;
     const { data } = await this.request({
       path: `/api/v1/auth/mfa-challenges/${uuid(challengeId)}/verifications`, method: 'POST', body: { code },
-      decode: object({ userId: uuid, sessionId: uuid, assurance: oneOf(['AAL2']), accessToken: text, accessTokenExpiresAt: timestamp }),
+      decode: upgradedAccess,
     });
+    return this.applyUpgradedAccess(data, generation);
+  }
+
+  createTotpEnrollment(label: string, signal?: AbortSignal) {
+    if (label.length < 2 || label.length > 160) throw new BackendError({ code: 'CLIENT.MFA_LABEL_INVALID', message: 'Enter an authenticator label.' });
+    return this.request({ path: '/api/v1/me/mfa/totp-enrollments', method: 'POST', body: { label }, decode: totpEnrollment, signal });
+  }
+
+  async verifyTotpEnrollment(factorId: string, code: string, signal?: AbortSignal): Promise<SessionIdentity> {
+    if (!/^\d{6}$/.test(code)) throw new BackendError({ code: 'CLIENT.MFA_CODE_INVALID', message: 'Enter the six-digit authenticator code.' });
+    const generation = this.generation;
+    const { data } = await this.request({ path: `/api/v1/me/mfa/totp-enrollments/${uuid(factorId)}/verification`,
+      method: 'POST', body: { code }, decode: upgradedAccess, signal });
+    this.checkCancellation(signal);
+    return this.applyUpgradedAccess(data, generation, signal);
+  }
+
+  private async applyUpgradedAccess(data: ReturnType<typeof upgradedAccess>, generation: number, signal?: AbortSignal): Promise<SessionIdentity> {
     // Wait for any older rotation so it cannot overwrite the new assurance/access token.
     if (this.refreshing) await this.refreshing.promise;
     this.assertCurrent(generation);
+    this.checkCancellation(signal);
     if (!this.current || data.userId !== this.current.userId || data.sessionId !== this.current.sessionId ||
         !/^[A-Za-z0-9._~-]+$/.test(data.accessToken) || Date.parse(data.accessTokenExpiresAt) <= this.now()) invalidResponse();
     this.current = { ...this.current, ...data };

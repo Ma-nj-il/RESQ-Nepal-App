@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
-import type { Consumer } from 'kafkajs';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { Consumer, ConsumerRunConfig } from 'kafkajs';
 import type { Redis } from 'ioredis';
 import {
   APP_CONFIG,
@@ -27,6 +28,7 @@ export class RedisRecoveryHints implements RecoveryHintSource, OnModuleDestroy {
   private stopping = false;
   private started = false;
   private failed = false;
+  private readonly shutdown = new AbortController();
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: ApplicationConfig,
@@ -61,6 +63,7 @@ export class RedisRecoveryHints implements RecoveryHintSource, OnModuleDestroy {
 
   private async open(): Promise<void> {
     await this.redis.check('cache');
+    this.shutdown.signal.throwIfAborted();
     const subscriber = this.redis.client('cache').duplicate();
     this.subscriber = subscriber;
     subscriber.on('error', () => this.fail());
@@ -75,20 +78,10 @@ export class RedisRecoveryHints implements RecoveryHintSource, OnModuleDestroy {
       }
     });
     await subscriber.connect();
+    this.shutdown.signal.throwIfAborted();
     await subscriber.subscribe(this.channel);
-    const consumer = this.kafka.createConsumer(
-      `${this.config.environment}-${this.config.dependencies.kafka.clientId}-requester-recovery-v1`,
-    );
-    this.consumer = consumer;
-    consumer.on(consumer.events.CRASH, () => this.fail());
-    consumer.on(consumer.events.DISCONNECT, () => this.fail());
-    await consumer.connect();
-    await consumer.subscribe({
-      topics: ['resq.booking.events.v1', 'resq.dispatch.events.v1', 'resq.trip.events.v1'],
-      fromBeginning: false,
-    });
-    this.healthy = true;
-    await consumer.run({
+    this.shutdown.signal.throwIfAborted();
+    const run: ConsumerRunConfig = {
       eachMessage: async ({ topic, message }) => {
         if (!this.ready()) throw new Error('Realtime fanout unavailable');
         if (!message.value || message.value.byteLength > 262144) return;
@@ -108,12 +101,92 @@ export class RedisRecoveryHints implements RecoveryHintSource, OnModuleDestroy {
           }
         }
       },
+    };
+    for (let attempt = 0; ; attempt++) {
+      if (this.unavailable()) throw new Error('Realtime startup cancelled');
+      const consumer = this.kafka.createConsumer(
+        `${this.config.environment}-${this.config.dependencies.kafka.clientId}-requester-recovery-v1`,
+      );
+      this.consumer = consumer;
+      try {
+        await this.join(consumer, run);
+        return;
+      } catch (error) {
+        await consumer.disconnect();
+        // KafkaJS bails from JoinGroup even for this transient cold-coordinator response.
+        // Retry only before the first join; runtime failures permanently fail readiness.
+        if (
+          attempt >= 3 ||
+          this.unavailable() ||
+          !error ||
+          typeof error !== 'object' ||
+          !('type' in error) ||
+          error.type !== 'GROUP_LOAD_IN_PROGRESS'
+        )
+          throw error;
+        await delay(300 * 2 ** attempt, undefined, { signal: this.shutdown.signal });
+      }
+    }
+  }
+
+  private async join(consumer: Consumer, run: ConsumerRunConfig): Promise<void> {
+    let joined = false;
+    let abandoned = false;
+    let timer: NodeJS.Timeout | undefined;
+    let remove: (() => void)[] = [];
+    const joining = new Promise<void>((resolve, reject) => {
+      const cancelled = (): void => reject(new Error('Realtime startup cancelled'));
+      this.shutdown.signal.addEventListener('abort', cancelled, { once: true });
+      timer = setTimeout(() => reject(new Error('Realtime consumer join timed out')), 30000);
+      remove = [
+        () => this.shutdown.signal.removeEventListener('abort', cancelled),
+        consumer.on(consumer.events.GROUP_JOIN, () => {
+          if (this.stopping || this.failed) {
+            reject(new Error('Realtime startup cancelled'));
+            return;
+          }
+          joined = true;
+          this.healthy = true;
+          resolve();
+        }),
+        consumer.on(consumer.events.CRASH, ({ payload }) => {
+          if (joined) this.fail();
+          reject(payload.error);
+        }),
+        consumer.on(consumer.events.DISCONNECT, () => {
+          if (joined) this.fail();
+        }),
+      ];
     });
+    const assertActive = (): void => {
+      if (abandoned || this.unavailable()) throw new Error('Realtime startup cancelled');
+    };
+    const start = async (): Promise<void> => {
+      await consumer.connect();
+      assertActive();
+      await consumer.subscribe({
+        topics: ['resq.booking.events.v1', 'resq.dispatch.events.v1', 'resq.trip.events.v1'],
+        fromBeginning: false,
+      });
+      assertActive();
+      await consumer.run(run);
+    };
+    try {
+      // run() can resolve after an internally handled crash. A real GROUP_JOIN is required.
+      await Promise.all([joining, start()]);
+    } catch (error) {
+      abandoned = true;
+      for (const stop of remove) stop();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
+    this.shutdown.abort();
     this.fail();
     try {
       await this.consumer?.disconnect();
@@ -126,6 +199,16 @@ export class RedisRecoveryHints implements RecoveryHintSource, OnModuleDestroy {
   private fail(): void {
     this.failed = true;
     this.healthy = false;
-    for (const listener of this.listeners) listener.unavailable();
+    for (const listener of this.listeners) {
+      try {
+        listener.unavailable();
+      } catch {
+        /* One client must not prevent other disconnects. */
+      }
+    }
+  }
+
+  private unavailable(): boolean {
+    return this.stopping || this.failed;
   }
 }

@@ -3,9 +3,11 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Inject,
   Param,
+  ParseUUIDPipe,
   Post,
   Req,
   Res,
@@ -208,6 +210,7 @@ export class AuthenticationController {
   }
 
   @Post('/api/v1/me/mfa/totp-enrollments')
+  @Header('Cache-Control', 'private, no-store')
   @RequireAuthorization({ context: 'SELF' })
   @HttpCode(201)
   async createTotpEnrollment(
@@ -222,14 +225,18 @@ export class AuthenticationController {
       3600,
     );
     const enrollment = await this.multiFactor.createTotpEnrollment(context, body.label);
-    return successResponse(this.contexts, enrollment);
+    return successResponse(this.contexts, {
+      ...enrollment,
+      expiresAt: enrollment.expiresAt.toISOString(),
+    });
   }
 
   @Post('/api/v1/me/mfa/totp-enrollments/:factorId/verification')
+  @Header('Cache-Control', 'private, no-store')
   @RequireAuthorization({ context: 'SELF' })
   @HttpCode(200)
   async verifyTotpEnrollment(
-    @Param('factorId') factorId: string,
+    @Param('factorId', new ParseUUIDPipe()) factorId: string,
     @Body() body: MfaVerificationDto,
     @Req() request: Request,
   ): Promise<unknown> {
@@ -242,6 +249,8 @@ export class AuthenticationController {
     );
     const result = await this.multiFactor.verifyTotpEnrollment(context, factorId, body.code);
     return successResponse(this.contexts, {
+      userId: result.userId,
+      sessionId: result.sessionId,
       assurance: result.assurance,
       accessToken: result.accessToken,
       accessTokenExpiresAt: result.accessTokenExpiresAt.toISOString(),

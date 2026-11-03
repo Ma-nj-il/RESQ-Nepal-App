@@ -37,6 +37,10 @@ describeIntegration('realtime Kafka to Redis fanout', () => {
         })),
       });
       await Promise.all(sources.map((source) => source.start()));
+      const groupId = `${config.environment}-${config.dependencies.kafka.clientId}-requester-recovery-v1`;
+      const { groups } = await admin.describeGroups([groupId]);
+      expect(groups[0]?.members).toHaveLength(2);
+      expect(sources.map((source) => source.ready())).toEqual([true, true]);
       const eventId = randomUUID(),
         bookingId = randomUUID();
       const received = sources.map(
@@ -87,6 +91,44 @@ describeIntegration('realtime Kafka to Redis fanout', () => {
       await source.onModuleDestroy();
       expect(source.ready()).toBe(false);
       expect(unavailable).toBe(true);
+      await expect(source.start()).rejects.toThrow('cannot be restarted');
+      const survivor = sources[1];
+      if (!survivor) throw new Error('Missing surviving replica');
+      const nextEventId = randomUUID();
+      let stoppedDeliveries = 0;
+      source.subscribe(
+        () => {
+          stoppedDeliveries++;
+        },
+        () => {},
+      );
+      const delivered = new Promise<RecoveryHint>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Surviving fanout timed out')), 15000);
+        timers.push(timer);
+        survivor.subscribe(
+          (hint) => {
+            if (hint.eventId === nextEventId) {
+              clearTimeout(timer);
+              resolve(hint);
+            }
+          },
+          () => {},
+        );
+      });
+      await producer.publish({
+        topic: 'resq.booking.events.v1',
+        key: bookingId,
+        headers: {},
+        value: JSON.stringify({
+          ...example,
+          eventId: nextEventId,
+          aggregate: { type: 'booking', id: bookingId, version: 2 },
+          stream: { type: 'bookingDispatch', id: bookingId, sequence: 2 },
+        }),
+      });
+      expect(await delivered).toEqual({ eventId: nextEventId, bookingId });
+      expect(stoppedDeliveries).toBe(0);
+      expect(survivor.ready()).toBe(true);
     } finally {
       for (const timer of timers) clearTimeout(timer);
       await Promise.allSettled(sources.map((source) => source.onModuleDestroy()));

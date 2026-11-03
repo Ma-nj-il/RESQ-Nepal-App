@@ -140,6 +140,67 @@ function context(input?: { userId: string; sessionId: string }): RequestContext 
 }
 
 describe('multi-factor security invariants', () => {
+  it('returns the same enrollment expiry that is stored with the encrypted factor', async () => {
+    const repository = mfaRepositoryMock();
+    repository.hasVerifiedTotpFactor.mockResolvedValue(false);
+    const result = await buildService(repository).createTotpEnrollment(
+      context({ userId: USER_ID, sessionId: SESSION_ID }),
+      'Primary',
+    );
+    expect(result.expiresAt).toEqual(new Date(NOW.getTime() + 600000));
+    expect(repository.createPendingTotpFactor.mock.calls).toEqual([
+      [
+        TRANSACTION,
+        expect.objectContaining({
+          userId: USER_ID,
+          enrollmentExpiresAt: result.expiresAt,
+          encryptedSecret: Uint8Array.of(1),
+        }),
+      ],
+    ]);
+    expect(repository.createPendingTotpFactor.mock.calls[0]?.[1]).not.toHaveProperty(
+      'sharedSecret',
+    );
+  });
+
+  it('requires live AAL2 before enrolling another factor', async () => {
+    const repository = mfaRepositoryMock();
+    repository.hasVerifiedTotpFactor.mockResolvedValue(true);
+    await expect(
+      buildService(repository).createTotpEnrollment(
+        context({ userId: USER_ID, sessionId: SESSION_ID }),
+        'Extra',
+      ),
+    ).rejects.toMatchObject({ code: 'ACCESS.STEP_UP_REQUIRED' });
+    expect(repository.createPendingTotpFactor.mock.calls).toHaveLength(0);
+  });
+
+  it('binds an enrollment upgrade response to the factor owner and current session', async () => {
+    const repository = mfaRepositoryMock();
+    repository.findOwnedTotpFactorForUpdate.mockResolvedValue({
+      id: FACTOR_ID,
+      userId: USER_ID,
+      label: 'Primary',
+      encryptedSecret: Uint8Array.of(1),
+      keyVersion: 'test-key',
+      enrollmentExpiresAt: new Date(NOW.getTime() + 600000),
+    });
+    repository.verifyTotpFactor.mockResolvedValue(true);
+    repository.upgradeSessionAssurance.mockResolvedValue(true);
+    const result = await buildService(repository, {
+      matchingTotpStep: () => 100,
+    }).verifyTotpEnrollment(
+      context({ userId: USER_ID, sessionId: SESSION_ID }),
+      FACTOR_ID,
+      '123456',
+    );
+    expect(result).toMatchObject({ userId: USER_ID, sessionId: SESSION_ID, assurance: 'AAL2' });
+    expect(result).not.toHaveProperty('refreshToken');
+    expect(repository.findOwnedTotpFactorForUpdate.mock.calls).toEqual([
+      [TRANSACTION, USER_ID, FACTOR_ID],
+    ]);
+  });
+
   it('binds step-up verification to the authenticated user and session', async () => {
     const repository = mfaRepositoryMock();
     repository.peekChallengeUser.mockResolvedValue(USER_ID);

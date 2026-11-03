@@ -1,6 +1,6 @@
 # Mobile API/session foundation
 
-**Status (2026-11-03):** API library, native secure-session adapter, auth controller, and opt-in
+**Status (2026-11-04):** API library, native secure-session adapter, auth controller, and opt-in
 development preview implemented and unit-tested. Default app flows still use the existing Supabase
 services. Native-device/live-backend acceptance is pending; production client/traffic/data migration
 remains 0%.
@@ -20,6 +20,7 @@ remains 0%.
 | `errors.ts`                            | Structured public errors without raw transport objects                                                                  |
 | `secureRefreshVault.ts`                | One versioned SecureStore record scoped to normalized API origin and environment                                        |
 | `authController.ts`                    | Token-free canonical auth state, six-digit OTP, matching active profile, logout/revocation lifecycle                    |
+| `mfaEnrollment.ts`                     | Component-owned TOTP setup, expiry, concealment, cancellation and ambiguous-outcome handling |
 | `nativeRuntime.native.ts`              | Module-lifetime native session/vault owner shared across component remounts                                             |
 | `nativeRuntime.ts`                     | Web refusal with `CLIENT.NATIVE_REQUIRED`                                                                               |
 | `previewConfig.ts`                     | Explicit development-only preview configuration validation                                                              |
@@ -67,8 +68,9 @@ OTP verification sends `clientType: MOBILE`; browser cookie flows are not implem
 Enrolled-authenticator step-up keeps the new access token private to `BackendSession`, verifies the
 same user/session and AAL2, and retains the current rotating refresh credential. Older concurrent
 refresh completion cannot overwrite the step-up result. Access-context metadata is read from the
-server; displaying it never authorizes an operation. Password login and new TOTP enrollment UI remain
-open administrative-client work.
+server; displaying it never authorizes an operation. New TOTP enrollment is available in the
+development preview; see [enrollment semantics](mobile-mfa-enrollment.md). Password login and
+managed-context production-client flows remain open.
 An OTP challenge's `deliveryState: ACCEPTED` does not establish message delivery or authentication.
 Logout immediately removes local authentication. It returns `remoteRevocation: CONFIRMED` only after
 HTTP 204; it returns `NOT_ATTEMPTED` without an in-memory session, and rejects if remote revocation
@@ -94,12 +96,13 @@ The account preview now supports:
 - exact cash receipts and immutable completed-trip ratings;
 - coverage/quotes, explicit transport/location consent, test booking creation and versioned cancellation;
 - bounded booking/trip pages, timelines and explicitly labelled tracking snapshots;
-- access-context metadata and enrolled-authenticator step-up.
+- access-context metadata, enrolled-authenticator step-up and memory-only TOTP enrollment.
 
 Each new page replaces the previous page. Logout/revocation unmounts the account panels and discards
 their data. Forms remain a development acceptance surface, not the finished production mobile UX.
-The preview performs explicit reads/retries; it has no automatic offline mutation queue. No realtime
-endpoint is currently implemented. A fetched tracking snapshot is never advertised as continuously live.
+The preview performs explicit reads/retries; it has no automatic offline mutation queue.
+[Requester realtime](../../backend-v2/docs/requester-realtime.md) invalidates a selected booking's
+consistent recovery read. A fetched tracking snapshot is never advertised as continuously live.
 
 ### Launch
 

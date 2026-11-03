@@ -30,7 +30,7 @@ function kafkaSasl(config: ApplicationConfig): SASLOptions | undefined {
 @Injectable()
 export class KafkaService implements OnModuleDestroy {
   private readonly admin: Admin;
-  private readonly kafka: Kafka;
+  private readonly consumerKafka: Kafka;
   private readonly producer: Producer;
   private readonly requestTimeoutMs: number;
   private adminConnected = false;
@@ -41,17 +41,22 @@ export class KafkaService implements OnModuleDestroy {
   constructor(@Inject(APP_CONFIG) config: ApplicationConfig) {
     this.requestTimeoutMs = config.dependencies.timeoutMs;
     const sasl = kafkaSasl(config);
-    const kafka = new Kafka({
+    const options = {
       clientId: `${config.dependencies.kafka.clientId}-${config.role}`,
       brokers: [...config.dependencies.kafka.brokers],
       ssl: config.dependencies.kafka.ssl,
       ...(sasl === undefined ? {} : { sasl }),
       connectionTimeout: config.dependencies.timeoutMs,
       requestTimeout: config.dependencies.timeoutMs,
-      retry: { retries: 0 },
       logLevel: logLevel.NOTHING,
+    };
+    const kafka = new Kafka({ ...options, retry: { retries: 0 } });
+    // KafkaJS coordinator discovery uses client-level (not consumer-level) retries.
+    // A cold broker may still be initializing __consumer_offsets after it is reachable.
+    this.consumerKafka = new Kafka({
+      ...options,
+      retry: { retries: 6, initialRetryTime: 300, maxRetryTime: 2_000 },
     });
-    this.kafka = kafka;
     this.admin = kafka.admin();
     this.producer = kafka.producer({
       allowAutoTopicCreation: false,
@@ -72,12 +77,12 @@ export class KafkaService implements OnModuleDestroy {
 
   /** The caller owns consumer connection, failure handling and shutdown. */
   createConsumer(groupId: string): Consumer {
-    return this.kafka.consumer({
+    return this.consumerKafka.consumer({
       groupId,
       allowAutoTopicCreation: false,
       maxBytes: 1048576,
       maxBytesPerPartition: 262144,
-      retry: { retries: 3 },
+      retry: { retries: 3, restartOnFailure: () => Promise.resolve(false) },
     });
   }
 

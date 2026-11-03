@@ -66,6 +66,12 @@ The initial subscription emits a synthetic invalidation with a fresh event ID.
   component unavailable and disconnects local clients. API readiness includes the
   realtime component when enabled. A failed component requires a replica restart;
   this implementation does not claim seamless broker/Redis recovery.
+- Startup requires an observed Kafka `GROUP_JOIN`; `consumer.run()` resolving is
+  insufficient because KafkaJS can swallow a startup crash. A dedicated consumer
+  client allows six coordinator-discovery retries (300 ms initial, 2 seconds maximum
+  backoff). Before the first join only, `GROUP_LOAD_IN_PROGRESS` permits at most four
+  fresh consumer attempts (300/600/1200 ms delays); each join has a 30-second deadline.
+  Authorization errors and post-join failures are terminal. Shutdown cancels startup.
 - Mobile socket ownership follows authenticated user/session, selected booking and
   AppState. Backgrounding, selection changes and cleanup cancel pending auth and
   timers. Reconnect uses five bounded attempts with exponential backoff and jitter;
@@ -84,16 +90,21 @@ validation and refresh concurrency. An infrastructure integration case exercises
 shared Kafka group and two Redis replica subscribers; requester/crew isolation is
 also covered on supported PostgreSQL. Exact CI outcomes are recorded separately.
 
-Local checks pass: backend **30 suites / 186 tests**, lint, typecheck, build and
+At initial publication, local checks passed: backend **30 suites / 186 tests**, lint, typecheck, build and
 formatting; mobile **143 tests**, lint and typecheck. Backend production dependency
 audit reports zero vulnerabilities. Mobile's configured HIGH gate passes with five
-MODERATE findings in Expo build tooling dependencies. The new infrastructure fanout
-case remains pending CI at publication time.
+MODERATE findings in Expo build tooling dependencies.
 
 Development exports for Android, iOS and web pass with the Socket.IO dependency.
 Final review adds concurrent-handshake capacity enforcement, terminal startup failure,
 subscription fencing, and handshake waiting for an HTTP-triggered stale-token refresh.
-Release exports and clean Linux installation await the published revision's mobile CI.
+Mobile CI at `c92bf6f` passes clean Linux installation and development/release exports.
+Backend CI at that revision exposed a cold-coordinator startup failure. The correction
+was exercised against an isolated, fresh Kafka 4.1.1 broker and Redis 8.4.0: two consumers
+join the same group, both replica subscribers receive a hint, and the surviving replica
+continues receiving after the other shuts down. Four unit cases cover bounded startup
+retries, authorization failure, join readiness, shutdown and terminal runtime failure.
+See [CI evidence](ci-evidence-2026-11-03.md) for exact remote revision outcomes.
 
 Tenant queues, authority resources, notification subscriptions, live tracking and
 production screen adoption remain open. Multi-replica load, proxy idle/upgrade

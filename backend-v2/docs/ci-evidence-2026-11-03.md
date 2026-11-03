@@ -59,6 +59,19 @@ The application dependency lockfile was not downgraded or given vulnerability ex
 
 ## Corrections after these runs
 
+- Requester realtime revision `c92bf6fc366ae69a0668dadd170b9a74321b5cdb`: mobile run
+  [41696613990](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41696613990) **PASS**,
+  including clean install, Expo compatibility, lint/typecheck, 143 tests, configured audit
+  and development/release Android/iOS/web exports. Backend run
+  [41696614033](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41696614033) passes
+  quality and image; integration fails at realtime source startup. Local cold-broker
+  reproduction found zero client-level coordinator-discovery retries and KafkaJS bailing
+  on `GROUP_LOAD_IN_PROGRESS`. Consumer-only discovery retries and bounded pre-join
+  attempts correct both conditions while retaining terminal post-join failure.
+  The revised infrastructure test passes locally with isolated Kafka 4.1.1 and Redis 8.4.0,
+  including a fresh coordinator, shared-group membership, two-subscriber fanout and
+  surviving-replica delivery. This local case does not exercise PostgreSQL or container images.
+
 - Recovery revision `d883f2fe1d1bc727dbe36cec55a274bbfa1ce62a`: backend run
   [41692631660](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41692631660) passes
   quality and image, but the new concurrent recovery fixture fails because direct lifecycle
@@ -120,6 +133,12 @@ filesystem adapter with synthetic manifests and ephemeral keys. The ledger is al
 complete passing run at `6ea91f6` above.
 
 ## Acceptance still required
+
+The subsequent MFA-enrollment/startup-correction worktree passes local backend **32 suites /
+196 tests**, lint, typecheck, build, formatting and 36 event contracts; mobile **152 tests**,
+lint and typecheck. MFA coverage includes stored expiry, AAL2/identity binding, installed HTTP
+headers/validation, concealment, expiry, effect cleanup and cancellation during refresh.
+Remote validation of the forthcoming published revision is pending.
 
 Native binary signing/install and device crash/recovery/accessibility acceptance; complete production
 mobile and portal flows; approved provider integrations and canaries; production-role/security review;
