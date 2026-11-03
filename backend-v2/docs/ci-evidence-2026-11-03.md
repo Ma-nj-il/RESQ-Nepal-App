@@ -37,6 +37,10 @@ production client, traffic and source-data migration remains **0%**.
   unit suites / 135 tests. All three integration suites / 28 tests, all four Newman collections
   (health, identity, provider, dispatch/product), hardened runtime smoke, image/SBOM and configured
   HIGH/CRITICAL image scanning pass. This is the first fully passing backend run after the HTTP fixes.
+- [Backend run 41685824483](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41685824483),
+  commit `6ea91f63ffce9c71c9d40623ae501f99e53d31a7`: **all jobs PASS** with the encrypted
+  checkpoint ledger. Quality includes **26 suites / 143 tests**; all 28 integration tests, all four
+  Newman collections, image build, hardened smoke, SBOM and the configured image scan pass again.
 
 The first successful scanner execution at `b05fe8d` exposed six HIGH findings in Node's bundled
 npm (`undici` 6.28.0 and `brace-expansion` 5.0.9). All runtime entrypoints execute compiled Node code.
@@ -85,7 +89,8 @@ power-loss durability, managed KMS readiness or full-volume migration acceptance
 
 Current local checks pass: backend lint, typecheck, build, formatting and **26 suites / 143 tests**,
 plus root mobile lint and typecheck. Eight new encrypted-ledger cases include the real CLI and
-filesystem adapter with synthetic manifests and ephemeral keys. The ledger awaits its own CI run.
+filesystem adapter with synthetic manifests and ephemeral keys. The ledger is also verified in the
+complete passing run at `6ea91f6` above.
 
 ## Acceptance still required
 

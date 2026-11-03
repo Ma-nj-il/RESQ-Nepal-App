@@ -3,10 +3,11 @@
 This directory contains the isolated NestJS/TypeScript rebuild. The platform foundation, Phase 3
 identity/access, Phase 4 provider operations, Phase 5 core dispatch/safety, and the initial Phase 6
 product-services slices are present. No legacy route or production workflow has been cut over.
-Gates 2–6 remain **HOLD** until the blocked
-infrastructure-backed, provider, capacity, operations, and independent review evidence is approved.
+Gates 2–6 remain **HOLD** pending provider, capacity, operations and independent acceptance.
+The [CI evidence](docs/ci-evidence-2026-11-03.md) records passing infrastructure-backed checks.
 
-Offline migration reconciliation and cutover-readiness tooling are now available. See
+Offline migration reconciliation, an [encrypted rehearsal ledger](docs/encrypted-rehearsal-ledger.md)
+with anchored recovery, and cutover-readiness tooling are available. See
 [Phase 7](docs/phase-7-status.md), [Phase 8](docs/phase-8-status.md), and the
 [overall delivery status](../docs/backend-rebuild/implementation-status.md). Gates 7–8 also remain
 HOLD; these tools do not authorize or perform production migration.

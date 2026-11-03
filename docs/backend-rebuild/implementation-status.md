@@ -6,7 +6,7 @@ client/traffic/data migration is **0%**.
 | Phase | Repository delivery                                                                                             | Acceptance gate                                                                                                       |
 | ----- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | 0–1   | Discovery, architecture, actor/data/operations model and approval roadmap                                       | Historical implementation authorization does not replace missing owner decision records                               |
-| 2     | NestJS API/worker/relay/migration foundation, CI, observability and dependency boundaries                       | HOLD: real dependency/image/security/operations evidence                                                              |
+| 2     | NestJS API/worker/relay/migration foundation, CI, observability and dependency boundaries                       | HOLD: capacity, restore, operational and independent security acceptance                                               |
 | 3     | Identity, OTP/password/MFA, rotating sessions, tenancy/RBAC/authority and RLS                                   | HOLD: full infrastructure/security review and drills                                                                  |
 | 4     | Registry/workforce/fleet/documents/readiness and scoped administrative APIs                                     | HOLD: providers, persona/segregation, object/expiry/race acceptance                                                   |
 | 5     | Dispatch/trips/cancellation/tracking/safety, jobs/events and recovery                                           | HOLD: real races/outages/capacity/SOS simulation; realtime delivery remains open                                      |
@@ -27,9 +27,9 @@ The available code work does not make every phase complete. External inputs rema
 the phase status documents identify them. Local synthetic checks must not be used as production
 acceptance evidence. Git publication is code delivery, not a deployment or cutover.
 
-Remote mobile CI at `6e193d6` passes validation/128 tests/exports. Backend CI at `6e9b7dc` passes
-all jobs: quality/135 unit tests, three PostgreSQL/dependency integration suites / 28 tests, all four
+Remote mobile CI at `6e193d6` passes validation/128 tests/exports. Backend CI at `6ea91f6` passes
+all jobs: quality/143 unit tests, three PostgreSQL/dependency integration suites / 28 tests, all four
 Newman collections (health, identity, provider and dispatch/product), production image, hardened
-smoke, SBOM and configured HIGH/CRITICAL Trivy scan. The encrypted checkpoint ledger adds local
+smoke, SBOM and configured HIGH/CRITICAL Trivy scan. The encrypted checkpoint ledger adds verified
 persistence/recovery and encrypted rerun comparison; managed storage/KMS and source-specific
 execution still need implementation and acceptance. See the CI evidence for exact outcomes. Gates remain HOLD.

@@ -64,9 +64,9 @@ ownership/planning declarations; new consumer services are not deployed by this 
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | Backend ESLint                             | PASS, zero warnings                                                                             |
 | Backend typecheck and build                | PASS                                                                                            |
-| Backend unit tests, including architecture | PASS locally, 26 suites / 143 tests                                                             |
+| Backend unit tests, including architecture | PASS locally and remotely at `6ea91f6`, 26 suites / 143 tests                                   |
 | Event contracts                            | PASS, 30 schemas/examples                                                                       |
-| Supported integration suites               | PASS remotely at `d08effc`, 3 suites / 28 tests against real dependencies                       |
+| Supported integration suites               | PASS remotely at `6ea91f6`, 3 suites / 28 tests against real dependencies                       |
 | Embedded SQL debugging                     | All six migrations and eight serialized product scenarios executed with temporary PGlite 0.5.15 |
 | Mobile lint and typecheck                  | PASS; backend project excluded from the root Expo checker                                       |
 | Mobile unit tests                          | PASS, 128 tests, including 72 backend API/session/product/command/native-auth cases             |
@@ -104,6 +104,9 @@ submission and all dispatch/product Newman requests. Image build, hardened runti
 and configured HIGH/CRITICAL Trivy scan pass. Mobile CI at `6e193d6` passes, including durable
 recovery and development/release exports on all platforms. See the CI evidence for exact run
 outcomes; these results do not pass Gate 6.
+
+The complete backend workflow passes again at `6ea91f6`, including the encrypted rehearsal-ledger
+addition and all 143 unit tests.
 
 The runtime tracking-unavailable threshold was aligned to the existing contract/tests: 120 seconds
 from capture time, replacing the inconsistent five-minute module constant.
