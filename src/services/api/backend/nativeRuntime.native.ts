@@ -11,6 +11,7 @@ import type { NativeBackendRuntime } from './nativeRuntime';
 import { DurableCommands } from './durableCommands';
 import { createCommandHandlers } from './commandRegistry';
 import { createSecureCommandVault } from './secureCommandVault';
+import { createRequesterRealtime } from './realtime';
 
 // Module lifetime ownership survives component remounts without starting a second refresh owner.
 let instance: { key: string; promise: Promise<NativeBackendRuntime> } | undefined;
@@ -39,7 +40,7 @@ export function getNativeBackendRuntime(scope: VaultScope): Promise<NativeBacken
         (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value)), owner, randomUUID);
     const commands = { account: lane('account'), product: lane('product'), dispatch: lane('dispatch') };
     auth.store.subscribe(() => { for (const command of Object.values(commands)) command.activate(owner()); });
-    return { auth, api, dispatch, commands, generateId: randomUUID,
+    return { auth, api, dispatch, commands, realtime: createRequesterRealtime(session, scope.origin), generateId: randomUUID,
       security: { beginStepUp: () => session.beginStepUp(), verifyStepUp: (id: string, code: string) => session.verifyStepUp(id, code) } };
   })();
   instance = { key, promise };

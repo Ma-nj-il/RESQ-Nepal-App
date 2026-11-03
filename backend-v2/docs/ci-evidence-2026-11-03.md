@@ -67,6 +67,14 @@ The application dependency lockfile was not downgraded or given vulnerability ex
   [41692631575](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41692631575) stops at
   Expo compatibility validation; local reproduction requires Expo 58.0.23, splash screen 58.0.13
   and safe-area-context 5.11.1. Those compatible packages were installed through Expo CLI.
+- Recovery correction `6e91884ba10f64d8ba9b6f8f514fd5f35ad31df2`: backend run
+  [41693897277](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41693897277)
+  passes all three jobs, including the three supported-PostgreSQL recovery cases.
+  Mobile run [41693896783](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41693896783)
+  fails locked installation on missing optional WASM peer entries (`@emnapi/core`
+  and `@emnapi/runtime`). Regeneration with current npm 11 in a clean temporary
+  directory resolves the entries; a Linux/x64 clean-tree `npm ci --dry-run` passes.
+  This validation does not replace a completed mobile CI run.
 
 - PostgreSQL's superuser `pg_has_role` behavior required a short-lived, non-application bootstrap
   identity in synthetic authority fixtures. The root-grant guard and forced RLS remain enabled.

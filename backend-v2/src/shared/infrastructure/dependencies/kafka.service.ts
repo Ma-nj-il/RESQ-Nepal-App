@@ -4,6 +4,7 @@ import {
   Kafka,
   logLevel,
   type IHeaders,
+  type Consumer,
   type Producer,
   type RecordMetadata,
   type SASLOptions,
@@ -29,6 +30,7 @@ function kafkaSasl(config: ApplicationConfig): SASLOptions | undefined {
 @Injectable()
 export class KafkaService implements OnModuleDestroy {
   private readonly admin: Admin;
+  private readonly kafka: Kafka;
   private readonly producer: Producer;
   private readonly requestTimeoutMs: number;
   private adminConnected = false;
@@ -49,6 +51,7 @@ export class KafkaService implements OnModuleDestroy {
       retry: { retries: 0 },
       logLevel: logLevel.NOTHING,
     });
+    this.kafka = kafka;
     this.admin = kafka.admin();
     this.producer = kafka.producer({
       allowAutoTopicCreation: false,
@@ -65,6 +68,17 @@ export class KafkaService implements OnModuleDestroy {
   async check(): Promise<void> {
     await this.connectAdmin();
     await this.admin.describeCluster();
+  }
+
+  /** The caller owns consumer connection, failure handling and shutdown. */
+  createConsumer(groupId: string): Consumer {
+    return this.kafka.consumer({
+      groupId,
+      allowAutoTopicCreation: false,
+      maxBytes: 1048576,
+      maxBytesPerPartition: 262144,
+      retry: { retries: 3 },
+    });
   }
 
   async publish(input: {

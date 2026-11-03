@@ -1,4 +1,5 @@
-import { Inject, Injectable, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnApplicationBootstrap } from '@nestjs/common';
+import { REALTIME_READINESS, type RealtimeReadiness } from './realtime-readiness.js';
 
 import { CLOCK, type Clock } from '../../domain/clock.js';
 import { APP_CONFIG, type ApplicationConfig } from '../config/application-config.js';
@@ -8,7 +9,7 @@ import { MetricsService } from '../observability/metrics.service.js';
 import { DatabaseService } from '../persistence/database.service.js';
 
 export interface ComponentHealth {
-  readonly name: 'postgresql' | 'redis-cache' | 'redis-queue' | 'kafka';
+  readonly name: 'postgresql' | 'redis-cache' | 'redis-queue' | 'kafka' | 'realtime';
   readonly status: 'up' | 'down';
 }
 
@@ -37,6 +38,7 @@ export class HealthService implements OnApplicationBootstrap {
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(KafkaService) private readonly kafka: KafkaService,
     @Inject(MetricsService) private readonly metrics: MetricsService,
+    @Optional() @Inject(REALTIME_READINESS) private readonly realtime?: RealtimeReadiness,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -88,7 +90,21 @@ export class HealthService implements OnApplicationBootstrap {
   private requiredChecks(): readonly RequiredCheck[] {
     const database: RequiredCheck = { name: 'postgresql', run: () => this.database.check() };
     if (this.config.role === 'api') {
-      return [database, this.redisCheck('cache')];
+      return [
+        database,
+        this.redisCheck('cache'),
+        ...(this.config.realtime.enabled
+          ? [
+              {
+                name: 'realtime' as const,
+                run: (): Promise<void> =>
+                  this.realtime?.ready() === true
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('Realtime unavailable')),
+              },
+            ]
+          : []),
+      ];
     }
     if (this.config.role === 'worker') {
       return [database, this.redisCheck('queue'), { name: 'kafka', run: () => this.kafka.check() }];

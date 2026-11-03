@@ -47,6 +47,7 @@ export interface ApplicationConfig {
   readonly metrics: {
     readonly enabled: boolean;
   };
+  readonly realtime: { readonly enabled: boolean };
   readonly telemetry: {
     readonly enabled: boolean;
     readonly exporterEndpoint?: string;
@@ -155,6 +156,7 @@ const rawEnvironmentSchema = z
     RESQ_DOCUMENT_TIMEOUT_MS: integerValue(1000, 120000).default(30000),
     RESQ_CORS_ORIGINS: z.string().default('http://localhost:8081'),
     RESQ_METRICS_ENABLED: booleanValue.default(true),
+    RESQ_REALTIME_ENABLED: booleanValue.default(false),
     RESQ_OTEL_ENABLED: booleanValue.default(false),
     RESQ_OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
     RESQ_OTEL_EXPORT_INTERVAL_MS: integerValue(1_000, 300_000).default(30_000),
@@ -604,6 +606,7 @@ export function loadApplicationConfig(
         ? {}
         : { fixedDevelopmentOtp: raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP }),
     }),
+    realtime: Object.freeze({ enabled: raw.RESQ_REALTIME_ENABLED }),
     dispatch: Object.freeze({
       developmentRoutingEnabled: raw.RESQ_DISPATCH_DEVELOPMENT_ROUTING_ENABLED,
       ...(raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64 === undefined ||

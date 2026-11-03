@@ -414,8 +414,11 @@ must make the audience explicit (`RequesterBookingDetail`, `TenantDispatchOfferD
 
 ### 7.1 Connection and authorization
 
-- Proposed transport is a NestJS Socket.IO-compatible gateway at `/realtime`, horizontally scaled
-  with the Redis adapter. Final transport is an implementation ADR, but the semantics below hold.
+- The requester recovery channel implements Socket.IO at `/realtime` with Kafka-to-Redis
+  invalidation fanout and per-recipient live authorization; see the
+  [transport decision](../../backend-v2/docs/requester-realtime.md). Other resource channels remain
+  proposed. The recovery channel uses connection-local hint sequences and HTTP snapshots instead
+  of replaying the business-event envelope below.
 - The access token is supplied in the protected handshake authentication field, never a URL.
 - The gateway resolves session and selected tenant/authority context exactly as HTTP does.
 - Token expiry requires reauthentication; session/assignment/grant revocation disconnects affected

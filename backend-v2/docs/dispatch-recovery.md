@@ -34,7 +34,8 @@ Transport-independent hint handling is prepared for booking/trip invalidations.
 Hints cannot patch state; old connection callbacks and unrelated resources are
 ignored, duplicates are suppressed, and gaps trigger HTTP recovery. Catch-up is
 bounded to two immediate read passes; a lagging response remains stale until a
-later hint or explicit refresh. This slice does not yet connect a realtime transport.
+later hint or explicit refresh. The preview now connects the
+[requester realtime invalidation channel](requester-realtime.md).
 
 ## Verification and acceptance
 

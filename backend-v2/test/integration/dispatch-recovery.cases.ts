@@ -4,6 +4,7 @@ import type { Client } from 'pg';
 import { DataSource } from 'typeorm';
 
 import { DispatchRecoveryService } from '../../src/core-dispatch/application/dispatch-recovery.service.js';
+import { RequesterRealtimeAccessService } from '../../src/core-dispatch/application/requester-realtime-access.service.js';
 import { PostgresCoreDispatchRepository } from '../../src/core-dispatch/infrastructure/persistence/postgres-core-dispatch.repository.js';
 import { RequestContext } from '../../src/shared/application/context/request-context.js';
 import type { TransactionContext } from '../../src/shared/application/persistence/unit-of-work.js';
@@ -118,10 +119,21 @@ export function dispatchRecoveryCases(harness: {
       const recovery = new DispatchRecoveryService(new PostgresCoreDispatchRepository(), unit, {
         now: () => new Date(),
       });
+      const realtime = new RequesterRealtimeAccessService(
+        new PostgresCoreDispatchRepository(),
+        unit,
+      );
+      await expect(
+        realtime.bookingVersion(context(fixture.requesterUserId), fixture.bookingId),
+      ).resolves.toBe(4);
       for (const id of [other, driver])
         await expect(
           recovery.requesterSnapshot(context(id), fixture.bookingId),
         ).rejects.toMatchObject({ status: 404 });
+      for (const id of [other, driver])
+        await expect(realtime.bookingVersion(context(id), fixture.bookingId)).rejects.toMatchObject(
+          { status: 404 },
+        );
     });
   });
 

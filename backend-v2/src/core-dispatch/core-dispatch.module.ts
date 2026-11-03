@@ -15,6 +15,7 @@ import { ID_GENERATOR, type IdGenerator } from '../shared/domain/id-generator.js
 import { PostgresJobIntentRelay } from '../shared/infrastructure/messaging/postgres-job-intent-relay.js';
 import { BookingDispatchService } from './application/booking-dispatch.service.js';
 import { DispatchRecoveryService } from './application/dispatch-recovery.service.js';
+import { RequesterRealtimeAccessService } from './application/requester-realtime-access.service.js';
 import { CoreDispatchJobProcessor } from './application/core-dispatch-job.processor.js';
 import {
   CORE_DISPATCH_POLICY,
@@ -73,6 +74,14 @@ const persistenceProviders = [
   controllers: [RequesterDispatchController, TenantDispatchController, AuthorityDispatchController],
   providers: [
     ...persistenceProviders,
+    {
+      provide: RequesterRealtimeAccessService,
+      inject: [CORE_DISPATCH_REPOSITORY, UNIT_OF_WORK],
+      useFactory: (
+        repository: CoreDispatchRepository,
+        unit: UnitOfWork,
+      ): RequesterRealtimeAccessService => new RequesterRealtimeAccessService(repository, unit),
+    },
     {
       provide: DispatchRecoveryService,
       inject: [CORE_DISPATCH_REPOSITORY, UNIT_OF_WORK, CLOCK],
@@ -195,7 +204,12 @@ const persistenceProviders = [
         ),
     },
   ],
-  exports: [BOOKING_DISPATCH_SERVICE, TRIP_TRACKING_SERVICE, SAFETY_SERVICE],
+  exports: [
+    BOOKING_DISPATCH_SERVICE,
+    TRIP_TRACKING_SERVICE,
+    SAFETY_SERVICE,
+    RequesterRealtimeAccessService,
+  ],
 })
 export class CoreDispatchApiModule {}
 

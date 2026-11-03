@@ -177,6 +177,21 @@ export class BackendSession {
     }
   }
 
+  /** Supply handshake auth only after any rotating credentials have been safely persisted. */
+  async authenticateRealtime(send: (authentication: { token: string }) => void, signal: AbortSignal): Promise<void> {
+    this.checkCancellation(signal);
+    const generation = this.generation;
+    await this.restore();
+    this.assertCurrent(generation); this.checkCancellation(signal);
+    if (this.refreshing?.generation === generation) await this.refreshing.promise;
+    this.assertCurrent(generation); this.checkCancellation(signal);
+    if (!this.current) throw authenticationRequired();
+    if (Date.parse(this.current.accessTokenExpiresAt) <= this.now() + 30000) await this.refresh(this.current, generation);
+    this.assertCurrent(generation); this.checkCancellation(signal);
+    // Only the transport callback receives an in-memory access token; refresh credentials never leave this owner.
+    send({ token: this.current!.accessToken });
+  }
+
   /** Clears local state immediately. A rejected promise means remote revocation is unconfirmed. */
   async logout(): Promise<{ remoteRevocation: 'CONFIRMED' | 'NOT_ATTEMPTED' }> {
     const previous = this.current;

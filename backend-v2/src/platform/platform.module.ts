@@ -6,6 +6,7 @@ import {
   CoreDispatchWorkerModule,
 } from '../core-dispatch/core-dispatch.module.js';
 import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 import { ProviderOperationsModule } from '../provider-operations/provider-operations.module.js';
 import { ProviderOperationsWorkerModule } from '../provider-operations/provider-operations-worker.module.js';
 import { ProductServicesModule } from '../product-services/product-services.module.js';
@@ -45,6 +46,7 @@ export class PlatformModule implements NestModule {
               ProviderOperationsModule,
               CoreDispatchApiModule,
               ProductServicesModule,
+              RealtimeModule,
             ]
           : []),
         ...(role === 'worker' ? [CoreDispatchWorkerModule, ProviderOperationsWorkerModule] : []),

@@ -6,6 +6,7 @@ import { BackendError } from './errors';
 import type { BackendSession } from './session';
 import type { DurableCommands } from './durableCommands';
 import type { CommandLane } from './commandRegistry';
+import type { createRequesterRealtime } from './realtime';
 
 export interface NativeBackendRuntime {
   auth: BackendAuthController;
@@ -14,6 +15,7 @@ export interface NativeBackendRuntime {
   generateId: () => string;
   security: Pick<BackendSession, 'beginStepUp' | 'verifyStepUp'>;
   commands: Record<CommandLane, DurableCommands>;
+  realtime: ReturnType<typeof createRequesterRealtime>;
 }
 
 /** Web has no native refresh vault. A future browser client must use the cookie contract. */
