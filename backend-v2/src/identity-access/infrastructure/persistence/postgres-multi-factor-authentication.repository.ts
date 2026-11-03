@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import type { TransactionContext } from '../../../shared/application/persistence/unit-of-work.js';
+import { queryRows } from '../../../shared/infrastructure/persistence/query-rows.js';
 import { entityManagerFor } from '../../../shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import { setTransactionClaim } from '../../../shared/infrastructure/persistence/transaction-claims.js';
 import type {
@@ -197,7 +198,8 @@ export class PostgresMultiFactorAuthenticationRepository implements MultiFactorA
   ): Promise<number> {
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_challenge_id', challengeId);
-    const rows: { attempts: number }[] = await manager.query(
+    const rows: { attempts: number }[] = await queryRows(
+      manager,
       `UPDATE identity.mfa_challenges
           SET attempts = attempts + 1
         WHERE id = $1 AND consumed_at IS NULL
@@ -252,7 +254,8 @@ export class PostgresMultiFactorAuthenticationRepository implements MultiFactorA
     if (rows[0]?.user_id !== undefined) {
       await setTransactionClaim(manager, 'app.authentication_user_id', rows[0].user_id);
     }
-    const updated: { id: string }[] = await manager.query(
+    const updated: { id: string }[] = await queryRows(
+      manager,
       `UPDATE identity.mfa_factors
           SET last_used_step = $2, updated_at = $3
         WHERE id = $1 AND factor_type = 'TOTP' AND verified_at IS NOT NULL
@@ -320,7 +323,8 @@ export class PostgresMultiFactorAuthenticationRepository implements MultiFactorA
   ): Promise<boolean> {
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_user_id', userId);
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE identity.mfa_factors
           SET verified_at = $4, enrollment_expires_at = NULL,
               last_used_step = $3, updated_at = $4
@@ -342,7 +346,8 @@ export class PostgresMultiFactorAuthenticationRepository implements MultiFactorA
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_user_id', userId);
     await setTransactionClaim(manager, 'app.authentication_session_id', sessionId);
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE identity.auth_sessions
           SET assurance = 'AAL2', assurance_expires_at = LEAST($4, absolute_expires_at),
               session_version = session_version + 1, last_used_at = $3, updated_at = $3

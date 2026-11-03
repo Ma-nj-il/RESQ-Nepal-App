@@ -1,5 +1,8 @@
 # Phase 4 / Gate 4 status
 
+> The local test counts and Docker limitations below are historical. See
+> [current infrastructure-backed CI evidence](ci-evidence-2026-11-03.md) for subsequent results.
+
 - **Disposition:** HOLD — implementation is available for review; Gates 2–4 are not passed
 - **Evidence date:** 2026-11-03
 - **Scope:** provider registry, organization/facility activation, workforce, fleet/readiness, private

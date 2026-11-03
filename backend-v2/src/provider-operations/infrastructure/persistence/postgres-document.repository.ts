@@ -3,6 +3,7 @@ import type { EntityManager } from 'typeorm';
 
 import { ApplicationError } from '../../../shared/application/errors/application-error.js';
 import type { TransactionContext } from '../../../shared/application/persistence/unit-of-work.js';
+import { queryRows } from '../../../shared/infrastructure/persistence/query-rows.js';
 import { entityManagerFor } from '../../../shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import type {
   DocumentRecord,
@@ -270,7 +271,8 @@ async function changeReviewStatus(
   parameters: readonly unknown[] = [],
 ): Promise<boolean> {
   const link = subjectLink(document.subject);
-  const rows: { id: string }[] = await manager.query(
+  const rows: { id: string }[] = await queryRows(
+    manager,
     `UPDATE ${link.table}
         SET review_status = $2, version = version + 1, updated_at = $3
       WHERE id = $1 ${condition}
@@ -331,7 +333,8 @@ export class PostgresDocumentRepository implements DocumentRepository {
     transaction: TransactionContext,
     input: Parameters<DocumentRepository['markUploadedForScan']>[1],
   ): Promise<DocumentRecord | undefined> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE documents.document_objects
           SET upload_status = 'SCANNING', detected_mime_type = $3,
               finalized_at = $4, version = version + 1, updated_at = $4
@@ -349,7 +352,8 @@ export class PostgresDocumentRepository implements DocumentRepository {
     const manager = entityManagerFor(transaction);
     const current = await findDocument(manager, input.documentObjectId);
     if (current === undefined) return undefined;
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE documents.document_objects
           SET upload_status = $3, detected_mime_type = COALESCE($4, detected_mime_type),
               scanner_code = $5, scanned_at = $6, version = version + 1, updated_at = $6
@@ -378,7 +382,8 @@ export class PostgresDocumentRepository implements DocumentRepository {
     const manager = entityManagerFor(transaction);
     const current = await findDocument(manager, input.documentObjectId);
     if (current === undefined || current.linkId !== input.documentLinkId) return undefined;
-    const versionRows: { id: string }[] = await manager.query(
+    const versionRows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE documents.document_objects
           SET version = version + 1, updated_at = $3
         WHERE id = $1 AND version = $2 AND upload_status = 'READY'
@@ -428,7 +433,8 @@ export class PostgresDocumentRepository implements DocumentRepository {
     ) {
       return current;
     }
-    const versionRows: { id: string }[] = await manager.query(
+    const versionRows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE documents.document_objects
           SET version = version + 1, updated_at = $3
         WHERE id = $1 AND version = $2 AND upload_status = 'READY'

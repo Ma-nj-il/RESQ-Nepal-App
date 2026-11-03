@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import type { TransactionContext } from '../../../shared/application/persistence/unit-of-work.js';
+import { queryRows } from '../../../shared/infrastructure/persistence/query-rows.js';
 import { entityManagerFor } from '../../../shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import { setTransactionClaim } from '../../../shared/infrastructure/persistence/transaction-claims.js';
 import type {
@@ -83,7 +84,8 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
   ): Promise<number> {
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_challenge_id', challengeId);
-    const rows: { attempts: number }[] = await manager.query(
+    const rows: { attempts: number }[] = await queryRows(
+      manager,
       `UPDATE identity.otp_challenges
           SET attempts = attempts + 1, last_attempt_at = $2
         WHERE id = $1
@@ -297,7 +299,8 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
         input.now,
       ],
     );
-    const updated: { id: string }[] = await manager.query(
+    const updated: { id: string }[] = await queryRows(
+      manager,
       `UPDATE identity.refresh_tokens
           SET consumed_at = $2, successor_id = $3
         WHERE id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
@@ -367,7 +370,8 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_user_id', userId);
     await setTransactionClaim(manager, 'app.authentication_session_id', sessionId);
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE identity.auth_sessions
           SET revoked_at = COALESCE(revoked_at, $3),
               revocation_reason = COALESCE(revocation_reason, $4),
@@ -398,7 +402,8 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
   ): Promise<number> {
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_user_id', userId);
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE identity.auth_sessions
           SET revoked_at = $4, revocation_reason = $5,
               session_version = session_version + 1, updated_at = $4

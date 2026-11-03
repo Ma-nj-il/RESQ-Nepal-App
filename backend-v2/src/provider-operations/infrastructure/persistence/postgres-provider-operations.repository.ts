@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import type { TransactionContext } from '../../../shared/application/persistence/unit-of-work.js';
+import { queryRows } from '../../../shared/infrastructure/persistence/query-rows.js';
 import { entityManagerFor } from '../../../shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import type {
   AmbulanceRecord,
@@ -347,7 +348,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     transaction: TransactionContext,
     input: Parameters<ProviderOperationsRepository['updateProviderApplicationDraft']>[1],
   ): Promise<ProviderApplicationRecord | undefined> {
-    const rows: ProviderApplicationRow[] = await entityManagerFor(transaction).query(
+    const rows: ProviderApplicationRow[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE provider_registry.provider_applications
           SET legal_name = $4, display_name = $5, registration_number = $6,
               geographic_unit_id = $7, facility_name = $8, facility_type = $9,
@@ -376,7 +378,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     transaction: TransactionContext,
     input: Parameters<ProviderOperationsRepository['transitionProviderApplication']>[1],
   ): Promise<ProviderApplicationRecord | undefined> {
-    const rows: ProviderApplicationRow[] = await entityManagerFor(transaction).query(
+    const rows: ProviderApplicationRow[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE provider_registry.provider_applications
           SET status = $4, version = version + 1,
               submitted_at = CASE WHEN $4 = 'SUBMITTED' THEN COALESCE(submitted_at, $5)
@@ -497,7 +500,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     input: Parameters<ProviderOperationsRepository['transitionDriverApplication']>[1],
   ): Promise<DriverApplicationRecord | undefined> {
     const manager = entityManagerFor(transaction);
-    const rows: DriverApplicationRow[] = await manager.query(
+    const rows: DriverApplicationRow[] = await queryRows(
+      manager,
       `UPDATE workforce.driver_applications
           SET status = $4, version = version + 1,
               submitted_at = CASE WHEN $4 = 'SUBMITTED' THEN COALESCE(submitted_at, $5)
@@ -623,7 +627,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     transaction: TransactionContext,
     input: Parameters<ProviderOperationsRepository['changeDriverAccountStatus']>[1],
   ): Promise<DriverRecord | undefined> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE workforce.driver_profiles
           SET account_status = $3,
               duty_status = CASE WHEN $3 = 'ACTIVE' THEN duty_status ELSE 'UNAVAILABLE' END,
@@ -640,7 +645,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     transaction: TransactionContext,
     input: Parameters<ProviderOperationsRepository['changeDriverDutyStatus']>[1],
   ): Promise<DriverRecord | undefined> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE workforce.driver_profiles
           SET duty_status = $3, version = version + 1, updated_at = $4
         WHERE id = $1 AND version = $2 AND duty_status NOT IN ('RESERVED','ON_TRIP')
@@ -701,7 +707,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     transaction: TransactionContext,
     input: Parameters<ProviderOperationsRepository['updateAmbulance']>[1],
   ): Promise<AmbulanceRecord | undefined> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE fleet.ambulances
           SET plate_number = upper(regexp_replace($3,'\\s+','','g')), vin = $4, category = $5,
               version = version + 1, updated_at = $6
@@ -723,7 +730,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     transaction: TransactionContext,
     input: Parameters<ProviderOperationsRepository['changeAmbulanceOperationalStatus']>[1],
   ): Promise<AmbulanceRecord | undefined> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE fleet.ambulances
           SET operational_status = $3, version = version + 1, updated_at = $4
         WHERE id = $1 AND version = $2 AND operational_status NOT IN ('RESERVED','DISPATCHED')

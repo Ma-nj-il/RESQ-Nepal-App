@@ -3,6 +3,7 @@ import type { EntityManager } from 'typeorm';
 
 import { ApplicationError } from '../../../shared/application/errors/application-error.js';
 import type { TransactionContext } from '../../../shared/application/persistence/unit-of-work.js';
+import { queryRows } from '../../../shared/infrastructure/persistence/query-rows.js';
 import { entityManagerFor } from '../../../shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import type {
   AccessAdministrationRepository,
@@ -310,7 +311,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
   ): Promise<RoleRecord | undefined> {
     const manager = entityManagerFor(transaction);
     await this.ensurePermissions(manager, input.permissionCodes);
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE access_control.roles
           SET name = $4, description = $5, version = version + 1, updated_at = $6
         WHERE id = $2 AND tenant_id = $1 AND owner_type = 'TENANT' AND active
@@ -343,7 +345,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
     expectedVersion: number,
     now: Date,
   ): Promise<boolean> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE access_control.roles
           SET active = false, retired_at = $4, updated_at = $4, version = version + 1
         WHERE tenant_id = $1 AND id = $2 AND owner_type = 'TENANT' AND active
@@ -432,7 +435,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
   ): Promise<RoleProfileRecord | undefined> {
     const manager = entityManagerFor(transaction);
     await this.ensureRoles(manager, input.tenantId, input.roleIds);
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE access_control.role_profiles
           SET name = $4, description = $5, scope_ceiling = $6,
               version = version + 1, updated_at = $7
@@ -467,7 +471,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
     expectedVersion: number,
     now: Date,
   ): Promise<boolean> {
-    const rows: { id: string }[] = await entityManagerFor(transaction).query(
+    const rows: { id: string }[] = await queryRows(
+      entityManagerFor(transaction),
       `UPDATE access_control.role_profiles
           SET active = false, retired_at = $4, updated_at = $4, version = version + 1
         WHERE tenant_id = $1 AND id = $2 AND owner_type = 'TENANT' AND active
@@ -566,7 +571,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
     input: Parameters<AccessAdministrationRepository['revokeAssignment']>[1],
   ): Promise<boolean> {
     const manager = entityManagerFor(transaction);
-    const rows: { user_id: string }[] = await manager.query(
+    const rows: { user_id: string }[] = await queryRows(
+      manager,
       `UPDATE access_control.access_assignments
           SET status = 'REVOKED', revoked_at = $4, revoked_by = $3,
               revocation_reason = $5, version = version + 1, updated_at = $4
@@ -730,7 +736,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
     if (targetUsers[0]?.active !== true) {
       throw invalid('subjectUserId', 'ACTIVE_USER_REQUIRED');
     }
-    const rows: { id: string }[] = await manager.query(
+    const rows: { id: string }[] = await queryRows(
+      manager,
       `UPDATE access_control.authority_grants
           SET status = 'ACTIVE', approved_by_user_id = $3, approved_under_grant_id = $4,
               approved_at = $6, approval_reason = $5, version = version + 1, updated_at = $6
@@ -754,7 +761,8 @@ export class PostgresAccessAdministrationRepository implements AccessAdministrat
     input: Parameters<AccessAdministrationRepository['revokeAuthorityGrant']>[1],
   ): Promise<boolean> {
     const manager = entityManagerFor(transaction);
-    const rows: { subject_user_id: string }[] = await manager.query(
+    const rows: { subject_user_id: string }[] = await queryRows(
+      manager,
       `UPDATE access_control.authority_grants
           SET status = 'REVOKED', revoked_at = $3, revoked_by = $2,
               revocation_reason = $4, version = version + 1, updated_at = $3

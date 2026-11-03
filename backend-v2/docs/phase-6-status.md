@@ -64,9 +64,9 @@ ownership/planning declarations; new consumer services are not deployed by this 
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | Backend ESLint                             | PASS, zero warnings                                                                             |
 | Backend typecheck and build                | PASS                                                                                            |
-| Backend unit tests, including architecture | PASS, 23 suites / 125 tests                                                                     |
+| Backend unit tests, including architecture | PASS, 24 suites / 128 tests                                                                     |
 | Event contracts                            | PASS, 30 schemas/examples                                                                       |
-| Supported integration suites               | PASS remotely at `6e193d6`, 3 suites / 22 tests against real dependencies                        |
+| Supported integration suites               | PASS remotely at `6e193d6`, 3 suites / 22 tests against real dependencies                       |
 | Embedded SQL debugging                     | All six migrations and eight serialized product scenarios executed with temporary PGlite 0.5.15 |
 | Mobile lint and typecheck                  | PASS; backend project excluded from the root Expo checker                                       |
 | Mobile unit tests                          | PASS, 128 tests, including 72 backend API/session/product/command/native-auth cases             |
@@ -100,7 +100,8 @@ PostgreSQL/PostGIS image and role setup. The PostgreSQL cases are implemented in
 The local Docker daemon still times out. Remote CI at `6e193d6` passes all PostgreSQL migration,
 dispatch/product/RLS and dependency integration suites, plus the health Newman collection. The
 dispatch/product Newman collection exposed async authenticated-context propagation and Postman
-sandbox variable collisions; corrections await CI. Image build, hardened runtime smoke, SBOM and
+sandbox variable collisions. At `e2a744b`, identity profile checks pass but refresh fails; TypeORM
+returning-row corrections now await CI. Image build, hardened runtime smoke, SBOM and
 HIGH/CRITICAL Trivy scan pass after removing build-only npm/Yarn from the runtime. Mobile CI at
 `6e193d6` passes, including durable recovery and development/release exports on all platforms. These partial
 remote results supersede the earlier infrastructure-blocked status without passing Gate 6.

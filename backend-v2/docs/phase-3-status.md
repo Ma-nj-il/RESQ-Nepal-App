@@ -1,5 +1,8 @@
 # Phase 3 / Gate 3 status
 
+> The local test counts and Docker limitations below are historical. See
+> [current infrastructure-backed CI evidence](ci-evidence-2026-11-03.md) for subsequent results.
+
 - **Disposition:** HOLD — implementation is available for review; Gate 2 and Gate 3 are not passed
 - **Evidence date:** 2026-11-03
 - **Scope:** identity, tenancy foundations, custom RBAC, authority grants, sessions/MFA, RLS, audit,

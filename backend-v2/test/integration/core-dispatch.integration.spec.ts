@@ -16,6 +16,7 @@ import { runMigrations } from '../../src/shared/infrastructure/persistence/migra
 import { PostgresIdempotencyRepository } from '../../src/shared/infrastructure/persistence/postgres-idempotency.repository.js';
 import { TypeOrmUnitOfWork } from '../../src/shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import { productIntegrationCases } from './product-services.cases.js';
+import { identityPersistenceCases } from './identity-persistence.cases.js';
 
 const integrationEnabled = process.env['RUN_INTEGRATION'] === '1';
 const describeIntegration = integrationEnabled ? describe : describe.skip;
@@ -398,6 +399,7 @@ describeIntegration('Phase 5–6 dispatch and product PostgreSQL invariants', ()
   }
 
   productIntegrationCases({ owner: () => owner, asApplication, createUser, seedDispatchFixture });
+  identityPersistenceCases({ config: () => config, createUser });
 
   it('serializes competing tenant acceptances and permits the winner to deliver every outcome', async () => {
     const fixture = await seedDispatchFixture({ partyCount: 2, active: false });

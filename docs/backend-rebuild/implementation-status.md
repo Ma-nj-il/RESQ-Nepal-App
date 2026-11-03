@@ -16,6 +16,7 @@ client/traffic/data migration is **0%**.
 
 ## Current implementation entry points
 
+- [Infrastructure-backed CI evidence](../../backend-v2/docs/ci-evidence-2026-11-03.md)
 - [Mobile API foundation and development build instructions](mobile-api-foundation.md)
 - [Phase 6 implementation and evidence](../../backend-v2/docs/phase-6-status.md)
 - [Phase 7 executable preparation](../../backend-v2/docs/phase-7-status.md)
@@ -29,6 +30,7 @@ acceptance evidence. Git publication is code delivery, not a deployment or cutov
 Remote CI at `6e193d6` passes mobile validation/128 tests/exports, backend quality, all PostgreSQL
 migration/dispatch/product/RLS and dependency integration suites, and Newman health. Production image,
 hardened smoke, SBOM and HIGH/CRITICAL Trivy scan pass after removing build-only package managers from
-the runtime. The remaining Newman failure exposed async authenticated-context propagation and script
-scope defects; their corrections await CI. Local backend validation passes 23 suites / 125 tests,
-including context-isolation regression coverage and independent migration-rerun comparison. Gates remain HOLD.
+the runtime. At `e2a744b`, identity Newman confirms authenticated-context propagation, then encounters
+a refresh HTTP 500. The cause is incorrect handling of TypeORM UPDATE results; structured-returning
+corrections and five new database integration cases await CI. Local backend unit validation passes
+24 suites / 128 tests. See the CI evidence for exact run outcomes. Gates remain HOLD.

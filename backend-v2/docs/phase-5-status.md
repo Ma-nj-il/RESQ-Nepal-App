@@ -1,5 +1,8 @@
 # Phase 5 / Gate 5 status
 
+> The local test counts and Docker limitations below are historical. See
+> [current infrastructure-backed CI evidence](ci-evidence-2026-11-03.md) for subsequent results.
+
 - **Disposition:** HOLD — implementation is available for review; Gates 2–5 are not passed
 - **Evidence date:** 2026-11-03
 - **Scope:** coverage/fares, booking/dispatch, trips/cancellation, tracking, safety incidents,

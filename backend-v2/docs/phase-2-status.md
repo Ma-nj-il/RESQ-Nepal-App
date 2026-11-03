@@ -1,8 +1,8 @@
 # Phase 2 / Gate 2 status
 
-> Historical foundation evidence snapshot. The current branch now contains unapproved Phase 3
-> implementation as well; this record does not imply Gate 2 passage. See `phase-3-status.md` for the
-> current aggregate status.
+> Historical foundation evidence snapshot. Later implementation and remote CI results are recorded in
+> [current CI evidence](ci-evidence-2026-11-03.md) and the
+> [delivery status](../../docs/backend-rebuild/implementation-status.md). This record does not imply Gate 2 passage.
 
 - **Disposition:** HOLD — foundation implementation is ready for review, but Gate 2 is not yet passed
 - **Evidence date:** 2026-11-03
