@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/trip/trip.completed/v1/schema.json",
+  "title": "trip.completed.v1",
+  "description": "Completion evidence was accepted and the trip terminalized.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "required": ["tenantId", "facilityId"],
+      "properties": {
+        "eventType": {
+          "const": "trip.completed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-dispatch"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "trip"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "trip"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bookingId", "fromStatus", "status"],
+          "properties": {
+            "bookingId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "fromStatus": {
+              "const": "ARRIVED_AT_DESTINATION"
+            },
+            "status": {
+              "const": "COMPLETED"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

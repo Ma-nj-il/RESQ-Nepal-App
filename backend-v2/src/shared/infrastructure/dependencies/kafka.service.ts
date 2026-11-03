@@ -1,5 +1,13 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
-import { Admin, Kafka, logLevel, type SASLOptions } from 'kafkajs';
+import {
+  Admin,
+  Kafka,
+  logLevel,
+  type IHeaders,
+  type Producer,
+  type RecordMetadata,
+  type SASLOptions,
+} from 'kafkajs';
 
 import { APP_CONFIG, type ApplicationConfig } from '../config/application-config.js';
 
@@ -21,10 +29,15 @@ function kafkaSasl(config: ApplicationConfig): SASLOptions | undefined {
 @Injectable()
 export class KafkaService implements OnModuleDestroy {
   private readonly admin: Admin;
-  private connected = false;
-  private connecting: Promise<void> | undefined;
+  private readonly producer: Producer;
+  private readonly requestTimeoutMs: number;
+  private adminConnected = false;
+  private producerConnected = false;
+  private adminConnecting: Promise<void> | undefined;
+  private producerConnecting: Promise<void> | undefined;
 
   constructor(@Inject(APP_CONFIG) config: ApplicationConfig) {
+    this.requestTimeoutMs = config.dependencies.timeoutMs;
     const sasl = kafkaSasl(config);
     const kafka = new Kafka({
       clientId: `${config.dependencies.kafka.clientId}-${config.role}`,
@@ -37,29 +50,83 @@ export class KafkaService implements OnModuleDestroy {
       logLevel: logLevel.NOTHING,
     });
     this.admin = kafka.admin();
+    this.producer = kafka.producer({
+      allowAutoTopicCreation: false,
+      idempotent: true,
+      maxInFlightRequests: 5,
+      retry: {
+        retries: 5,
+        initialRetryTime: 100,
+        maxRetryTime: 5_000,
+      },
+    });
   }
 
   async check(): Promise<void> {
-    await this.connect();
+    await this.connectAdmin();
     await this.admin.describeCluster();
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.connected) await this.admin.disconnect();
-    this.connected = false;
+  async publish(input: {
+    readonly topic: string;
+    readonly key: string;
+    readonly value: string;
+    readonly headers: IHeaders;
+  }): Promise<RecordMetadata> {
+    await this.connectProducer();
+    const metadata = await this.producer.send({
+      topic: input.topic,
+      acks: -1,
+      timeout: this.requestTimeoutMs,
+      messages: [
+        {
+          key: input.key,
+          value: input.value,
+          headers: input.headers,
+        },
+      ],
+    });
+    const result = metadata[0];
+    if (result === undefined || result.errorCode !== 0) {
+      throw new Error('Kafka did not acknowledge the outbox event');
+    }
+    return result;
   }
 
-  private async connect(): Promise<void> {
-    if (this.connected) return;
-    if (this.connecting !== undefined) return this.connecting;
-    this.connecting = this.admin
+  async onModuleDestroy(): Promise<void> {
+    const disconnects: Promise<void>[] = [];
+    if (this.producerConnected) disconnects.push(this.producer.disconnect());
+    if (this.adminConnected) disconnects.push(this.admin.disconnect());
+    await Promise.allSettled(disconnects);
+    this.producerConnected = false;
+    this.adminConnected = false;
+  }
+
+  private async connectAdmin(): Promise<void> {
+    if (this.adminConnected) return;
+    if (this.adminConnecting !== undefined) return this.adminConnecting;
+    this.adminConnecting = this.admin
       .connect()
       .then(() => {
-        this.connected = true;
+        this.adminConnected = true;
       })
       .finally(() => {
-        this.connecting = undefined;
+        this.adminConnecting = undefined;
       });
-    return this.connecting;
+    return this.adminConnecting;
+  }
+
+  private async connectProducer(): Promise<void> {
+    if (this.producerConnected) return;
+    if (this.producerConnecting !== undefined) return this.producerConnecting;
+    this.producerConnecting = this.producer
+      .connect()
+      .then(() => {
+        this.producerConnected = true;
+      })
+      .finally(() => {
+        this.producerConnecting = undefined;
+      });
+    return this.producerConnecting;
   }
 }

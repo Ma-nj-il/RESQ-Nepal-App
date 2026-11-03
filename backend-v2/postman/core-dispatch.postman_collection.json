@@ -1,0 +1,532 @@
+{
+  "info": {
+    "_postman_id": "6e80d720-4be1-4f43-9f4c-120c6b359e2e",
+    "name": "RESQ backend v2 - core dispatch and safety",
+    "description": "Phase 5 local black-box contracts. It exercises requester coverage failure, durable unbound SOS creation/replay, protected-detail omission, ownership isolation, and tenant/authority fail-closed behavior. Full dispatch lifecycle simulation requires approved fixtures and infrastructure-backed Gate 5 evidence.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "ownerChallengeId",
+      "value": ""
+    },
+    {
+      "key": "ownerAccessToken",
+      "value": ""
+    },
+    {
+      "key": "outsiderChallengeId",
+      "value": ""
+    },
+    {
+      "key": "outsiderAccessToken",
+      "value": ""
+    },
+    {
+      "key": "incidentId",
+      "value": ""
+    },
+    {
+      "key": "safetyIdempotencyKey",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Request synthetic local owner OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-challenges",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "otp-challenges"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+9779800000003\",\n  \"purpose\": \"REGISTRATION_OR_LOGIN\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('accepts the owner challenge', function () { pm.response.to.have.status(202); });",
+              "const body = pm.response.json();",
+              "pm.expect(JSON.stringify(body)).not.to.include('424242');",
+              "pm.collectionVariables.set('ownerChallengeId', body.data.challengeId);",
+              "pm.collectionVariables.set('safetyIdempotencyKey', `phase5-safety-${body.data.challengeId}`);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create local owner session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-verifications",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "otp-verifications"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"challengeId\": \"{{ownerChallengeId}}\",\n  \"otp\": \"424242\",\n  \"clientType\": \"MOBILE\",\n  \"deviceLabel\": \"Phase 5 Newman owner\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('issues an owner AAL1 session', function () { pm.response.to.have.status(201); });",
+              "pm.collectionVariables.set('ownerAccessToken', pm.response.json().data.accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check unavailable service coverage",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/service-coverage-checks",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "service-coverage-checks"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceCategory\": \"POSTMAN_UNAVAILABLE_CATEGORY\",\n  \"pickupLatitude\": 27.7172,\n  \"pickupLongitude\": 85.324\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns a truthful uncovered projection', function () { pm.response.to.have.status(201); });",
+              "const data = pm.response.json().data;",
+              "pm.expect(data.covered).to.equal(false);",
+              "pm.expect(data.eligibleFacilityCount).to.equal(0);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject fare quote outside coverage",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/fare-quotes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "fare-quotes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceCategory\": \"POSTMAN_UNAVAILABLE_CATEGORY\",\n  \"pickupLatitude\": 27.7172,\n  \"pickupLongitude\": 85.324,\n  \"destinationLatitude\": 27.672,\n  \"destinationLongitude\": 85.4298\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('does not fabricate a route or quote', function () { pm.response.to.have.status(422); });",
+              "pm.expect(pm.response.json().error.code).to.equal('DISPATCH.OUTSIDE_COVERAGE');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create unbound SOS incident",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{safetyIdempotencyKey}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/safety-incidents",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "safety-incidents"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"incidentType\": \"SOS\",\n  \"severity\": \"CRITICAL\",\n  \"details\": \"Phase 5 local contract drill\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('durably accepts the incident', function () { pm.response.to.have.status(201); });",
+              "pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.equal('false');",
+              "const data = pm.response.json().data;",
+              "pm.expect(data.status).to.equal('OPEN');",
+              "pm.expect(data.incidentType).to.equal('SOS');",
+              "pm.expect(JSON.stringify(data)).not.to.include('Phase 5 local contract drill');",
+              "pm.collectionVariables.set('incidentId', data.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Replay unbound SOS incident",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{safetyIdempotencyKey}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/safety-incidents",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "safety-incidents"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"incidentType\": \"SOS\",\n  \"severity\": \"CRITICAL\",\n  \"details\": \"Phase 5 local contract drill\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('replays the committed response', function () { pm.response.to.have.status(201); });",
+              "pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.equal('true');",
+              "pm.expect(pm.response.json().data.id).to.equal(pm.collectionVariables.get('incidentId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read own SOS incident",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/safety-incidents/{{incidentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "safety-incidents",
+            "{{incidentId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns only the safe owner projection', function () { pm.response.to.have.status(200); });",
+              "const data = pm.response.json().data;",
+              "pm.expect(data.id).to.equal(pm.collectionVariables.get('incidentId'));",
+              "pm.expect(data).not.to.have.property('details');",
+              "pm.expect(data).not.to.have.property('narrative');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deny tenant offers without tenant context",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/tenant/dispatch-offers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tenant",
+            "dispatch-offers"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('fails closed without tenant context', function () { pm.response.to.have.status(403); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deny authority incidents without grant",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ownerAccessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/authority/safety-incidents",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "authority",
+            "safety-incidents"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('fails closed without authority grant', function () { pm.response.to.have.status(403); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Request synthetic local outsider OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-challenges",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "otp-challenges"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+9779800000004\",\n  \"purpose\": \"REGISTRATION_OR_LOGIN\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('accepts the outsider challenge', function () { pm.response.to.have.status(202); });",
+              "pm.collectionVariables.set('outsiderChallengeId', pm.response.json().data.challengeId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create local outsider session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-verifications",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "otp-verifications"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"challengeId\": \"{{outsiderChallengeId}}\",\n  \"otp\": \"424242\",\n  \"clientType\": \"MOBILE\",\n  \"deviceLabel\": \"Phase 5 Newman outsider\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('issues an outsider AAL1 session', function () { pm.response.to.have.status(201); });",
+              "pm.collectionVariables.set('outsiderAccessToken', pm.response.json().data.accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hide owner SOS incident from outsider",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{outsiderAccessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/safety-incidents/{{incidentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "safety-incidents",
+            "{{incidentId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('uses not-found equivalence across owners', function () { pm.response.to.have.status(404); });",
+              "pm.expect(pm.response.json().error.code).to.equal('RESOURCE.NOT_FOUND');"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

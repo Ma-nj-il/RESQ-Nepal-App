@@ -103,7 +103,7 @@ describeIntegration('forward-only governance migrations', () => {
     const migrationCount = await client.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM public.schema_migrations',
     );
-    expect(migrationCount.rows[0]?.count).toBe('4');
+    expect(migrationCount.rows[0]?.count).toBe('5');
     const run = await client.query<{ result: string; checksums: string }>(
       `SELECT result, jsonb_typeof(migration_checksums) AS checksums
        FROM governance.schema_migration_runs`,

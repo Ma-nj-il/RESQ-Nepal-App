@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/booking/booking.unfulfilled/v1/schema.json",
+  "title": "booking.unfulfilled.v1",
+  "description": "The search deadline elapsed without an assignment.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "booking.unfulfilled.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-dispatch-worker"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "booking"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "bookingDispatch"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "const": "UNFULFILLED"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

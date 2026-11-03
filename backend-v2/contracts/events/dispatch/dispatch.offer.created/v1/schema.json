@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/dispatch/dispatch.offer.created/v1/schema.json",
+  "title": "dispatch.offer.created.v1",
+  "description": "A tenant-scoped offer was created with a database-enforced deadline.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "required": ["tenantId", "facilityId"],
+      "properties": {
+        "eventType": {
+          "const": "dispatch.offer.created.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-dispatch"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "dispatchOffer"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "bookingDispatch"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "expiresAt"],
+          "properties": {
+            "status": {
+              "const": "PENDING"
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

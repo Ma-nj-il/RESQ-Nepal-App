@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/booking/booking.requested/v1/schema.json",
+  "title": "booking.requested.v1",
+  "description": "A requester booking was durably created.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "booking.requested.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-dispatch"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "booking"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "bookingDispatch"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "serviceCategory", "urgency"],
+          "properties": {
+            "status": {
+              "const": "REQUESTED"
+            },
+            "serviceCategory": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,95}$"
+            },
+            "urgency": {
+              "enum": ["ROUTINE", "URGENT", "EMERGENCY"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

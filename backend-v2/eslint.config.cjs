@@ -39,7 +39,7 @@ module.exports = tseslint.config(
   },
   {
     ...tseslint.configs.disableTypeChecked,
-    files: ['tools/**/*.cjs'],
+    files: ['tools/**/*.cjs', 'tools/**/*.mjs'],
     languageOptions: {
       ...tseslint.configs.disableTypeChecked.languageOptions,
       globals: globals.node,

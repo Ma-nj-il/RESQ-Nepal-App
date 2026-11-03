@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/safety/safety.incident.created/v1/schema.json",
+  "title": "safety.incident.created.v1",
+  "description": "A safety incident was durably created without exposing its protected narrative.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "safety.incident.created.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-safety"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "safetyIncident"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "safetyIncident"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["incidentType", "severity", "status", "escalationTier"],
+          "properties": {
+            "incidentType": {
+              "enum": ["SOS", "SAFETY_CONCERN", "ROUTE_DEVIATION"]
+            },
+            "severity": {
+              "enum": ["CRITICAL", "HIGH", "MEDIUM"]
+            },
+            "status": {
+              "const": "OPEN"
+            },
+            "escalationTier": {
+              "const": 0
+            }
+          }
+        }
+      }
+    }
+  ]
+}

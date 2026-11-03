@@ -1,0 +1,27 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000023",
+  "eventType": "safety.incident.escalated.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "core-safety-worker",
+  "aggregate": {
+    "type": "safetyIncident",
+    "id": "018f0000-0000-7000-8000-000000000109",
+    "version": 2
+  },
+  "stream": {
+    "type": "safetyIncident",
+    "id": "018f0000-0000-7000-8000-000000000109",
+    "sequence": 23
+  },
+  "correlationId": "phase5-contract-correlation-0001",
+  "causationId": "phase5-contract-causation-0001",
+  "actor": {
+    "type": "SYSTEM_POLICY"
+  },
+  "data": {
+    "status": "ESCALATED",
+    "escalationTier": 1,
+    "outcomeCode": "UNACKNOWLEDGED_DEADLINE"
+  }
+}

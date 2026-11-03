@@ -3,6 +3,7 @@ import { GOVERNANCE_CONTROL_SQL } from '../../migrations/1793664000000-create-go
 import { GOVERNANCE_DELIVERY_SQL } from '../../migrations/1793664000001-create-governance-delivery.js';
 import { IDENTITY_ACCESS_SQL } from '../../migrations/1793664000002-create-identity-access.js';
 import { PROVIDER_OPERATIONS_SQL } from '../../migrations/1793664000003-create-provider-operations.js';
+import { CORE_DISPATCH_SQL } from '../../migrations/1793664000004-create-core-dispatch.js';
 
 describe('migration artifacts', () => {
   it('uses stable SHA-256 checksums for every ordered migration', () => {
@@ -45,5 +46,47 @@ describe('migration artifacts', () => {
       'application.applicant_user_id = selected_reviewer_user_id',
     );
     expect(PROVIDER_OPERATIONS_SQL).not.toMatch(/DROP\s+(?:TABLE|SCHEMA)/i);
+  });
+
+  it('contains atomic dispatch, named lifecycle, relationship-bound tracking, and safety controls', () => {
+    expect(CORE_DISPATCH_SQL).toContain('dispatch.start_booking_search');
+    expect(CORE_DISPATCH_SQL).toContain('dispatch.accept_offer');
+    expect(CORE_DISPATCH_SQL).toContain('dispatch.transition_trip');
+    expect(CORE_DISPATCH_SQL).toContain('dispatch.cancel_booking');
+    expect(CORE_DISPATCH_SQL).toContain('tracking.ingest_location_point');
+    expect(CORE_DISPATCH_SQL).toContain('safety.escalate_unacknowledged');
+    expect(CORE_DISPATCH_SQL).toContain('FORCE ROW LEVEL SECURITY');
+    expect(CORE_DISPATCH_SQL).toContain('statement_timestamp()');
+    expect(CORE_DISPATCH_SQL).toContain("CONSTRAINT coverage_currency CHECK (currency = 'NPR')");
+    expect(CORE_DISPATCH_SQL).toContain("CONSTRAINT fare_quote_currency CHECK (currency = 'NPR')");
+    expect(CORE_DISPATCH_SQL).toContain('dispatch.cancellation_actor_class');
+    expect(CORE_DISPATCH_SQL).toContain(
+      'selected_actor_class IS DISTINCT FROM resolved_actor_class',
+    );
+    expect(CORE_DISPATCH_SQL).toContain(
+      'SELECT * INTO trip FROM dispatch.trips WHERE id = selected_trip_id FOR UPDATE',
+    );
+    expect(CORE_DISPATCH_SQL).toContain(
+      'IF target_tier IS NULL OR target_tier < incident.escalation_tier',
+    );
+    expect(CORE_DISPATCH_SQL).toContain("RETURN 'STALE_SEQUENCE'");
+    expect(CORE_DISPATCH_SQL).toContain("state IN ('ENQUEUEING','ENQUEUED','RUNNING')");
+    expect(CORE_DISPATCH_SQL).toContain(
+      "selected_user_id = governance.current_setting_uuid('app.user_id')",
+    );
+    expect(CORE_DISPATCH_SQL).toContain(
+      "tenant_id IS NULL AND stream_type NOT IN ('bookingDispatch','trip','safetyIncident')",
+    );
+    expect(CORE_DISPATCH_SQL).toContain('dispatch.principal_can_write_trip_delivery');
+    expect(CORE_DISPATCH_SQL).toContain("event_type = 'trip.cancelled.v1'");
+    expect(CORE_DISPATCH_SQL).toContain(
+      "resource_type NOT IN ('booking','dispatchOffer','trip','safetyIncident')",
+    );
+    expect(CORE_DISPATCH_SQL).toContain("job_type NOT LIKE 'dispatch.%'");
+    expect(CORE_DISPATCH_SQL).toContain("job_type NOT LIKE 'safety.%'");
+    expect(CORE_DISPATCH_SQL).not.toMatch(
+      /tenant_id IS NULL AND governance\.current_setting_uuid\('app\.user_id'\) IS NOT NULL/,
+    );
+    expect(CORE_DISPATCH_SQL).not.toMatch(/DROP\s+(?:TABLE|SCHEMA)/i);
   });
 });

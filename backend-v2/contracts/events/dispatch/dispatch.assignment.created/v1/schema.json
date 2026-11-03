@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/dispatch/dispatch.assignment.created/v1/schema.json",
+  "title": "dispatch.assignment.created.v1",
+  "description": "The accepted offer, selected resources, assignment, and trip were committed.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "required": ["tenantId", "facilityId"],
+      "properties": {
+        "eventType": {
+          "const": "dispatch.assignment.created.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-dispatch"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "assignment"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "bookingDispatch"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tripId", "driverId", "ambulanceId"],
+          "properties": {
+            "tripId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "driverId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "ambulanceId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

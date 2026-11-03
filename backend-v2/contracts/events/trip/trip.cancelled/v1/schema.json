@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/trip/trip.cancelled/v1/schema.json",
+  "title": "trip.cancelled.v1",
+  "description": "A linked trip was cancelled in the booking cancellation transaction.",
+  "allOf": [
+    {
+      "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json"
+    },
+    {
+      "type": "object",
+      "required": ["tenantId", "facilityId"],
+      "properties": {
+        "eventType": {
+          "const": "trip.cancelled.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "producer": {
+          "enum": ["core-dispatch"]
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "trip"
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "trip"
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bookingId", "status", "reasonCode"],
+          "properties": {
+            "bookingId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "status": {
+              "const": "CANCELLED"
+            },
+            "reasonCode": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,95}$"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

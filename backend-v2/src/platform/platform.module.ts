@@ -1,6 +1,10 @@
 import { DynamicModule, MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
+import {
+  CoreDispatchApiModule,
+  CoreDispatchWorkerModule,
+} from '../core-dispatch/core-dispatch.module.js';
 import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
 import { ProviderOperationsModule } from '../provider-operations/provider-operations.module.js';
 import { ConfigurationModule } from '../shared/infrastructure/config/configuration.module.js';
@@ -10,6 +14,7 @@ import { RequestContextMiddleware } from '../shared/infrastructure/context/reque
 import { CoreInfrastructureModule } from '../shared/infrastructure/core-infrastructure.module.js';
 import { HealthService } from '../shared/infrastructure/health/health.service.js';
 import { RuntimeProbeServer } from '../shared/infrastructure/health/runtime-probe.server.js';
+import { OutboxRelayModule } from '../shared/infrastructure/messaging/outbox-relay.module.js';
 import { ApplicationErrorFilter } from '../shared/presentation/http/application-error.filter.js';
 import { HealthController } from '../shared/presentation/http/health.controller.js';
 import { MetricsController } from '../shared/presentation/http/metrics.controller.js';
@@ -32,7 +37,11 @@ export class PlatformModule implements NestModule {
         ConfigurationModule.forRole(role),
         ContextModule,
         CoreInfrastructureModule,
-        ...(role === 'api' ? [IdentityAccessModule, ProviderOperationsModule] : []),
+        ...(role === 'api'
+          ? [IdentityAccessModule, ProviderOperationsModule, CoreDispatchApiModule]
+          : []),
+        ...(role === 'worker' ? [CoreDispatchWorkerModule] : []),
+        ...(role === 'outbox-relay' ? [OutboxRelayModule] : []),
       ],
       controllers: role === 'api' ? [HealthController, MetricsController] : [],
       providers: [RequestContextMiddleware, HealthService, RuntimeProbeServer, ...apiProviders],

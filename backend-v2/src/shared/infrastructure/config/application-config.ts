@@ -76,6 +76,11 @@ export interface ApplicationConfig {
     readonly mfaEncryptionKeyId: string;
     readonly fixedDevelopmentOtp?: string;
   };
+  readonly dispatch: {
+    readonly developmentRoutingEnabled: boolean;
+    readonly patientDataEncryptionKeyBase64?: string;
+    readonly patientDataEncryptionKeyId?: string;
+  };
   readonly migration: {
     readonly expectedCurrent?: string;
     readonly operator?: string;
@@ -159,6 +164,13 @@ const rawEnvironmentSchema = z
     RESQ_AUTH_FIXED_DEVELOPMENT_OTP: z
       .string()
       .regex(/^\d{6}$/)
+      .optional(),
+    RESQ_DISPATCH_DEVELOPMENT_ROUTING_ENABLED: booleanValue.default(false),
+    RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64: z.string().min(1).optional(),
+    RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._:-]{3,128}$/)
       .optional(),
     RESQ_MIGRATION_EXPECTED_CURRENT: z.string().trim().min(1).max(256).optional(),
     RESQ_MIGRATION_OPERATOR: z.string().trim().min(1).max(256).optional(),
@@ -252,6 +264,14 @@ function validateProduction(
   }
   if (raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP !== undefined) {
     issues.push('RESQ_AUTH_FIXED_DEVELOPMENT_OTP is forbidden in production');
+  }
+  if (raw.RESQ_DISPATCH_DEVELOPMENT_ROUTING_ENABLED) {
+    issues.push('RESQ_DISPATCH_DEVELOPMENT_ROUTING_ENABLED is forbidden in production');
+  }
+  if (raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID?.startsWith('local-') === true) {
+    issues.push(
+      'RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID must identify a managed production key',
+    );
   }
 
   let mfaKey: Buffer | undefined;
@@ -389,6 +409,27 @@ export function loadApplicationConfig(
     ]);
   }
 
+  const dispatchKeyValues = [
+    raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64,
+    raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID,
+  ];
+  if (
+    dispatchKeyValues.some((value) => value !== undefined) &&
+    dispatchKeyValues.some((value) => value === undefined)
+  ) {
+    throw new ConfigurationError([
+      'dispatch patient-data encryption key and key ID must be configured together',
+    ]);
+  }
+  if (
+    raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64 !== undefined &&
+    Buffer.from(raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64, 'base64').length !== 32
+  ) {
+    throw new ConfigurationError([
+      'RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes',
+    ]);
+  }
+
   let gracePublicKeys: { keyId: string; publicKeyBase64: string }[];
   try {
     const parsedKeys: unknown = JSON.parse(raw.RESQ_AUTH_GRACE_PUBLIC_KEYS);
@@ -505,6 +546,16 @@ export function loadApplicationConfig(
       ...(raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP === undefined
         ? {}
         : { fixedDevelopmentOtp: raw.RESQ_AUTH_FIXED_DEVELOPMENT_OTP }),
+    }),
+    dispatch: Object.freeze({
+      developmentRoutingEnabled: raw.RESQ_DISPATCH_DEVELOPMENT_ROUTING_ENABLED,
+      ...(raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64 === undefined ||
+      raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID === undefined
+        ? {}
+        : {
+            patientDataEncryptionKeyBase64: raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64,
+            patientDataEncryptionKeyId: raw.RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID,
+          }),
     }),
     migration: Object.freeze({
       ...(raw.RESQ_MIGRATION_EXPECTED_CURRENT === undefined

@@ -1,0 +1,29 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000021",
+  "eventType": "safety.incident.created.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "core-safety",
+  "aggregate": {
+    "type": "safetyIncident",
+    "id": "018f0000-0000-7000-8000-000000000109",
+    "version": 1
+  },
+  "stream": {
+    "type": "safetyIncident",
+    "id": "018f0000-0000-7000-8000-000000000109",
+    "sequence": 21
+  },
+  "correlationId": "phase5-contract-correlation-0001",
+  "causationId": "phase5-contract-causation-0001",
+  "actor": {
+    "type": "USER",
+    "id": "018f0000-0000-7000-8000-000000000110"
+  },
+  "data": {
+    "incidentType": "SOS",
+    "severity": "CRITICAL",
+    "status": "OPEN",
+    "escalationTier": 0
+  }
+}
