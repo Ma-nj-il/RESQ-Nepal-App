@@ -190,10 +190,32 @@ jobs:
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: resq-backend-v2:${{ github.sha }}
-          format: table
+          format: json
+          output: backend-v2-trivy.json
           exit-code: "1"
           ignore-unfixed: true
           severity: CRITICAL,HIGH
+      - name: Publish image finding identifiers
+        if: always()
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            if (!fs.existsSync("backend-v2-trivy.json")) {
+              console.log("::error::Trivy did not produce a report; scanner setup or execution failed.");
+              process.exit(1);
+            }
+            const report = JSON.parse(fs.readFileSync("backend-v2-trivy.json", "utf8"));
+            for (const result of report.Results ?? []) for (const item of result.Vulnerabilities ?? []) {
+              console.log(`::error::${item.VulnerabilityID}: ${item.PkgName} ${item.InstalledVersion}; fixed=${item.FixedVersion}; severity=${item.Severity}`);
+            }'
+      - name: Upload image vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-v2-trivy
+          path: backend-v2-trivy.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Stop image smoke test
         if: always()
         run: docker rm --force resq-backend-v2-smoke 2>/dev/null || true
