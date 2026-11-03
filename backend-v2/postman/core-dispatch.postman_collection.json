@@ -152,9 +152,9 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('returns a truthful uncovered projection', function () { pm.response.to.have.status(201); });",
-              "const data = pm.response.json().data;",
-              "pm.expect(data.covered).to.equal(false);",
-              "pm.expect(data.eligibleFacilityCount).to.equal(0);"
+              "const projection = pm.response.json().data;",
+              "pm.expect(projection.covered).to.equal(false);",
+              "pm.expect(projection.eligibleFacilityCount).to.equal(0);"
             ]
           }
         }
@@ -245,11 +245,11 @@
             "exec": [
               "pm.test('durably accepts the incident', function () { pm.response.to.have.status(201); });",
               "pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.equal('false');",
-              "const data = pm.response.json().data;",
-              "pm.expect(data.status).to.equal('OPEN');",
-              "pm.expect(data.incidentType).to.equal('SOS');",
-              "pm.expect(JSON.stringify(data)).not.to.include('Phase 5 local contract drill');",
-              "pm.collectionVariables.set('incidentId', data.id);"
+              "const projection = pm.response.json().data;",
+              "pm.expect(projection.status).to.equal('OPEN');",
+              "pm.expect(projection.incidentType).to.equal('SOS');",
+              "pm.expect(JSON.stringify(projection)).not.to.include('Phase 5 local contract drill');",
+              "pm.collectionVariables.set('incidentId', projection.id);"
             ]
           }
         }
@@ -333,10 +333,10 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('returns only the safe owner projection', function () { pm.response.to.have.status(200); });",
-              "const data = pm.response.json().data;",
-              "pm.expect(data.id).to.equal(pm.collectionVariables.get('incidentId'));",
-              "pm.expect(data).not.to.have.property('details');",
-              "pm.expect(data).not.to.have.property('narrative');"
+              "const projection = pm.response.json().data;",
+              "pm.expect(projection.id).to.equal(pm.collectionVariables.get('incidentId'));",
+              "pm.expect(projection).not.to.have.property('details');",
+              "pm.expect(projection).not.to.have.property('narrative');"
             ]
           }
         }

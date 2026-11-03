@@ -13,6 +13,8 @@ connect to a database, load dotenv files, extract production data, or mutate tar
 # Run in backend-v2; choose a NEW output filename on each run.
 npm run readiness -- reconcile test/fixtures/migration-manifest.synthetic.json /approved/local/path/reconciliation.json
 npm run readiness -- cutover test/fixtures/cutover-hold.synthetic.json /approved/local/path/cutover.json
+# Compare independently captured runs of the same immutable export and transform:
+npm run readiness -- compare BASELINE.json RERUN.json /approved/local/path/repeatability.json
 ```
 
 Exit codes: `0` means the selected offline check passed; `2` means HOLD; `1` means invalid input or
@@ -50,6 +52,20 @@ Independent extraction, post-load database/security checks and signed evidence e
 The current in-memory CLI accepts files up to 64 MiB; full-volume execution needs reviewed partitioning
 plus global identity/FK/money reconciliation, or a streaming/database implementation.
 
+### Independent rerun comparison
+
+`compare` reconciles both manifests first, requires distinct run IDs and the same export hash and
+transform version, then compares every source record/count, ledger disposition/review/map, target
+hash/ownership/money and parent relationship. Enumeration order does not matter. A new target ID,
+changed source, changed quarantine/merge outcome, missing row or changed transformed value returns
+HOLD even if each manifest independently reconciles. Two identically invalid manifests also HOLD.
+The report includes both exact input hashes and aggregate failure counts, without record IDs/content.
+
+`REPEATABLE` describes the supplied metadata only. Independent captures and measured rerun execution
+are required evidence; relabeling a manifest with another run ID does not establish a real second run.
+This comparison is for identical inputs, not final-delta processing or approved transform upgrades.
+The encrypted durable ledger and source-specific execution repositories remain pending.
+
 ## Remaining inputs and execution
 
 | Required work                                                                        | Accountable function   | Current blocker                                                           |
@@ -73,4 +89,5 @@ acceptance records exist. See [Phase 8 preparation](phase-8-status.md).
 - Synthetic CLI manifest: `RECONCILED`, exit 0.
 - Missing-evidence cutover fixture: `HOLD`, exit 2.
 - Output permissions 0600, exact input SHA-256, and refusal to overwrite an earlier report: PASS.
-- Reconciliation/readiness unit tests are included in the backend's 22 passing suites / 117 tests.
+- Reconciliation/readiness tests cover drift, exclusions, exact money and independently invalid runs;
+  see the current CI evidence for suite totals.

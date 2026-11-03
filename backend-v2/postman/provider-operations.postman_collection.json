@@ -96,10 +96,10 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('creates or replays one draft', function () { pm.response.to.have.status(201); });",
-              "const data = pm.response.json().data;",
-              "pm.expect(data.status).to.equal('DRAFT');",
-              "pm.collectionVariables.set('applicationId', data.id);",
-              "pm.collectionVariables.set('applicationVersion', data.version);"
+              "const projection = pm.response.json().data;",
+              "pm.expect(projection.status).to.equal('DRAFT');",
+              "pm.collectionVariables.set('applicationId', projection.id);",
+              "pm.collectionVariables.set('applicationVersion', projection.version);"
             ]
           }
         }
@@ -127,9 +127,9 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('submits exactly once', function () { pm.response.to.have.status(200); });",
-              "const data = pm.response.json().data;",
-              "pm.expect(data.status).to.equal('SUBMITTED');",
-              "pm.collectionVariables.set('applicationVersion', data.version);"
+              "const projection = pm.response.json().data;",
+              "pm.expect(projection.status).to.equal('SUBMITTED');",
+              "pm.collectionVariables.set('applicationVersion', projection.version);"
             ]
           }
         }

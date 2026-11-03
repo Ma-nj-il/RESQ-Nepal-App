@@ -6,18 +6,22 @@ import type { RequestContext } from '../../application/context/request-context.j
 
 @Injectable()
 export class RequestContextStorage {
-  private readonly storage = new AsyncLocalStorage<RequestContext>();
+  // The request owns a stable cell. Replacing the ALS store with enterWith inside an
+  // awaited guard cannot update continuations already created by the HTTP pipeline.
+  private readonly storage = new AsyncLocalStorage<{ context: RequestContext }>();
 
   run<T>(context: RequestContext, callback: () => T): T {
-    return this.storage.run(context, callback);
+    return this.storage.run({ context }, callback);
   }
 
   get(): RequestContext | undefined {
-    return this.storage.getStore();
+    return this.storage.getStore()?.context;
   }
 
   replace(context: RequestContext): void {
-    this.storage.enterWith(context);
+    const current = this.storage.getStore();
+    if (current === undefined) throw new Error('Request context is unavailable');
+    current.context = context;
   }
 
   require(): RequestContext {

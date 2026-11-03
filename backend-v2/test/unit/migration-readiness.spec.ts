@@ -9,6 +9,7 @@ import {
   rehearsalSchema,
   type RehearsalInput,
 } from '../../apps/migration-readiness/reconciliation.js';
+import { compareRehearsals } from '../../apps/migration-readiness/repeatability.js';
 
 const hash = 'a'.repeat(64);
 const otherHash = 'b'.repeat(64);
@@ -149,6 +150,116 @@ describe('offline migration manifest reconciliation', () => {
     expect(reconcileManifest(input).failures).toContainEqual({ code: 'MONEY_MISMATCH', count: 1 });
     first(input.targets).money = { currency: 'USD', amountMinor: '9007199254740993' };
     expect(reconcileManifest(input).failures).toContainEqual({ code: 'MONEY_MISMATCH', count: 2 });
+  });
+});
+
+describe('independent migration rerun comparison', () => {
+  const rerunOf = (baseline: RehearsalInput): RehearsalInput => ({
+    ...structuredClone(baseline),
+    runId: 'synthetic-rerun',
+  });
+
+  it('ignores enumeration order while preserving every mapping and parent relationship', () => {
+    const baseline = fixture();
+    baseline.sources.push({ key: { ...sourceKey, id: 'synthetic-2' }, sha256: hash });
+    first(baseline.sourceCounts).count = 2;
+    baseline.ledger.push({
+      ...first(baseline.ledger),
+      source: { ...sourceKey, id: 'synthetic-2' },
+      target: { ...targetKey, id: otherId },
+    });
+    baseline.targets.push({
+      ...first(baseline.targets),
+      key: { ...targetKey, id: otherId },
+      parents: [targetKey],
+    });
+    const rerun = rerunOf(baseline);
+    rerun.sources.reverse();
+    rerun.ledger.reverse();
+    rerun.targets.reverse();
+    expect(compareRehearsals(baseline, rerun)).toMatchObject({
+      disposition: 'REPEATABLE',
+      productionAuthorized: false,
+      failures: [],
+      counts: { baselineSources: 2, rerunSources: 2, baselineTargets: 2, rerunTargets: 2 },
+    });
+  });
+
+  it('rejects identity drift even when both manifests reconcile individually', () => {
+    const baseline = fixture(),
+      rerun = rerunOf(baseline);
+    first(rerun.ledger).target = { ...targetKey, id: otherId };
+    first(rerun.targets).key = { ...targetKey, id: otherId };
+    expect(reconcileManifest(rerun).disposition).toBe('RECONCILED');
+    const report = compareRehearsals(baseline, rerun);
+    expect(report.failures).toEqual(
+      expect.arrayContaining([
+        { code: 'LEDGER_CHANGED', count: 1 },
+        { code: 'TARGET_CHANGED', count: 2 },
+      ]),
+    );
+    expect(JSON.stringify(report)).not.toContain(sourceKey.id);
+    expect(JSON.stringify(report)).not.toContain(targetId);
+  });
+
+  it('holds on changed source bytes, money or transform scope despite locally consistent results', () => {
+    const baseline = fixture(),
+      rerun = rerunOf(baseline);
+    rerun.transformVersion = 'review-v2';
+    rerun.exportSha256 = otherHash;
+    first(rerun.sources).sha256 = otherHash;
+    first(rerun.ledger).sourceSha256 = otherHash;
+    first(rerun.sources).money = { currency: 'NPR', amountMinor: '9007199254740993' };
+    first(rerun.targets).money = { currency: 'NPR', amountMinor: '9007199254740993' };
+    expect(reconcileManifest(rerun).disposition).toBe('RECONCILED');
+    expect(compareRehearsals(baseline, rerun).failures).toEqual(
+      expect.arrayContaining([
+        { code: 'SOURCE_CHANGED', count: 1 },
+        { code: 'EXPORT_CHANGED', count: 1 },
+        { code: 'TRANSFORM_CHANGED', count: 1 },
+      ]),
+    );
+  });
+
+  it('does not mistake two identically invalid manifests or a reused run ID for repeatability', () => {
+    const baseline = fixture();
+    expect(compareRehearsals(baseline, baseline).failures).toContainEqual({
+      code: 'DISTINCT_RUN_REQUIRED',
+      count: 1,
+    });
+    baseline.ledger = [];
+    const report = compareRehearsals(baseline, rerunOf(baseline));
+    expect(report.disposition).toBe('HOLD');
+    expect(report.failures).toEqual(
+      expect.arrayContaining([
+        { code: 'BASELINE_UNACCOUNTED_SOURCE', count: 1 },
+        { code: 'RERUN_UNACCOUNTED_SOURCE', count: 1 },
+      ]),
+    );
+  });
+
+  it('detects newly skipped rows and changed quarantine reviews without deleting their accounting', () => {
+    const baseline = fixture();
+    baseline.ledger = [
+      {
+        source: sourceKey,
+        sourceSha256: hash,
+        outcome: 'QUARANTINED',
+        tenantId: null,
+        facilityId: null,
+        owner: 'data-owner',
+        reasonCode: 'COLLISION',
+        reviewRef: 'review-1',
+      },
+    ];
+    baseline.targets = [];
+    const rerun = rerunOf(baseline);
+    first(rerun.ledger).outcome = 'SKIPPED_BY_POLICY';
+    first(rerun.ledger).reviewRef = 'review-2';
+    expect(reconcileManifest(rerun).disposition).toBe('RECONCILED');
+    expect(compareRehearsals(baseline, rerun).failures).toEqual([
+      { code: 'LEDGER_CHANGED', count: 1 },
+    ]);
   });
 });
 

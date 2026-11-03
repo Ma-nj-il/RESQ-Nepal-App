@@ -11,7 +11,7 @@ client/traffic/data migration is **0%**.
 | 4     | Registry/workforce/fleet/documents/readiness and scoped administrative APIs                                     | HOLD: providers, persona/segregation, object/expiry/race acceptance                                                   |
 | 5     | Dispatch/trips/cancellation/tracking/safety, jobs/events and recovery                                           | HOLD: real races/outages/capacity/SOS simulation; realtime delivery remains open                                      |
 | 6     | Preferences, support, ratings, cash/reconciliation, notification inbox, mobile API/session, secure command recovery and mutation preview | HOLD: complete mobile/portal production flows, provider integrations, device/accessibility/offline/persona acceptance |
-| 7     | Strict offline metadata reconciliation, deterministic ID helper, source accounting and evidence tooling         | HOLD: actual extracts/mappings/transforms, durable encrypted ledger, repeated full-volume migrations, client releases |
+| 7     | Strict offline metadata reconciliation, deterministic IDs, source accounting and independent-rerun comparison | HOLD: actual extracts/mappings/transforms, durable encrypted ledger, repeated full-volume migrations, client releases |
 | 8     | Fail-closed readiness evaluator, one-writer/full-drain checks, controlled-cutover/stabilization runbook         | HOLD: actual authorized execution and stabilization                                                                   |
 
 ## Current implementation entry points
@@ -26,8 +26,9 @@ The available code work does not make every phase complete. External inputs rema
 the phase status documents identify them. Local synthetic checks must not be used as production
 acceptance evidence. Git publication is code delivery, not a deployment or cutover.
 
-Remote CI at `9117464` passes mobile validation/exports. At `b05fe8d`, backend quality, all PostgreSQL
-migration/dispatch/product/RLS and dependency integration suites, and Newman health pass. Image build,
-hardened smoke and SBOM pass; Trivy now runs and blocks vulnerable dependencies in bundled npm.
-Runtime-tooling removal and the failing dispatch/product Newman collection are under remediation.
-Local durable-command validation passes 128 tests and all development/release exports. Gates remain HOLD.
+Remote CI at `6e193d6` passes mobile validation/128 tests/exports, backend quality, all PostgreSQL
+migration/dispatch/product/RLS and dependency integration suites, and Newman health. Production image,
+hardened smoke, SBOM and HIGH/CRITICAL Trivy scan pass after removing build-only package managers from
+the runtime. The remaining Newman failure exposed async authenticated-context propagation and script
+scope defects; their corrections await CI. Local backend validation passes 23 suites / 125 tests,
+including context-isolation regression coverage and independent migration-rerun comparison. Gates remain HOLD.
