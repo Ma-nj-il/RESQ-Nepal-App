@@ -40,6 +40,7 @@ jobs:
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run contracts:events
       - run: npm run architecture
       - run: npm run test:unit
       - run: npm run build
@@ -88,6 +89,12 @@ jobs:
         run: >-
           node --env-file=docker/local.env --experimental-vm-modules
           ./node_modules/jest/bin/jest.js --selectProjects integration --runInBand
+      - name: Configure ephemeral Phase 5 data protection
+        run: >-
+          node -e "const fs=require('node:fs');const crypto=require('node:crypto');
+          fs.appendFileSync(process.env.GITHUB_ENV,
+          'RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_BASE64='+crypto.randomBytes(32).toString('base64')+'\n'+
+          'RESQ_DISPATCH_PATIENT_DATA_ENCRYPTION_KEY_ID=ci-phase5-ephemeral\n')"
       - name: Start API for black-box checks
         run: |
           npm run dev:api:local > artifacts-api.log 2>&1 &
@@ -102,6 +109,8 @@ jobs:
           exit 1
       - name: Run Postman health collection with Newman
         run: npm run postman:health
+      - name: Run Phase 5 core-dispatch collection with Newman
+        run: npm run postman:core-dispatch
       - name: Upload API log on failure
         if: failure()
         uses: actions/upload-artifact@v4
