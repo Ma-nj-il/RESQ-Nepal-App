@@ -84,8 +84,26 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Validate Compose
         run: docker compose config --quiet
+      - name: Pull PostgreSQL/PostGIS
+        run: docker compose pull postgres
+      - name: Pull Redis
+        run: docker compose pull redis-cache redis-queue
+      - name: Pull Kafka
+        run: docker compose pull kafka
+      - name: Pull object storage
+        run: docker compose pull object-storage
       - name: Start real dependencies
-        run: docker compose up --detach --wait postgres redis-cache redis-queue kafka object-storage
+        run: |
+          docker compose up --detach --wait postgres redis-cache redis-queue kafka object-storage || {
+            docker compose ps --all --format json | node --input-type=module -e '
+              let input = "";
+              for await (const chunk of process.stdin) input += chunk;
+              for (const line of input.trim().split("\n").filter(Boolean)) {
+                const { Service, State, Health, ExitCode } = JSON.parse(line);
+                console.log(`::error::Dependency ${Service}: ${State}, health=${Health}, exit=${ExitCode}`);
+              }'
+            exit 1
+          }
       - name: Apply baseline with an explicit empty-database precondition
         env:
           RESQ_MIGRATION_EXPECTED_CURRENT: NONE
@@ -169,7 +187,7 @@ jobs:
           output-file: backend-v2-sbom.spdx.json
           artifact-name: backend-v2-sbom.spdx.json
       - name: Block high or critical image findings
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: resq-backend-v2:${{ github.sha }}
           format: table

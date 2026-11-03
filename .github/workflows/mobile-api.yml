@@ -55,7 +55,15 @@ jobs:
         with:
           node-version: 24.22.2
           cache: npm
-      - run: npm ci --ignore-scripts
+      - name: Install locked dependencies
+        run: |
+          set -o pipefail
+          npm ci --ignore-scripts 2>&1 | tee "$RUNNER_TEMP/mobile-install.log" || {
+            # Publish only npm's code/lockfile diagnostics, never environment or credential files.
+            grep -E '^npm error (code [A-Z_]+|Missing: |Invalid: )' "$RUNNER_TEMP/mobile-install.log" |
+              while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          }
       - run: npx expo install --check
       - run: npm run lint
       - run: npx tsc --noEmit
