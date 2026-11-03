@@ -229,7 +229,7 @@
               "pm.test('rotates rather than reissuing the supplied token', function () {",
               "  pm.response.to.have.status(200);",
               "  const body = pm.response.json();",
-              "  pm.expect(body.data.refreshToken).not.to.equal(pm.collectionVariables.get('refreshToken'));",
+              "  pm.expect(body.data.refreshToken !== pm.collectionVariables.get('refreshToken')).to.equal(true);",
               "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
               "  pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
               "});"
@@ -237,6 +237,17 @@
           }
         }
       ]
+    },
+    {
+      "name": "Use the rotated access token",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/me"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('successor authorizes the active profile', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().data.status).to.equal('ACTIVE'); });"
+      ] } }]
     },
     {
       "name": "Revoke current session",
@@ -265,6 +276,108 @@
           }
         }
       ]
+    },
+    {
+      "name": "Reject access after logout",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/me"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('logout takes effect before access-token expiry', function () { pm.response.to.have.status(401); pm.expect(pm.response.json().error.code).to.equal('AUTH.SESSION_REVOKED'); });"
+      ] } }]
+    },
+    {
+      "name": "Reject refresh after logout",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"refreshToken\":\"{{refreshToken}}\"}" },
+        "url": "{{baseUrl}}/api/v1/auth/tokens/refresh"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('logout revokes refresh credentials', function () { pm.response.to.have.status(401); pm.expect(pm.response.json().error.code).to.equal('AUTH.REFRESH_TOKEN_INVALID'); });"
+      ] } }]
+    },
+    {
+      "name": "Request a second synthetic login for reuse checks",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"phoneNumber\":\"+9779800000001\",\"purpose\":\"REGISTRATION_OR_LOGIN\"}" },
+        "url": "{{baseUrl}}/api/v1/auth/otp-challenges"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('accepts the second challenge', function () { pm.response.to.have.status(202); pm.collectionVariables.set('challengeId', pm.response.json().data.challengeId); });"
+      ] } }]
+    },
+    {
+      "name": "Create an independent session for reuse checks",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"challengeId\":\"{{challengeId}}\",\"otp\":\"424242\",\"clientType\":\"MOBILE\",\"deviceLabel\":\"Newman reuse check\"}" },
+        "url": "{{baseUrl}}/api/v1/auth/otp-verifications"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('issues a new session', function () {",
+        "  pm.response.to.have.status(201);",
+        "  pm.collectionVariables.set('predecessorRefreshToken', pm.response.json().data.refreshToken);",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "Rotate the independent session",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"refreshToken\":\"{{predecessorRefreshToken}}\"}" },
+        "url": "{{baseUrl}}/api/v1/auth/tokens/refresh"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('issues a distinct successor', function () {",
+        "  pm.response.to.have.status(200);",
+        "  pm.expect(pm.response.json().data.refreshToken !== pm.collectionVariables.get('predecessorRefreshToken')).to.equal(true);",
+        "  pm.collectionVariables.set('accessToken', pm.response.json().data.accessToken);",
+        "  pm.collectionVariables.set('refreshToken', pm.response.json().data.refreshToken);",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "Detect consumed refresh token reuse",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"refreshToken\":\"{{predecessorRefreshToken}}\"}" },
+        "url": "{{baseUrl}}/api/v1/auth/tokens/refresh"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('reuse rejects and commits family revocation', function () { pm.response.to.have.status(401); pm.expect(pm.response.json().error.code).to.equal('AUTH.REFRESH_TOKEN_REUSED'); });"
+      ] } }]
+    },
+    {
+      "name": "Reject successor refresh after reuse",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"refreshToken\":\"{{refreshToken}}\"}" },
+        "url": "{{baseUrl}}/api/v1/auth/tokens/refresh"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('reuse revokes the successor', function () { pm.response.to.have.status(401); pm.expect(pm.response.json().error.code).to.equal('AUTH.REFRESH_TOKEN_INVALID'); });"
+      ] } }]
+    },
+    {
+      "name": "Reject successor access after reuse",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/me"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('reuse invalidates the live access session', function () { pm.response.to.have.status(401); pm.expect(pm.response.json().error.code).to.equal('AUTH.SESSION_REVOKED'); });"
+      ] } }]
     }
   ]
 }

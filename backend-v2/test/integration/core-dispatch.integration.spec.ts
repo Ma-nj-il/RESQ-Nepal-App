@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 
 import { Client } from 'pg';
 import { DataSource } from 'typeorm';
@@ -17,6 +18,7 @@ import { PostgresIdempotencyRepository } from '../../src/shared/infrastructure/p
 import { TypeOrmUnitOfWork } from '../../src/shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import { productIntegrationCases } from './product-services.cases.js';
 import { identityPersistenceCases } from './identity-persistence.cases.js';
+import { staticPostgresQueries } from './static-postgres-queries.js';
 
 const integrationEnabled = process.env['RUN_INTEGRATION'] === '1';
 const describeIntegration = integrationEnabled ? describe : describe.skip;
@@ -400,6 +402,22 @@ describeIntegration('Phase 5–6 dispatch and product PostgreSQL invariants', ()
 
   productIntegrationCases({ owner: () => owner, asApplication, createUser, seedDispatchFixture });
   identityPersistenceCases({ config: () => config, createUser });
+
+  it('prepares static repository SQL against the migrated PostgreSQL schema', async () => {
+    const queries = staticPostgresQueries(resolve('src'));
+    expect(queries.length).toBeGreaterThan(100);
+    const failures: string[] = [];
+    for (const { label, sql } of queries) {
+      try {
+        await owner.query(`PREPARE repository_contract AS ${sql}`);
+        await owner.query('DEALLOCATE repository_contract');
+      } catch (error) {
+        const code = error instanceof Error && 'code' in error ? String(error.code) : 'UNKNOWN';
+        failures.push(`${label}: SQLSTATE ${code}`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 
   it('serializes competing tenant acceptances and permits the winner to deliver every outcome', async () => {
     const fixture = await seedDispatchFixture({ partyCount: 2, active: false });

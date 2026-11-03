@@ -381,10 +381,10 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     const rows: ProviderApplicationRow[] = await queryRows(
       entityManagerFor(transaction),
       `UPDATE provider_registry.provider_applications
-          SET status = $4, version = version + 1,
-              submitted_at = CASE WHEN $4 = 'SUBMITTED' THEN COALESCE(submitted_at, $5)
+          SET status = $4::varchar, version = version + 1,
+              submitted_at = CASE WHEN $4::varchar = 'SUBMITTED' THEN COALESCE(submitted_at, $5)
                                   ELSE submitted_at END,
-              decided_at = CASE WHEN $4 IN ('REJECTED','WITHDRAWN') THEN $5 ELSE decided_at END,
+              decided_at = CASE WHEN $4::varchar IN ('REJECTED','WITHDRAWN') THEN $5 ELSE decided_at END,
               updated_at = $5
         WHERE id = $1 AND version = $2 AND status = ANY($3::varchar[])
         RETURNING *`,
@@ -503,10 +503,10 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     const rows: DriverApplicationRow[] = await queryRows(
       manager,
       `UPDATE workforce.driver_applications
-          SET status = $4, version = version + 1,
-              submitted_at = CASE WHEN $4 = 'SUBMITTED' THEN COALESCE(submitted_at, $5)
+          SET status = $4::varchar, version = version + 1,
+              submitted_at = CASE WHEN $4::varchar = 'SUBMITTED' THEN COALESCE(submitted_at, $5)
                                   ELSE submitted_at END,
-              decided_at = CASE WHEN $4 IN ('REJECTED','WITHDRAWN') THEN $5 ELSE decided_at END,
+              decided_at = CASE WHEN $4::varchar IN ('REJECTED','WITHDRAWN') THEN $5 ELSE decided_at END,
               updated_at = $5
         WHERE id = $1 AND version = $2 AND status = ANY($3::varchar[])
         RETURNING *`,
@@ -630,11 +630,11 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
     const rows: { id: string }[] = await queryRows(
       entityManagerFor(transaction),
       `UPDATE workforce.driver_profiles
-          SET account_status = $3,
-              duty_status = CASE WHEN $3 = 'ACTIVE' THEN duty_status ELSE 'UNAVAILABLE' END,
+          SET account_status = $3::varchar,
+              duty_status = CASE WHEN $3::varchar = 'ACTIVE' THEN duty_status ELSE 'UNAVAILABLE' END,
               version = version + 1, updated_at = $4
         WHERE id = $1 AND version = $2
-          AND NOT (account_status = 'DEACTIVATED' AND $3 <> 'DEACTIVATED')
+          AND NOT (account_status = 'DEACTIVATED' AND $3::varchar <> 'DEACTIVATED')
         RETURNING id`,
       [input.driverId, input.expectedVersion, input.status, input.now],
     );
@@ -786,8 +786,8 @@ export class PostgresProviderOperationsRepository implements ProviderOperationsR
          id, tenant_id, facility_id, ambulance_id, maintenance_type, status,
          scheduled_for, odometer_meters, notes, completed_at, created_at, updated_at
        ) VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,
-         CASE WHEN $6 = 'COMPLETED' THEN $10 ELSE NULL END,$10,$10
+         $1,$2,$3,$4,$5,$6::varchar,$7,$8,$9,
+         CASE WHEN $6::varchar = 'COMPLETED' THEN $10::timestamptz ELSE NULL END,$10,$10
        ) RETURNING *`,
       [
         input.id,
