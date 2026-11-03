@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import { DataSource } from 'typeorm';
 
 import { CreateGovernanceControl1793664000000 } from '../../migrations/1793664000000-create-governance-control.js';
+import { MIGRATIONS } from '../../migrations/catalog.js';
 import {
   loadApplicationConfig,
   type ApplicationConfig,
@@ -85,31 +86,34 @@ describeIntegration('forward-only governance migrations', () => {
 
     const client = new Client({ connectionString: config.dependencies.database.migrationUrl });
     await client.connect();
-    const tables = await client.query<{ table_name: string }>(
-      `SELECT table_name FROM information_schema.tables
+    try {
+      const tables = await client.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'governance' ORDER BY table_name`,
-    );
-    expect(tables.rows.map((row) => row.table_name)).toEqual(
-      expect.arrayContaining([
-        'audit_events',
-        'idempotency_records',
-        'event_stream_sequences',
-        'outbox_events',
-        'inbox_messages',
-        'job_intents',
-        'schema_migration_runs',
-      ]),
-    );
-    const migrationCount = await client.query<{ count: string }>(
-      'SELECT count(*)::text AS count FROM public.schema_migrations',
-    );
-    expect(migrationCount.rows[0]?.count).toBe('5');
-    const run = await client.query<{ result: string; checksums: string }>(
-      `SELECT result, jsonb_typeof(migration_checksums) AS checksums
+      );
+      expect(tables.rows.map((row) => row.table_name)).toEqual(
+        expect.arrayContaining([
+          'audit_events',
+          'idempotency_records',
+          'event_stream_sequences',
+          'outbox_events',
+          'inbox_messages',
+          'job_intents',
+          'schema_migration_runs',
+        ]),
+      );
+      const migrationCount = await client.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM public.schema_migrations',
+      );
+      expect(migrationCount.rows[0]?.count).toBe(String(MIGRATIONS.length));
+      const run = await client.query<{ result: string; checksums: string }>(
+        `SELECT result, jsonb_typeof(migration_checksums) AS checksums
        FROM governance.schema_migration_runs`,
-    );
-    expect(run.rows).toEqual([{ result: 'SUCCEEDED', checksums: 'object' }]);
-    await client.end();
+      );
+      expect(run.rows).toEqual([{ result: 'SUCCEEDED', checksums: 'object' }]);
+    } finally {
+      await client.end();
+    }
   });
 
   it('upgrades a prior migration fixture without losing its row', async () => {

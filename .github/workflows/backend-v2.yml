@@ -188,24 +188,29 @@ jobs:
           output-file: backend-v2-sbom.spdx.json
           artifact-name: backend-v2-sbom.spdx.json
       - name: Block high or critical image findings
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        with:
-          image-ref: resq-backend-v2:${{ github.sha }}
-          format: json
-          output: backend-v2-trivy.json
-          exit-code: "1"
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
+        run: |
+          mkdir -p "$RUNNER_TEMP/image-scan"
+          docker save --output "$RUNNER_TEMP/image-scan/backend.tar" resq-backend-v2:${{ github.sha }}
+          docker run --rm --volume "$RUNNER_TEMP/image-scan:/scan" \
+            aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e \
+            image --input /scan/backend.tar --scanners vuln --severity CRITICAL,HIGH \
+            --ignore-unfixed --exit-code 1 --format json --output /scan/report.json \
+            2> >(tee "$RUNNER_TEMP/image-scan/scanner.log" >&2) || {
+              grep -E 'FATAL|ERROR' "$RUNNER_TEMP/image-scan/scanner.log" |
+                while IFS= read -r line; do echo "::error::$line"; done
+              exit 1
+            }
       - name: Publish image finding identifiers
         if: always()
         run: |
           node --input-type=module -e '
             import fs from "node:fs";
-            if (!fs.existsSync("backend-v2-trivy.json")) {
+            const path = `${process.env.RUNNER_TEMP}/image-scan/report.json`;
+            if (!fs.existsSync(path)) {
               console.log("::error::Trivy did not produce a report; scanner setup or execution failed.");
               process.exit(1);
             }
-            const report = JSON.parse(fs.readFileSync("backend-v2-trivy.json", "utf8"));
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
             for (const result of report.Results ?? []) for (const item of result.Vulnerabilities ?? []) {
               console.log(`::error::${item.VulnerabilityID}: ${item.PkgName} ${item.InstalledVersion}; fixed=${item.FixedVersion}; severity=${item.Severity}`);
             }'
@@ -214,7 +219,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-v2-trivy
-          path: backend-v2-trivy.json
+          path: ${{ runner.temp }}/image-scan/report.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Stop image smoke test

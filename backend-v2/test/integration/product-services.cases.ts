@@ -126,8 +126,28 @@ export function productIntegrationCases(harness: Harness): void {
     const id = randomUUID(),
       issuer = await createUser(),
       approver = await createUser();
+    const bootstrapRole = `fixture_bootstrap_${randomUUID().replaceAll('-', '')}`;
     await harness.owner().query('BEGIN');
     try {
+      // A superuser satisfies pg_has_role for every role, including resq_application.
+      // Model the separately privileged migration identity without disabling the guard.
+      // This role exists only inside this synthetic fixture transaction.
+      await harness.owner().query(`CREATE ROLE "${bootstrapRole}" NOLOGIN NOSUPERUSER BYPASSRLS`);
+      await harness.owner().query(`GRANT USAGE ON SCHEMA access_control TO "${bootstrapRole}"`);
+      await harness
+        .owner()
+        .query(`GRANT SELECT ON access_control.role_profiles TO "${bootstrapRole}"`);
+      await harness
+        .owner()
+        .query(`GRANT INSERT ON access_control.authority_grants TO "${bootstrapRole}"`);
+      await harness.owner().query(`SET LOCAL ROLE "${bootstrapRole}"`);
+      expect(
+        (
+          await harness
+            .owner()
+            .query("SELECT pg_has_role(current_user, 'resq_application', 'MEMBER') AS member")
+        ).rows,
+      ).toEqual([{ member: false }]);
       await harness.owner().query(
         `INSERT INTO access_control.authority_grants(id,subject_user_id,issued_by_user_id,
         approved_by_user_id,role_profile_id,level,national_scope,purpose,human_reason,status,valid_from,expires_at,
@@ -137,6 +157,9 @@ export function productIntegrationCases(harness: Harness): void {
           now(),'Synthetic fixture approval',now(),now())`,
         [id, userId, issuer, approver, allowsPii],
       );
+      await harness.owner().query('RESET ROLE');
+      await harness.owner().query(`DROP OWNED BY "${bootstrapRole}"`);
+      await harness.owner().query(`DROP ROLE "${bootstrapRole}"`);
       await harness.owner().query(
         `INSERT INTO access_control.authority_grant_permissions(grant_id,permission_code)
         VALUES($1,'support.ticket.read'),($1,'support.ticket.manage')`,

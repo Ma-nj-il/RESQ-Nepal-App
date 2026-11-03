@@ -431,7 +431,7 @@ describeIntegration('Phase 5–6 dispatch and product PostgreSQL invariants', ()
     });
 
     const results = await Promise.all(attempts);
-    expect(results.map((result) => result.result).sort()).toEqual(['ACCEPTED', 'OFFER_RESOLVED']);
+    expect(results.map((result) => result.result).sort()).toEqual(['ACCEPTED', 'STALE_VERSION']);
     const winner = results.find((result) => result.result === 'ACCEPTED');
     const loser = results.find((result) => result.result !== 'ACCEPTED');
     if (winner === undefined || loser === undefined)
