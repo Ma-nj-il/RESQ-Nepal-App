@@ -57,21 +57,25 @@ export function dispatchRecoveryCases(harness: {
       ): ReturnType<PostgresCoreDispatchRepository['findAssignmentByBooking']> {
         if (!committed) {
           committed = true;
-          await harness.owner().query('BEGIN');
-          try {
-            await harness
-              .owner()
-              .query('UPDATE dispatch.bookings SET version=version+1 WHERE id=$1', [
-                fixture.bookingId,
-              ]);
-            await harness
-              .owner()
-              .query('UPDATE dispatch.trips SET version=version+1 WHERE id=$1', [fixture.tripId]);
-            await harness.owner().query('COMMIT');
-          } catch (error) {
-            await harness.owner().query('ROLLBACK');
-            throw error;
-          }
+          await persistence(async (writer) => {
+            await writer.execute(context(fixture.requesterUserId), async (transaction) => {
+              const rows: { result: string }[] = await entityManagerFor(transaction).query(
+                `SELECT dispatch.cancel_booking(
+                  $1, 4, $2, $3, $4, $5, 'REQUESTER', 'INTEGRATION_POLICY', 'v1',
+                  'REQUESTER_CANCELLED', 'Recovery concurrent cancellation', 0, 'NPR'::char(3), true, $6
+                ) AS result`,
+                [
+                  fixture.bookingId,
+                  randomUUID(),
+                  randomUUID(),
+                  randomUUID(),
+                  fixture.requesterUserId,
+                  randomUUID(),
+                ],
+              );
+              expect(rows[0]?.result).toBe('CANCELLED');
+            });
+          });
         }
         return super.findAssignmentByBooking(tx, id);
       }
@@ -98,6 +102,9 @@ export function dispatchRecoveryCases(harness: {
       );
       expect(next.booking.version).toBe(snapshot.booking.version + 1);
       expect(next.trip?.version).toBe((snapshot.trip?.version ?? 0) + 1);
+      expect(snapshot.booking.status).toBe('ACTIVE');
+      expect(next.booking.status).toBe('CANCELLED');
+      expect(next.trip?.status).toBe('CANCELLED');
       expect(snapshot.trip?.assignmentId).toBe(snapshot.assignment?.id);
     });
   });

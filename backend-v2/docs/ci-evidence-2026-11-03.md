@@ -59,6 +59,15 @@ The application dependency lockfile was not downgraded or given vulnerability ex
 
 ## Corrections after these runs
 
+- Recovery revision `d883f2fe1d1bc727dbe36cec55a274bbfa1ce62a`: backend run
+  [41692631660](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41692631660) passes
+  quality and image, but the new concurrent recovery fixture fails because direct lifecycle
+  updates correctly trip the named-command guard. The fixture now invokes requester cancellation
+  through an independent application transaction. Mobile run
+  [41692631575](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41692631575) stops at
+  Expo compatibility validation; local reproduction requires Expo 58.0.23, splash screen 58.0.13
+  and safe-area-context 5.11.1. Those compatible packages were installed through Expo CLI.
+
 - PostgreSQL's superuser `pg_has_role` behavior required a short-lived, non-application bootstrap
   identity in synthetic authority fixtures. The root-grant guard and forced RLS remain enabled.
 - Dispatch acceptance checks optimistic version before terminal status; a competing acceptance
