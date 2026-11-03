@@ -15,6 +15,7 @@ import { applicationDataSourceOptions } from '../../src/shared/infrastructure/pe
 import { runMigrations } from '../../src/shared/infrastructure/persistence/migration-runner.js';
 import { PostgresIdempotencyRepository } from '../../src/shared/infrastructure/persistence/postgres-idempotency.repository.js';
 import { TypeOrmUnitOfWork } from '../../src/shared/infrastructure/persistence/typeorm-unit-of-work.js';
+import { productIntegrationCases } from './product-services.cases.js';
 
 const integrationEnabled = process.env['RUN_INTEGRATION'] === '1';
 const describeIntegration = integrationEnabled ? describe : describe.skip;
@@ -43,6 +44,7 @@ interface Claims {
   readonly tenantId?: string;
   readonly accessScopeType?: 'TENANT' | 'FACILITY_SET';
   readonly facilityIds?: readonly string[];
+  readonly authorityGrantId?: string;
 }
 
 function databaseName(prefix: string): string {
@@ -85,10 +87,15 @@ async function applyClaims(client: Client, claims: Claims): Promise<void> {
   await client.query("SELECT set_config('app.facility_scope', $1, true)", [
     JSON.stringify(claims.facilityIds ?? []),
   ]);
-  await client.query("SELECT set_config('app.authority_grant_id', '', true)");
+  await client.query("SELECT set_config('app.authority_grant_id', $1, true)", [
+    claims.authorityGrantId ?? '',
+  ]);
+  await client.query(
+    "SELECT set_config('app.correlation_id', 'integration-product-dispatch', true)",
+  );
 }
 
-describeIntegration('Phase 5 core dispatch PostgreSQL invariants', () => {
+describeIntegration('Phase 5–6 dispatch and product PostgreSQL invariants', () => {
   const database = databaseName('resq_dispatch');
   let config: ApplicationConfig;
   let clusterAdmin: Client;
@@ -389,6 +396,8 @@ describeIntegration('Phase 5 core dispatch PostgreSQL invariants', () => {
       throw error;
     }
   }
+
+  productIntegrationCases({ owner: () => owner, asApplication, createUser, seedDispatchFixture });
 
   it('serializes competing tenant acceptances and permits the winner to deliver every outcome', async () => {
     const fixture = await seedDispatchFixture({ partyCount: 2, active: false });

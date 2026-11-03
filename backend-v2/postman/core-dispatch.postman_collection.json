@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "6e80d720-4be1-4f43-9f4c-120c6b359e2e",
-    "name": "RESQ backend v2 - core dispatch and safety",
-    "description": "Phase 5 local black-box contracts. It exercises requester coverage failure, durable unbound SOS creation/replay, protected-detail omission, ownership isolation, and tenant/authority fail-closed behavior. Full dispatch lifecycle simulation requires approved fixtures and infrastructure-backed Gate 5 evidence.",
+    "name": "RESQ backend v2 - dispatch, safety and product services",
+    "description": "Phase 5–6 local black-box contracts for requester safety, preferences, encrypted support, replay and ownership isolation. Full dispatch/cash and managed-support scenarios require the PostgreSQL integration fixtures and infrastructure-backed evidence.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -525,6 +525,113 @@
               "pm.expect(pm.response.json().error.code).to.equal('RESOURCE.NOT_FOUND');"
             ]
           }
+        }
+      ]
+    },
+    {
+      "name": "Phase 6 product services",
+      "item": [
+        {
+          "name": "Read owner notification preferences",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/me/notification-preferences", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" }
+          ] },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('returns versioned private preferences', function () { pm.response.to.have.status(200); });",
+            "pm.expect(pm.response.headers.get('Cache-Control')).to.equal('no-store');",
+            "pm.collectionVariables.set('productPreferenceVersion', pm.response.json().data.version);",
+            "pm.collectionVariables.set('productPreferenceKey', 'phase6-prefs-' + pm.collectionVariables.get('ownerChallengeId'));",
+            "pm.collectionVariables.set('productTicketKey', 'phase6-ticket-' + pm.collectionVariables.get('ownerChallengeId'));"
+          ] } }]
+        },
+        {
+          "name": "Replace owner notification preferences",
+          "request": { "method": "PUT", "url": "{{baseUrl}}/api/v1/me/notification-preferences", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" },
+            { "key": "Content-Type", "value": "application/json" },
+            { "key": "If-Match", "value": "\"{{productPreferenceVersion}}\"" },
+            { "key": "Idempotency-Key", "value": "{{productPreferenceKey}}" }
+          ], "body": { "mode": "raw", "raw": "{\"bookingUpdates\":true,\"tripUpdates\":true,\"supportUpdates\":true,\"marketing\":false}" } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('advances preferences exactly once', function () { pm.response.to.have.status(200); });",
+            "pm.expect(pm.response.json().data.version).to.equal(Number(pm.collectionVariables.get('productPreferenceVersion')) + 1);",
+            "pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.equal('false');"
+          ] } }]
+        },
+        {
+          "name": "Replay preference replacement",
+          "request": { "method": "PUT", "url": "{{baseUrl}}/api/v1/me/notification-preferences", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" },
+            { "key": "Content-Type", "value": "application/json" },
+            { "key": "If-Match", "value": "\"{{productPreferenceVersion}}\"" },
+            { "key": "Idempotency-Key", "value": "{{productPreferenceKey}}" }
+          ], "body": { "mode": "raw", "raw": "{\"bookingUpdates\":true,\"tripUpdates\":true,\"supportUpdates\":true,\"marketing\":false}" } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('replays without incrementing the preference version', function () { pm.response.to.have.status(200); });",
+            "pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.equal('true');",
+            "pm.expect(pm.response.json().data.version).to.equal(Number(pm.collectionVariables.get('productPreferenceVersion')) + 1);"
+          ] } }]
+        },
+        {
+          "name": "Create encrypted owner support ticket",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/support/tickets", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" },
+            { "key": "Content-Type", "value": "application/json" },
+            { "key": "Idempotency-Key", "value": "{{productTicketKey}}" }
+          ], "body": { "mode": "raw", "raw": "{\"category\":\"ACCOUNT\",\"message\":\"Synthetic Phase 6 support content\"}" } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('returns safe ticket metadata', function () { pm.response.to.have.status(201); });",
+            "pm.expect(pm.response.text()).not.to.include('Synthetic Phase 6 support content');",
+            "pm.expect(pm.response.json().data.status).to.equal('OPEN');",
+            "pm.collectionVariables.set('productTicketId', pm.response.json().data.id);"
+          ] } }]
+        },
+        {
+          "name": "Replay support creation without message content",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/support/tickets", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" },
+            { "key": "Content-Type", "value": "application/json" },
+            { "key": "Idempotency-Key", "value": "{{productTicketKey}}" }
+          ], "body": { "mode": "raw", "raw": "{\"category\":\"ACCOUNT\",\"message\":\"Synthetic Phase 6 support content\"}" } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('replays the original ticket', function () { pm.response.to.have.status(201); });",
+            "pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.equal('true');",
+            "pm.expect(pm.response.json().data.id).to.equal(pm.collectionVariables.get('productTicketId'));",
+            "pm.expect(pm.response.text()).not.to.include('Synthetic Phase 6 support content');"
+          ] } }]
+        },
+        {
+          "name": "Read authorized support content",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/support/tickets/{{productTicketId}}/messages", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" }
+          ] },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('decrypts content only on the content endpoint', function () { pm.response.to.have.status(200); });",
+            "pm.expect(pm.response.json().data.items[0].message).to.equal('Synthetic Phase 6 support content');",
+            "pm.expect(pm.response.headers.get('Cache-Control')).to.equal('no-store');",
+            "pm.expect(pm.response.text()).not.to.include('ciphertext');"
+          ] } }]
+        },
+        {
+          "name": "Hide owner support content from outsider",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/support/tickets/{{productTicketId}}/messages", "header": [
+            { "key": "Authorization", "value": "Bearer {{outsiderAccessToken}}" }
+          ] },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('hides unrelated support content', function () { pm.response.to.have.status(404); });",
+            "pm.expect(pm.response.json().error.code).to.equal('RESOURCE.NOT_FOUND');"
+          ] } }]
+        },
+        {
+          "name": "Require version before support reply",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/support/tickets/{{productTicketId}}/messages", "header": [
+            { "key": "Authorization", "value": "Bearer {{ownerAccessToken}}" },
+            { "key": "Content-Type", "value": "application/json" },
+            { "key": "Idempotency-Key", "value": "{{productTicketKey}}-reply" }
+          ], "body": { "mode": "raw", "raw": "{\"message\":\"Synthetic reply\"}" } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('requires If-Match', function () { pm.response.to.have.status(428); });"
+          ] } }]
         }
       ]
     }

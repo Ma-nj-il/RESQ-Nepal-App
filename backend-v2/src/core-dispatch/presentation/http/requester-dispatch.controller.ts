@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 
 import { RequireAuthorization } from '../../../identity-access/presentation/http/route-authorization.decorator.js';
@@ -16,6 +27,7 @@ import {
 import { expectedVersion, idempotencyKey, idempotentResponse } from './command-http.js';
 import {
   BookingCreationDto,
+  DispatchListQueryDto,
   CoverageCheckDto,
   FareQuoteCreationDto,
   ReasonCommandDto,
@@ -23,6 +35,7 @@ import {
 } from './core-dispatch.dto.js';
 import {
   involvedTimelineProjection,
+  dispatchPage,
   requesterAssignmentProjection,
   requesterBookingProjection,
   requesterIncidentProjection,
@@ -99,12 +112,9 @@ export class RequesterDispatchController {
   }
 
   @Get('/bookings')
-  async listBookings(): Promise<unknown> {
-    const records = await this.bookings.listBookings(this.contexts.require());
-    return successResponse(this.contexts, {
-      items: records.map(requesterBookingProjection),
-      nextCursor: null,
-    });
+  async listBookings(@Query() query: DispatchListQueryDto = {}): Promise<unknown> {
+    const records = await this.bookings.listBookings(this.contexts.require(), query.afterId);
+    return successResponse(this.contexts, dispatchPage(records, requesterBookingProjection));
   }
 
   @Get('/bookings/:bookingId')
@@ -151,12 +161,9 @@ export class RequesterDispatchController {
   }
 
   @Get('/trips')
-  async listTrips(): Promise<unknown> {
-    const records = await this.trips.listTrips(this.contexts.require());
-    return successResponse(this.contexts, {
-      items: records.map(requesterTripProjection),
-      nextCursor: null,
-    });
+  async listTrips(@Query() query: DispatchListQueryDto = {}): Promise<unknown> {
+    const records = await this.trips.listTrips(this.contexts.require(), query.afterId);
+    return successResponse(this.contexts, dispatchPage(records, requesterTripProjection));
   }
 
   @Get('/trips/:tripId')

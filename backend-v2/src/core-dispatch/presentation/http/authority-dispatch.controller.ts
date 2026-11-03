@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Res } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { RequireAuthorization } from '../../../identity-access/presentation/http/route-authorization.decorator.js';
@@ -16,7 +16,9 @@ import {
   authorityBookingProjection,
   authorityIncidentProjection,
   authorityTripProjection,
+  dispatchPage,
 } from './core-dispatch.projections.js';
+import { DispatchListQueryDto } from './core-dispatch.dto.js';
 
 @Controller('/api/v1/authority')
 export class AuthorityDispatchController {
@@ -33,12 +35,9 @@ export class AuthorityDispatchController {
     permission: 'booking.read',
     resourceClass: 'booking',
   })
-  async bookingsList(): Promise<unknown> {
-    const records = await this.bookings.listBookings(this.contexts.require());
-    return successResponse(this.contexts, {
-      items: records.map(authorityBookingProjection),
-      nextCursor: null,
-    });
+  async bookingsList(@Query() query: DispatchListQueryDto = {}): Promise<unknown> {
+    const records = await this.bookings.listBookings(this.contexts.require(), query.afterId);
+    return successResponse(this.contexts, dispatchPage(records, authorityBookingProjection));
   }
 
   @Get('/bookings/:bookingId')
@@ -62,12 +61,9 @@ export class AuthorityDispatchController {
     permission: 'trip.read',
     resourceClass: 'trip',
   })
-  async tripsList(): Promise<unknown> {
-    const records = await this.trips.listTrips(this.contexts.require());
-    return successResponse(this.contexts, {
-      items: records.map(authorityTripProjection),
-      nextCursor: null,
-    });
+  async tripsList(@Query() query: DispatchListQueryDto = {}): Promise<unknown> {
+    const records = await this.trips.listTrips(this.contexts.require(), query.afterId);
+    return successResponse(this.contexts, dispatchPage(records, authorityTripProjection));
   }
 
   @Get('/trips/:tripId')

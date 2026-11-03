@@ -230,7 +230,10 @@ export interface CoreDispatchRepository {
       readonly offerExpiresAt: Date;
     },
   ): Promise<DispatchCommandResult>;
-  listBookings(transaction: TransactionContext): Promise<readonly BookingRecord[]>;
+  listBookings(
+    transaction: TransactionContext,
+    afterId?: string,
+  ): Promise<readonly BookingRecord[]>;
   findBooking(
     transaction: TransactionContext,
     bookingId: string,
@@ -284,7 +287,7 @@ export interface CoreDispatchRepository {
       readonly reason?: string;
     },
   ): Promise<DispatchCommandResult>;
-  listTrips(transaction: TransactionContext): Promise<readonly TripRecord[]>;
+  listTrips(transaction: TransactionContext, afterId?: string): Promise<readonly TripRecord[]>;
   findTrip(transaction: TransactionContext, tripId: string): Promise<TripRecord | undefined>;
   findTripByBooking(
     transaction: TransactionContext,

@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "releaseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "evaluatedAt": "2026-11-03T10:00:00Z",
+  "incidentCommander": "synthetic-unassigned",
+  "gates": [],
+  "evidence": [],
+  "requiredCohorts": [{ "capability": "booking", "cohort": "synthetic-facility" }],
+  "writers": [
+    {
+      "capability": "booking",
+      "cohort": "synthetic-facility",
+      "writer": "LEGACY",
+      "epoch": 1,
+      "boundary": "2026-11-03T09:00:00Z"
+    }
+  ],
+  "unresolvedCriticalOrHigh": 0,
+  "activeLegacyTrips": 0,
+  "targetAuthoritativeWrites": 0,
+  "rollbackMode": "PRE_WRITE_ROUTING"
+}

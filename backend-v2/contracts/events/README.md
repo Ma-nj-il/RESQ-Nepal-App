@@ -1,6 +1,6 @@
-# Phase 5 event contracts
+# Phase 5–6 event contracts
 
-These are the versioned Kafka facts emitted by the Phase 5 core-dispatch implementation. They are
+These are the versioned Kafka facts emitted by core dispatch and product services. They are
 JSON Schema contracts, not HTTP/OpenAPI models. No schema or example contains patient narrative,
 precise tracking coordinates, credentials, tokens, document locations, or provider URLs.
 
@@ -11,7 +11,7 @@ precise tracking coordinates, credentials, tokens, document locations, or provid
 - `<domain>/<event-type>/v1/example.json` is the canonical producer fixture.
 - `catalog.json` records topic routing, producers, intended consumers, and operational ownership.
 - `npm run contracts:events` validates every schema/example, rejects orphan contracts and restricted
-  fixture fields, and checks that the catalog exactly covers implemented Phase 5 event literals.
+  fixture fields, and checks that the catalog exactly covers implemented Phase 5–6 event literals.
 
 Within a `v1` event, producers may add only backward-compatible optional fields after consumer
 review. Removing, renaming, narrowing, or changing the meaning of a field requires a new event type
@@ -29,3 +29,11 @@ the business ordering position.
 
 Validated location points use the separately restricted telemetry path described in the architecture
 documents. They are deliberately absent from this ordinary domain-event catalog.
+
+Product services adds `communication.preferences.replaced.v1`, `support.rating.recorded.v1`,
+`billing.cash.recorded.v1`, `support.ticket.created.v1`, `support.ticket.replied.v1`, and
+`support.ticket.transitioned.v1`, routed to the corresponding `resq.<domain>.events.v1` topic.
+The `product.<resource_type>` streams are reserved for database command functions. Their payloads
+contain only resource ID/version; consumers refetch separately authorized projections. Cataloged
+intended consumers do not imply deployed consumers or external delivery. See the
+[product API contract](../../docs/phase-6-product-api.md).

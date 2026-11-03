@@ -450,9 +450,13 @@ export class PostgresCoreDispatchRepository implements CoreDispatchRepository {
     return first(rows, 'booking search result').result;
   }
 
-  async listBookings(transaction: TransactionContext): Promise<readonly BookingRecord[]> {
+  async listBookings(
+    transaction: TransactionContext,
+    afterId?: string,
+  ): Promise<readonly BookingRecord[]> {
     const rows: BookingRow[] = await entityManagerFor(transaction).query(
-      `${BOOKING_SELECT} ORDER BY created_at DESC, id`,
+      `${BOOKING_SELECT} WHERE ($1::uuid IS NULL OR id > $1::uuid) ORDER BY id LIMIT 51`,
+      [afterId ?? null],
     );
     return rows.map(bookingFrom);
   }
@@ -608,9 +612,13 @@ export class PostgresCoreDispatchRepository implements CoreDispatchRepository {
     return first(rows, 'offer resolution result').result;
   }
 
-  async listTrips(transaction: TransactionContext): Promise<readonly TripRecord[]> {
+  async listTrips(
+    transaction: TransactionContext,
+    afterId?: string,
+  ): Promise<readonly TripRecord[]> {
     const rows: TripRow[] = await entityManagerFor(transaction).query(
-      `${TRIP_SELECT} ORDER BY created_at DESC, id`,
+      `${TRIP_SELECT} WHERE ($1::uuid IS NULL OR id > $1::uuid) ORDER BY id LIMIT 51`,
+      [afterId ?? null],
     );
     return rows.map(tripFrom);
   }

@@ -168,10 +168,10 @@ export class BookingDispatchService {
     );
   }
 
-  listBookings(context: RequestContext): Promise<readonly BookingRecord[]> {
+  listBookings(context: RequestContext, afterId?: string): Promise<readonly BookingRecord[]> {
     this.requireUser(context);
     return this.unitOfWork.execute(context, (transaction) =>
-      this.repository.listBookings(transaction),
+      this.repository.listBookings(transaction, afterId),
     );
   }
 

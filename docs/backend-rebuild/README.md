@@ -1,5 +1,13 @@
 # RESQ Nepal backend rebuild — Phase 0/1 approval package
 
+**Current implementation:** the dated Phase 0/1 package below is historical. The NestJS rebuild now
+includes an initial Phase 6 backend product slice and a
+[mobile API/session foundation](./mobile-api-foundation.md); see
+[`backend-v2/docs/phase-6-status.md`](../../backend-v2/docs/phase-6-status.md) for current evidence,
+remaining work, and HOLD gates.
+Offline Phase 7 reconciliation and Phase 8 readiness tooling are also available; see the
+[complete delivery-status matrix](./implementation-status.md).
+
 - **Status:** proposed architecture; implementation is intentionally blocked
 - **Baseline audited:** `8c2827a9980f0b292cddc17783ee95e292fc88ab`
 - **Prepared:** 2026-11-03

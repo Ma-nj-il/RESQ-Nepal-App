@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "runId": "synthetic-rehearsal",
+  "transformVersion": "synthetic-v1",
+  "exportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceCounts": [{ "system": "synthetic", "type": "PRINCIPAL", "count": 1 }],
+  "sources": [
+    {
+      "key": { "system": "synthetic", "type": "PRINCIPAL", "id": "test-user" },
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "ledger": [
+    {
+      "source": { "system": "synthetic", "type": "PRINCIPAL", "id": "test-user" },
+      "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "outcome": "MIGRATED",
+      "target": { "type": "PRINCIPAL", "id": "00000000-0000-4000-8000-000000000001" },
+      "targetSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tenantId": null,
+      "facilityId": null
+    }
+  ],
+  "targets": [
+    {
+      "key": { "type": "PRINCIPAL", "id": "00000000-0000-4000-8000-000000000001" },
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tenantId": null,
+      "facilityId": null,
+      "parents": []
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/billing/billing.cash.recorded/v1/schema.json",
+  "title": "billing.cash.recorded.v1",
+  "allOf": [
+    { "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json" },
+    {
+      "type": "object",
+      "required": ["tenantId", "facilityId"],
+      "properties": {
+        "eventType": { "const": "billing.cash.recorded.v1" },
+        "schemaVersion": { "const": 1 },
+        "producer": { "const": "product-services" },
+        "aggregate": { "type": "object", "properties": { "type": { "const": "cash_collection" } } },
+        "stream": {
+          "type": "object",
+          "properties": { "type": { "const": "product.cash_collection" } }
+        },
+        "data": {
+          "$ref": "https://contracts.resq-nepal.org/events/_shared/product-resource/v1/schema.json"
+        }
+      }
+    }
+  ]
+}

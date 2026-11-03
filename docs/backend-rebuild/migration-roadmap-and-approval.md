@@ -157,6 +157,10 @@ simulation.
 
 ### Phase 6 / Gate 6 — product surfaces and approved integrations
 
+Implementation progress: the initial backend product slice and its remaining work are recorded in
+[`backend-v2/docs/phase-6-status.md`](../../backend-v2/docs/phase-6-status.md).
+Gate 6 remains HOLD; client, provider, and migration cutover readiness are not established.
+
 Deliver only approved scope:
 
 - mobile API adapter and canonical status/money/error/realtime handling;
@@ -171,6 +175,9 @@ mutation on cutover paths, and user-facing claims that match actual provider sta
 
 ### Phase 7 / Gate 7 — migration rehearsal and client readiness
 
+Offline preparation and remaining execution inputs are tracked in
+[`backend-v2/docs/phase-7-status.md`](../../backend-v2/docs/phase-7-status.md). Gate 7 remains HOLD.
+
 Deliver:
 
 - production-source snapshots/profiles, source-to-canonical mappings, staging transforms, encrypted
@@ -184,6 +191,10 @@ Gate 7 evidence includes the zero-tolerance invariants in section 7, accepted ex
 signoff, and no unresolved critical/high migration/security/operations issue.
 
 ### Phase 8 / Gate 8 — cutover and stabilization
+
+Readiness tooling and the controlled-execution record are tracked in
+[`backend-v2/docs/phase-8-status.md`](../../backend-v2/docs/phase-8-status.md). Gate 8 remains HOLD;
+no production cutover or stabilization has executed.
 
 Execute the approved sequence in section 8. During stabilization, feature work yields to correctness,
 reconciliation, SLO/security monitoring, support, and forward fixes. Legacy is retained read-only or

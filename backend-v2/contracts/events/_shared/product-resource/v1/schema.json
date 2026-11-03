@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/_shared/product-resource/v1/schema.json",
+  "description": "A product resource changed durably. Consumers refetch an authorized projection; this payload contains no message, preference values, or money.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resourceId", "version"],
+  "properties": {
+    "resourceId": { "type": "string", "format": "uuid" },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}

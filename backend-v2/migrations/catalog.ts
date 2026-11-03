@@ -22,6 +22,10 @@ import {
   CORE_DISPATCH_SQL,
   CreateCoreDispatch1793664000004,
 } from './1793664000004-create-core-dispatch.js';
+import {
+  PRODUCT_SERVICES_SQL,
+  CreateProductServices1793664000005,
+} from './1793664000005-create-product-services.js';
 
 type MigrationConstructor = new () => MigrationInterface;
 
@@ -31,6 +35,7 @@ export const MIGRATIONS: readonly MigrationConstructor[] = Object.freeze([
   CreateIdentityAccess1793664000002,
   CreateProviderOperations1793664000003,
   CreateCoreDispatch1793664000004,
+  CreateProductServices1793664000005,
 ]);
 
 function checksum(sql: string): string {
@@ -43,4 +48,5 @@ export const MIGRATION_CHECKSUMS: Readonly<Record<string, string>> = Object.free
   CreateIdentityAccess1793664000002: checksum(IDENTITY_ACCESS_SQL),
   CreateProviderOperations1793664000003: checksum(PROVIDER_OPERATIONS_SQL),
   CreateCoreDispatch1793664000004: checksum(CORE_DISPATCH_SQL),
+  CreateProductServices1793664000005: checksum(PRODUCT_SERVICES_SQL),
 });

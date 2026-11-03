@@ -1,0 +1,65 @@
+name: Mobile API integration
+
+on:
+  pull_request:
+    paths:
+      [
+        "src/**",
+        "qa/unit/**",
+        "package*.json",
+        "app.json",
+        "eas.json",
+        ".easignore",
+        "tsconfig.json",
+        "eslint.config.js",
+        ".github/workflows/mobile-api.yml",
+        "backend-v2/src/core-dispatch/application/core-dispatch-json.ts",
+      ]
+  push:
+    branches: [main, feature/nestjs-backend-rebuild]
+    paths:
+      [
+        "src/**",
+        "qa/unit/**",
+        "package*.json",
+        "app.json",
+        "eas.json",
+        ".easignore",
+        "tsconfig.json",
+        "eslint.config.js",
+        ".github/workflows/mobile-api.yml",
+        "backend-v2/src/core-dispatch/application/core-dispatch-json.ts",
+      ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXPO_NO_DOTENV: "1"
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_BACKEND_PREVIEW: "1"
+      EXPO_PUBLIC_BACKEND_ORIGIN: https://api.example.test
+      EXPO_PUBLIC_BACKEND_ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.22.2
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx expo install --check
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run test:unit
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx expo export --dev --platform all --output-dir "${{ runner.temp }}/mobile-development"
+      - run: npx expo export --platform all --output-dir "${{ runner.temp }}/mobile-release"

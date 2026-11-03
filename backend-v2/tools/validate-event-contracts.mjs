@@ -19,6 +19,9 @@ const forbiddenDataKeys = new Set(
     'latitude',
     'longitude',
     'narrative',
+    'message',
+    'ciphertext',
+    'nonce',
     'objectKey',
     'otp',
     'password',
@@ -73,9 +76,13 @@ function inspectRestrictedKeys(value, location = 'data') {
 
 async function emittedEventTypes() {
   const sourceFiles = await filesBelow(eventSourceRoot, (file) => file.endsWith('.ts'));
+  sourceFiles.push(
+    path.join(backendRoot, 'migrations', '1793664000005-create-product-services.ts'),
+  );
   const eventLike = new Set();
   const jobs = new Set();
-  const eventPattern = /['"]((?:booking|dispatch|trip|safety)\.[a-z0-9.-]+\.v[1-9][0-9]*)['"]/g;
+  const eventPattern =
+    /['"]((?:booking|dispatch|trip|safety|communication|support|billing)\.[a-z0-9.-]+\.v[1-9][0-9]*)['"]/g;
   const jobPattern = /jobType:\s*['"]([^'"]+)['"]/g;
   for (const file of sourceFiles) {
     const source = await readFile(file, 'utf8');
@@ -162,10 +169,10 @@ for (const entry of catalog.events) {
 const emitted = await emittedEventTypes();
 const cataloged = [...eventTypes].sort();
 if (JSON.stringify(emitted) !== JSON.stringify(cataloged)) {
-  fail('Implemented Phase 5 event literals and the contract catalog differ', {
+  fail('Implemented event literals and the contract catalog differ', {
     emitted,
     cataloged,
   });
 }
 
-console.log(`Validated ${String(catalog.events.length)} Phase 5 event schemas and examples.`);
+console.log(`Validated ${String(catalog.events.length)} event schemas and examples.`);

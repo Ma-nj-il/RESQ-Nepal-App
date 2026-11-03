@@ -7,7 +7,7 @@ on:
       - "docs/backend-rebuild/**"
       - ".github/workflows/backend-v2.yml"
   push:
-    branches: [main]
+    branches: [main, feature/nestjs-backend-rebuild]
     paths:
       - "backend-v2/**"
       - "docs/backend-rebuild/**"
@@ -44,6 +44,13 @@ jobs:
       - run: npm run architecture
       - run: npm run test:unit
       - run: npm run build
+      - name: Exercise offline migration reconciliation
+        run: npm run readiness -- reconcile test/fixtures/migration-manifest.synthetic.json "$RUNNER_TEMP/migration-report.json"
+      - name: Missing cutover evidence must HOLD
+        run: |
+          status=0
+          npm run readiness -- cutover test/fixtures/cutover-hold.synthetic.json "$RUNNER_TEMP/cutover-report.json" || status=$?
+          test "$status" -eq 2
       - name: Block high or critical production dependency advisories
         run: npm run security:audit
       - name: Capture the complete dependency audit for review
@@ -109,7 +116,7 @@ jobs:
           exit 1
       - name: Run Postman health collection with Newman
         run: npm run postman:health
-      - name: Run Phase 5 core-dispatch collection with Newman
+      - name: Run Phase 5–6 dispatch and product collection with Newman
         run: npm run postman:core-dispatch
       - name: Upload API log on failure
         if: failure()

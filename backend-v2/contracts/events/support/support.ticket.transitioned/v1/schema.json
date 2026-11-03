@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/support/support.ticket.transitioned/v1/schema.json",
+  "title": "support.ticket.transitioned.v1",
+  "allOf": [
+    { "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "support.ticket.transitioned.v1" },
+        "schemaVersion": { "const": 1 },
+        "producer": { "const": "product-services" },
+        "aggregate": { "type": "object", "properties": { "type": { "const": "support_ticket" } } },
+        "stream": {
+          "type": "object",
+          "properties": { "type": { "const": "product.support_ticket" } }
+        },
+        "data": {
+          "$ref": "https://contracts.resq-nepal.org/events/_shared/product-resource/v1/schema.json"
+        }
+      }
+    }
+  ]
+}

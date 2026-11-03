@@ -70,10 +70,10 @@ export class TripTrackingService {
     private readonly ids: IdGenerator,
   ) {}
 
-  listTrips(context: RequestContext): Promise<readonly TripRecord[]> {
+  listTrips(context: RequestContext, afterId?: string): Promise<readonly TripRecord[]> {
     this.requireUser(context);
     return this.unitOfWork.execute(context, (transaction) =>
-      this.repository.listTrips(transaction),
+      this.repository.listTrips(transaction, afterId),
     );
   }
 

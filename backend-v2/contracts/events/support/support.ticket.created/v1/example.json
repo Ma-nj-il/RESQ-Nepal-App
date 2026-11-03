@@ -1,0 +1,21 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000604",
+  "eventType": "support.ticket.created.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "product-services",
+  "aggregate": {
+    "type": "support_ticket",
+    "id": "018f0000-0000-7000-8000-000000000107",
+    "version": 1
+  },
+  "stream": {
+    "type": "product.support_ticket",
+    "id": "018f0000-0000-7000-8000-000000000107",
+    "sequence": 1
+  },
+  "correlationId": "phase6-contract-001",
+  "causationId": "018f0000-0000-7000-8000-000000000604",
+  "actor": { "type": "USER", "id": "018f0000-0000-7000-8000-000000000111" },
+  "data": { "resourceId": "018f0000-0000-7000-8000-000000000107", "version": 1 }
+}

@@ -27,6 +27,18 @@ export function serviceCoverageProjection(
   };
 }
 
+/** Repository reads at most 51 RLS-visible records in ascending ID order. */
+export function dispatchPage<T extends { readonly id: string }>(
+  records: readonly T[],
+  project: (record: T) => JsonValue,
+): JsonValue {
+  const items = records.slice(0, 50);
+  return {
+    items: items.map(project),
+    nextCursor: records.length > 50 ? (items.at(-1)?.id ?? null) : null,
+  };
+}
+
 /** The requester projection deliberately contains no encrypted-storage representation. */
 export function requesterBookingProjection(record: BookingRecord): JsonValue {
   return bookingJson(record);

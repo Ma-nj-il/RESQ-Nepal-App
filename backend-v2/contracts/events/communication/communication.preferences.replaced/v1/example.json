@@ -1,0 +1,21 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000601",
+  "eventType": "communication.preferences.replaced.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "product-services",
+  "aggregate": {
+    "type": "notification_preferences",
+    "id": "018f0000-0000-7000-8000-000000000111",
+    "version": 1
+  },
+  "stream": {
+    "type": "product.notification_preferences",
+    "id": "018f0000-0000-7000-8000-000000000111",
+    "sequence": 1
+  },
+  "correlationId": "phase6-contract-001",
+  "causationId": "018f0000-0000-7000-8000-000000000601",
+  "actor": { "type": "USER", "id": "018f0000-0000-7000-8000-000000000111" },
+  "data": { "resourceId": "018f0000-0000-7000-8000-000000000111", "version": 1 }
+}

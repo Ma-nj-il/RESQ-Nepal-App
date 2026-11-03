@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.resq-nepal.org/events/communication/communication.preferences.replaced/v1/schema.json",
+  "title": "communication.preferences.replaced.v1",
+  "allOf": [
+    { "$ref": "https://contracts.resq-nepal.org/events/_shared/envelope/v1/schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "communication.preferences.replaced.v1" },
+        "schemaVersion": { "const": 1 },
+        "producer": { "const": "product-services" },
+        "aggregate": {
+          "type": "object",
+          "properties": { "type": { "const": "notification_preferences" } }
+        },
+        "stream": {
+          "type": "object",
+          "properties": { "type": { "const": "product.notification_preferences" } }
+        },
+        "data": {
+          "$ref": "https://contracts.resq-nepal.org/events/_shared/product-resource/v1/schema.json"
+        }
+      }
+    }
+  ]
+}

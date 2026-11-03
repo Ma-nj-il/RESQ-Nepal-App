@@ -22,6 +22,12 @@ import {
 const SIMPLE_CODE = /^[A-Z][A-Z0-9_]{1,95}$/;
 const UNSIGNED_INTEGER = /^(?:0|[1-9][0-9]{0,18})$/;
 
+export class DispatchListQueryDto {
+  @IsOptional()
+  @IsUUID('all')
+  readonly afterId?: string;
+}
+
 export class CoverageCheckDto {
   @IsString()
   @Matches(SIMPLE_CODE)

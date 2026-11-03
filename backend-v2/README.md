@@ -1,9 +1,15 @@
 # RESQ Nepal backend v2
 
 This directory contains the isolated NestJS/TypeScript rebuild. The platform foundation, Phase 3
-identity/access, Phase 4 provider operations, and Phase 5 core dispatch/safety slices are present. No
-legacy route or production workflow has been cut over. Gates 2–5 remain **HOLD** until the blocked
+identity/access, Phase 4 provider operations, Phase 5 core dispatch/safety, and the initial Phase 6
+product-services slices are present. No legacy route or production workflow has been cut over.
+Gates 2–6 remain **HOLD** until the blocked
 infrastructure-backed, provider, capacity, operations, and independent review evidence is approved.
+
+Offline migration reconciliation and cutover-readiness tooling are now available. See
+[Phase 7](docs/phase-7-status.md), [Phase 8](docs/phase-8-status.md), and the
+[overall delivery status](../docs/backend-rebuild/implementation-status.md). Gates 7–8 also remain
+HOLD; these tools do not authorize or perform production migration.
 
 ## Runtime roles
 
@@ -41,6 +47,10 @@ compliance processors remain unavailable. Redis/Kafka state is never authoritati
 - encrypted SOS/safety incidents, acknowledgement/escalation/resolution races, durable safety jobs,
   ordered outbox publication, and stale-job suppression;
 - 24 versioned Phase 5 event schemas/examples plus local requester/safety Postman contracts.
+- notification preferences, requester ratings, encrypted support messages and named ticket transitions;
+- exact-fare NPR cash collections, requester receipts, scoped completion-cohort cash reports, and
+  owner-only in-app notifications;
+- six product-service outbox schemas/examples (30 total) and additional local product Newman cases.
 
 Public OTP accepts only `REGISTRATION_OR_LOGIN`. Local development uses the synthetic fixed code
 configured in `docker/local.env`; production rejects a fixed code and delivery remains fail-closed
@@ -96,7 +106,7 @@ cache/queue URLs, pretty logs, and a migration without an expected prior version
 - Architecture is enforced by targeted ESLint rules and `test/unit/architecture.spec.ts`.
 - TypeORM synchronization and automatic migration-on-start are disabled in every runtime.
 
-See `docs/phase-2-status.md` through `docs/phase-5-status.md`, `docs/threat-model.md`, and
+See `docs/phase-2-status.md` through `docs/phase-6-status.md`, `docs/phase-6-product-api.md`, `docs/threat-model.md`, and
 `docs/phase-5-transition-actor-matrix.md` for gate evidence, actor rules, blocked checks, and known
 limitations. Root authority creation and dispatch/safety recovery are restricted to the reviewed
 processes under `docs/runbooks/`.

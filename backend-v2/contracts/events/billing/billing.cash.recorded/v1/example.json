@@ -1,0 +1,23 @@
+{
+  "eventId": "018f0000-0000-7000-8000-000000000603",
+  "eventType": "billing.cash.recorded.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-03T12:00:00.000Z",
+  "producer": "product-services",
+  "aggregate": {
+    "type": "cash_collection",
+    "id": "018f0000-0000-7000-8000-000000000106",
+    "version": 1
+  },
+  "stream": {
+    "type": "product.cash_collection",
+    "id": "018f0000-0000-7000-8000-000000000106",
+    "sequence": 1
+  },
+  "tenantId": "018f0000-0000-7000-8000-000000000101",
+  "facilityId": "018f0000-0000-7000-8000-000000000102",
+  "correlationId": "phase6-contract-001",
+  "causationId": "018f0000-0000-7000-8000-000000000603",
+  "actor": { "type": "USER", "id": "018f0000-0000-7000-8000-000000000111" },
+  "data": { "resourceId": "018f0000-0000-7000-8000-000000000106", "version": 1 }
+}

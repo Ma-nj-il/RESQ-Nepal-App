@@ -54,7 +54,7 @@ const DISPATCH_POLICY: CoreDispatchPolicy = Object.freeze({
   searchTtlMs: 5 * 60_000,
   offerTtlMs: 90_000,
   trackingStaleAfterMs: 30_000,
-  trackingUnavailableAfterMs: 5 * 60_000,
+  trackingUnavailableAfterMs: 120_000,
   firstSafetyEscalationDelayMs: 30_000,
   subsequentSafetyEscalationDelayMs: 2 * 60_000,
 });
