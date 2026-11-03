@@ -1,5 +1,23 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import {
+  Activity,
+  ArrowNarrowRight,
+  BarChartSquare02,
+  Bell01,
+  Building07,
+  Eye,
+  Grid01,
+  Lock01,
+  LogOut01,
+  Plus,
+  Route,
+  SearchMd,
+  Settings01,
+  User01,
+  Users01,
+  Wallet01,
+} from '@untitled-ui/icons-react';
 import './styles.css';
 
 const navItems = [
@@ -39,25 +57,26 @@ const drivers = [
 ];
 
 function Icon({ name, size = 17 }) {
-  const paths = {
-    grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
-    route: <><circle cx="6" cy="18" r="2" /><circle cx="18" cy="6" r="2" /><path d="M8 18h4a6 6 0 0 0 6-6V8" /></>,
-    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
-    user: <><circle cx="12" cy="7" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
-    hospital: <><path d="M3 21h18M5 21V5h14v16M9 9h6M12 6v6M8 21v-5h8v5" /></>,
-    chart: <><path d="M4 19V5M4 19h17" /><path d="m7 15 3-4 3 2 5-7" /></>,
-    pulse: <><path d="M3 12h4l2-7 4 14 2-7h6" /></>,
-    wallet: <><path d="M4 5h16v15H4zM4 8h16" /><path d="M16 14h2" /></>,
-    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.04 1.56V20h-2v-.08a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.42-1.42.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.04H7v-2h.84A1.7 1.7 0 0 0 9.4 10a1.7 1.7 0 0 0-.34-1.88L9 8.06l1.42-1.42.06.06A1.7 1.7 0 0 0 12.36 7.04 1.7 1.7 0 0 0 13.4 5.48V5h2v.48a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 8.06l-.06.06A1.7 1.7 0 0 0 19.4 10a1.7 1.7 0 0 0 1.56 1.04H21v2h-.04A1.7 1.7 0 0 0 19.4 15Z" /></>,
-    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
-    plus: <><path d="M12 5v14M5 12h14" /></>,
-    arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
-    lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-    eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="2" /></>,
-    logout: <><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-5" /></>,
+  const icons = {
+    grid: Grid01,
+    route: Route,
+    users: Users01,
+    user: User01,
+    hospital: Building07,
+    chart: BarChartSquare02,
+    pulse: Activity,
+    wallet: Wallet01,
+    bell: Bell01,
+    settings: Settings01,
+    search: SearchMd,
+    plus: Plus,
+    arrow: ArrowNarrowRight,
+    lock: Lock01,
+    eye: Eye,
+    logout: LogOut01,
   };
-  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+  const IconComponent = icons[name];
+  return <IconComponent className="icon" width={size} height={size} aria-hidden="true" />;
 }
 
 function Login({ onLogin }) {
@@ -98,12 +117,12 @@ function Login({ onLogin }) {
 
 function Overview({ selectNav }) {
   const [range, setRange] = useState('This month');
-  return <><div className="page-heading"><div><p className="eyebrow">Tuesday, November 3, 2026</p><h1>Good morning, Admin</h1><p className="muted">Here’s what’s happening with RESQ Nepal today.</p></div><button className="primary-button"><Icon name="plus" size={15} /> Create report</button></div>
+  return <div className="overview-page"><div className="page-heading"><div><p className="eyebrow">Tuesday, November 3, 2026</p><h1>Good morning, Admin</h1><p className="muted">Here’s what’s happening with RESQ Nepal today.</p></div><button className="primary-button"><Icon name="plus" size={15} /> Create report</button></div>
     <section className="stat-grid">{stats.map((stat) => <article className="stat-card" key={stat.label}><div className={`stat-icon ${stat.tone}`}><Icon name={stat.icon} size={19} /></div><div className="stat-copy"><span>{stat.label}</span><strong>{stat.value}</strong><small><b>↑ {stat.change}</b> <em>vs yesterday</em></small></div><button className="more-button" aria-label="More options">•••</button></article>)}</section>
     <section className="dashboard-grid"><article className="panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p className="muted">Your revenue performance over time</p></div><select value={range} onChange={(event) => setRange(event.target.value)}><option>This month</option><option>Last month</option><option>This year</option></select></div><div className="revenue-total"><strong>NPR 2,486,420</strong><span>↑ 18.4%</span></div><div className="chart"><div className="chart-y"><span>250k</span><span>200k</span><span>150k</span><span>100k</span><span>50k</span><span>0</span></div><div className="chart-area"><div className="chart-gridlines">{[1, 2, 3, 4, 5].map((line) => <i key={line} />)}</div><svg viewBox="0 0 600 220" preserveAspectRatio="none"><defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#e53935" stopOpacity=".22" /><stop offset="100%" stopColor="#e53935" stopOpacity="0" /></linearGradient></defs><path d="M0 176 C45 163 47 153 91 159 S137 118 182 128 S220 90 273 105 S320 68 364 82 S420 43 455 62 S505 35 545 52 S574 19 600 25 L600 220 L0 220 Z" fill="url(#area)" /><path d="M0 176 C45 163 47 153 91 159 S137 118 182 128 S220 90 273 105 S320 68 364 82 S420 43 455 62 S505 35 545 52 S574 19 600 25" fill="none" stroke="#e53935" strokeWidth="3" vectorEffect="non-scaling-stroke" /></svg><div className="chart-x">{['01', '03', '05', '07', '09', '11', '13', '15', '17', '19', '21', '23'].map((day) => <span key={day}>{day}</span>)}</div></div></div></article><article className="panel live-panel"><div className="panel-heading"><div><h2>Live operations</h2><p className="muted">Real-time fleet activity</p></div><span className="live-dot"><i /> Live</span></div><div className="live-map"><div className="map-grid" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" /><div className="map-pin pin-one">+</div><div className="map-pin pin-two">+</div><div className="map-pin pin-three">+</div><span className="map-label label-one">Thamel</span><span className="map-label label-two">Baneshwor</span><span className="map-label label-three">Patan</span></div><div className="live-stats"><div><span className="legend green" />Available <strong>84</strong></div><div><span className="legend orange" />On trip <strong>36</strong></div><div><span className="legend gray" />Offline <strong>128</strong></div></div></article></section>
     <section className="content-grid"><article className="panel approvals-panel"><div className="panel-heading"><div><h2>Pending driver approvals</h2><p className="muted">Review and verify new drivers</p></div><button className="text-button" onClick={() => selectNav('Drivers')}>View all <Icon name="arrow" size={13} /></button></div><div className="approval-list">{approvals.map((approval) => <div className="approval-row" key={approval.name}><div className={`avatar avatar-${approval.color}`}>{approval.initials}</div><div className="approval-copy"><strong>{approval.name}</strong><span>{approval.vehicle}</span></div><time>{approval.time}</time><button className="review-button" onClick={() => selectNav('Drivers')}>Review</button></div>)}</div><div className="approval-footer"><span><b>12</b> drivers waiting for approval</span><button className="text-button" onClick={() => selectNav('Drivers')}>Manage approvals <Icon name="arrow" size={13} /></button></div></article><article className="panel alert-panel"><div className="panel-heading"><div><h2>Action required</h2><p className="muted">Items that need your attention</p></div><span className="alert-count">5</span></div><div className="alert-list"><button><span className="alert-icon alert-red">!</span><span><strong>3 fraud alerts</strong><small>Requires investigation</small></span><b>›</b></button><button><span className="alert-icon alert-yellow">▣</span><span><strong>2 expired documents</strong><small>Driver documents need renewal</small></span><b>›</b></button><button><span className="alert-icon alert-blue">☷</span><span><strong>8 negative reviews</strong><small>Below 3-star rating</small></span><b>›</b></button></div><button className="outline-button" onClick={() => selectNav('Analytics')}>View all alerts</button></article></section>
     <RidesPanel selectNav={selectNav} />;
-  </>;
+  </div>;
 }
 
 function RidesPanel({ selectNav }) {
