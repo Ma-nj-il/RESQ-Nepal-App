@@ -316,6 +316,7 @@ export class AccessAdministrationController {
   }
 
   private idempotentResponse(result: IdempotentResult<JsonValue>, response: Response): unknown {
+    response.status(result.status);
     response.setHeader('Idempotency-Replayed', String(result.replayed));
     return successResponse(this.contexts, result.value);
   }
@@ -369,6 +370,7 @@ export class AuthorityGrantAdministrationController {
         allowsIntervention: body.allowsIntervention,
       },
     );
+    response.status(result.status);
     response.setHeader('Idempotency-Replayed', String(result.replayed));
     return successResponse(this.contexts, result.value);
   }
@@ -393,6 +395,7 @@ export class AuthorityGrantAdministrationController {
       expectedVersion(ifMatch),
       body.reason,
     );
+    response.status(result.status);
     response.setHeader('Idempotency-Replayed', String(result.replayed));
     return successResponse(this.contexts, result.value);
   }
@@ -415,6 +418,7 @@ export class AuthorityGrantAdministrationController {
       grantId,
       body.reason,
     );
+    response.status(result.status);
     response.setHeader('Idempotency-Replayed', String(result.replayed));
     return successResponse(this.contexts, result.value);
   }

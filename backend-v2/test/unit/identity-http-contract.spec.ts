@@ -22,9 +22,10 @@ const CONTEXT = new RequestContext({
   },
 });
 
-function response(): { value: Response; setHeader: jest.Mock } {
+function response(): { value: Response; setHeader: jest.Mock; status: jest.Mock } {
   const setHeader = jest.fn();
-  return { value: { setHeader } as unknown as Response, setHeader };
+  const status = jest.fn();
+  return { value: { setHeader, status } as unknown as Response, setHeader, status };
 }
 
 describe('identity HTTP command contracts', () => {
@@ -84,6 +85,7 @@ describe('identity HTTP command contracts', () => {
     );
 
     expect(output.setHeader).toHaveBeenCalledWith('Idempotency-Replayed', 'true');
+    expect(output.status).toHaveBeenCalledWith(201);
     expect(body).toMatchObject({ data: { id: 'role-id', version: 1 } });
   });
 });

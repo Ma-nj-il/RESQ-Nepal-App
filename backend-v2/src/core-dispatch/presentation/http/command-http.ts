@@ -38,6 +38,7 @@ export function idempotentResponse(
   result: IdempotentResult<JsonValue>,
   response: Response,
 ): unknown {
+  response.status(result.status);
   response.setHeader('Idempotency-Replayed', String(result.replayed));
   return successResponse(contexts, result.value);
 }
