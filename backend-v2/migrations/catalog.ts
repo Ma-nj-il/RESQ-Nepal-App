@@ -14,6 +14,10 @@ import {
   CreateIdentityAccess1793664000002,
   IDENTITY_ACCESS_SQL,
 } from './1793664000002-create-identity-access.js';
+import {
+  CreateProviderOperations1793664000003,
+  PROVIDER_OPERATIONS_SQL,
+} from './1793664000003-create-provider-operations.js';
 
 type MigrationConstructor = new () => MigrationInterface;
 
@@ -21,6 +25,7 @@ export const MIGRATIONS: readonly MigrationConstructor[] = Object.freeze([
   CreateGovernanceControl1793664000000,
   CreateGovernanceDelivery1793664000001,
   CreateIdentityAccess1793664000002,
+  CreateProviderOperations1793664000003,
 ]);
 
 function checksum(sql: string): string {
@@ -31,4 +36,5 @@ export const MIGRATION_CHECKSUMS: Readonly<Record<string, string>> = Object.free
   CreateGovernanceControl1793664000000: checksum(GOVERNANCE_CONTROL_SQL),
   CreateGovernanceDelivery1793664000001: checksum(GOVERNANCE_DELIVERY_SQL),
   CreateIdentityAccess1793664000002: checksum(IDENTITY_ACCESS_SQL),
+  CreateProviderOperations1793664000003: checksum(PROVIDER_OPERATIONS_SQL),
 });

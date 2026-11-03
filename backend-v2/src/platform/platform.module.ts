@@ -2,6 +2,7 @@ import { DynamicModule, MiddlewareConsumer, Module, type NestModule } from '@nes
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
+import { ProviderOperationsModule } from '../provider-operations/provider-operations.module.js';
 import { ConfigurationModule } from '../shared/infrastructure/config/configuration.module.js';
 import type { RuntimeRole } from '../shared/infrastructure/config/application-config.js';
 import { ContextModule } from '../shared/infrastructure/context/context.module.js';
@@ -31,7 +32,7 @@ export class PlatformModule implements NestModule {
         ConfigurationModule.forRole(role),
         ContextModule,
         CoreInfrastructureModule,
-        ...(role === 'api' ? [IdentityAccessModule] : []),
+        ...(role === 'api' ? [IdentityAccessModule, ProviderOperationsModule] : []),
       ],
       controllers: role === 'api' ? [HealthController, MetricsController] : [],
       providers: [RequestContextMiddleware, HealthService, RuntimeProbeServer, ...apiProviders],

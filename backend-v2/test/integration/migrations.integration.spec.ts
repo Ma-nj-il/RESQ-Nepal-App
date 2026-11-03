@@ -103,7 +103,7 @@ describeIntegration('forward-only governance migrations', () => {
     const migrationCount = await client.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM public.schema_migrations',
     );
-    expect(migrationCount.rows[0]?.count).toBe('3');
+    expect(migrationCount.rows[0]?.count).toBe('4');
     const run = await client.query<{ result: string; checksums: string }>(
       `SELECT result, jsonb_typeof(migration_checksums) AS checksums
        FROM governance.schema_migration_runs`,
@@ -234,6 +234,78 @@ describeIntegration('forward-only governance migrations', () => {
         'SELECT count(*)::text AS count FROM tenancy.provider_organizations',
       ),
     ).toMatchObject({ rows: [{ count: '0' }] });
+    await application.end();
+  });
+
+  it('isolates provider fleet rows by tenant and facility scope', async () => {
+    const database = await createDatabase('resq_provider_rls');
+    const config = integrationConfig(database, 'NONE');
+    await runMigrations(config);
+
+    const owner = new Client({ connectionString: config.dependencies.database.migrationUrl });
+    await owner.connect();
+    const actor = '018f0000-0000-7000-8000-000000000351';
+    const tenantA = '018f0000-0000-7000-8000-000000000352';
+    const tenantB = '018f0000-0000-7000-8000-000000000353';
+    const facilityA = '018f0000-0000-7000-8000-000000000354';
+    const facilityB = '018f0000-0000-7000-8000-000000000355';
+    const ambulanceA = '018f0000-0000-7000-8000-000000000356';
+    const ambulanceB = '018f0000-0000-7000-8000-000000000357';
+    await owner.query(
+      `INSERT INTO identity.users (id, status, token_version, created_at, updated_at)
+       VALUES ($1, 'ACTIVE', 1, now(), now())`,
+      [actor],
+    );
+    await owner.query(
+      `INSERT INTO tenancy.provider_organizations
+         (id, legal_name, display_name, operating_status, created_at, updated_at)
+       VALUES ($1, 'Tenant A Legal', 'Tenant A', 'ACTIVE', now(), now()),
+              ($2, 'Tenant B Legal', 'Tenant B', 'ACTIVE', now(), now())`,
+      [tenantA, tenantB],
+    );
+    await owner.query(
+      `INSERT INTO tenancy.facilities
+         (id, tenant_id, geographic_unit_id, name, facility_type, operating_status,
+          created_at, updated_at)
+       VALUES
+         ($1, $2, '019a45f0-0000-7000-8000-000000000103', 'Facility A', 'BASE', 'ACTIVE', now(), now()),
+         ($3, $4, '019a45f0-0000-7000-8000-000000000104', 'Facility B', 'BASE', 'ACTIVE', now(), now())`,
+      [facilityA, tenantA, facilityB, tenantB],
+    );
+    await owner.query(
+      `INSERT INTO fleet.ambulances
+         (id, tenant_id, facility_id, registered_by_user_id, plate_number, category,
+          compliance_status, operational_status, gps_quality, readiness_status,
+          readiness_reasons, created_at, updated_at)
+       VALUES
+         ($1, $2, $3, $4, 'BA1CHA1000', 'BASIC', 'PENDING_REVIEW', 'OFFLINE',
+          'UNAVAILABLE', 'BLOCKED', ARRAY['COMPLIANCE_NOT_APPROVED'], now(), now()),
+         ($5, $6, $7, $4, 'GA1CHA1000', 'BASIC', 'PENDING_REVIEW', 'OFFLINE',
+          'UNAVAILABLE', 'BLOCKED', ARRAY['COMPLIANCE_NOT_APPROVED'], now(), now())`,
+      [ambulanceA, tenantA, facilityA, actor, ambulanceB, tenantB, facilityB],
+    );
+    await owner.end();
+
+    const appUrl = process.env['RESQ_DATABASE_URL'];
+    if (appUrl === undefined) throw new Error('RESQ_DATABASE_URL is required');
+    const application = new Client({ connectionString: withDatabase(appUrl, database) });
+    await application.connect();
+    await application.query('BEGIN');
+    await application.query("SELECT set_config('app.user_id', $1, true)", [actor]);
+    await application.query("SELECT set_config('app.tenant_id', $1, true)", [tenantA]);
+    await application.query("SELECT set_config('app.access_scope_type', 'FACILITY_SET', true)");
+    await application.query("SELECT set_config('app.facility_scope', $1, true)", [
+      JSON.stringify([facilityA]),
+    ]);
+    expect(
+      await application.query<{ id: string }>('SELECT id::text FROM fleet.ambulances ORDER BY id'),
+    ).toMatchObject({ rows: [{ id: ambulanceA }] });
+    expect(
+      await application.query<{ id: string }>(
+        'SELECT id::text FROM tenancy.facilities ORDER BY id',
+      ),
+    ).toMatchObject({ rows: [{ id: facilityA }] });
+    await application.query('ROLLBACK');
     await application.end();
   });
 

@@ -1,0 +1,219 @@
+{
+  "info": {
+    "_postman_id": "9182933e-5136-4a27-94bf-a6c7923523ba",
+    "name": "RESQ backend v2 - provider operations",
+    "description": "Phase 4 local contracts. The document request verifies that unconfigured storage fails closed; never use the synthetic OTP outside local development.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "challengeId", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "applicationId", "value": "" },
+    { "key": "applicationVersion", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Request synthetic local OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+9779800000002\",\n  \"purpose\": \"REGISTRATION_OR_LOGIN\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-challenges",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "otp-challenges"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('accepts the challenge', function () { pm.response.to.have.status(202); });",
+              "const body = pm.response.json();",
+              "pm.expect(JSON.stringify(body)).not.to.include('424242');",
+              "pm.collectionVariables.set('challengeId', body.data.challengeId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create local mobile session",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"otp\": \"424242\",\n  \"clientType\": \"MOBILE\",\n  \"deviceLabel\": \"Phase 4 Newman device\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp-verifications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "otp-verifications"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('issues an AAL1 session', function () { pm.response.to.have.status(201); });",
+              "pm.collectionVariables.set('accessToken', pm.response.json().data.accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create provider application draft",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "phase4-provider-create-0001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"legalName\": \"Phase 4 Contract Ambulance Services Pvt Ltd\",\n  \"displayName\": \"Phase 4 Contract Ambulance\",\n  \"registrationNumber\": \"POSTMAN-PHASE4-001\",\n  \"geographicUnitId\": \"019a45f0-0000-7000-8000-000000000103\",\n  \"facilityName\": \"Phase 4 Contract Base\",\n  \"facilityType\": \"AMBULANCE_BASE\",\n  \"publicPhone\": \"+9779800000002\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/provider-applications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "provider-applications"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('creates or replays one draft', function () { pm.response.to.have.status(201); });",
+              "const data = pm.response.json().data;",
+              "pm.expect(data.status).to.equal('DRAFT');",
+              "pm.collectionVariables.set('applicationId', data.id);",
+              "pm.collectionVariables.set('applicationVersion', data.version);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Submit provider application",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "If-Match", "value": "\"{{applicationVersion}}\"" },
+          { "key": "Idempotency-Key", "value": "phase4-provider-submit-0001" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/provider-applications/{{applicationId}}/submission",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "provider-applications", "{{applicationId}}", "submission"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('submits exactly once', function () { pm.response.to.have.status(200); });",
+              "const data = pm.response.json().data;",
+              "pm.expect(data.status).to.equal('SUBMITTED');",
+              "pm.collectionVariables.set('applicationVersion', data.version);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read own submitted application",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/provider-applications/{{applicationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "provider-applications", "{{applicationId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns only the scoped application', function () { pm.response.to.have.status(200); });",
+              "pm.expect(pm.response.json().data.status).to.equal('SUBMITTED');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deny authority queue without an authority grant",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/authority/provider-applications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "authority", "provider-applications"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('fails closed', function () { pm.response.to.have.status(403); });",
+              "pm.expect(pm.response.json().error.code).to.equal('ACCESS.PERMISSION_DENIED');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Unconfigured private storage fails closed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "phase4-document-upload-0001" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"subjectType\": \"PROVIDER_APPLICATION\",\n  \"subjectId\": \"{{applicationId}}\",\n  \"documentType\": \"COMPANY_REGISTRATION\",\n  \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n  \"sizeBytes\": 128,\n  \"mimeType\": \"application/pdf\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/uploads",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "uploads"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns service unavailable rather than fake success', function () { pm.response.to.have.status(503); });",
+              "pm.expect(pm.response.json().error.code).to.equal('DOCUMENT.STORAGE_UNAVAILABLE');"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

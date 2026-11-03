@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 
 import { AUDIT_WRITER } from '../application/audit/audit-writer.js';
+import { DELIVERY_WRITER } from '../application/messaging/delivery-writer.js';
 import { UNIT_OF_WORK } from '../application/persistence/unit-of-work.js';
 import {
   IDEMPOTENCY_EXECUTOR,
@@ -11,6 +12,7 @@ import {
 import { CLOCK } from '../domain/clock.js';
 import { ID_GENERATOR } from '../domain/id-generator.js';
 import { PostgresAuditWriter } from './audit/postgres-audit-writer.js';
+import { PostgresDeliveryWriter } from './messaging/postgres-delivery-writer.js';
 import { KafkaService } from './dependencies/kafka.service.js';
 import { RedisService } from './dependencies/redis.service.js';
 import { UuidV7Generator } from './identifiers/uuid-v7-generator.js';
@@ -47,6 +49,8 @@ import { SystemClock } from './time/system-clock.js';
     },
     PostgresAuditWriter,
     { provide: AUDIT_WRITER, useExisting: PostgresAuditWriter },
+    PostgresDeliveryWriter,
+    { provide: DELIVERY_WRITER, useExisting: PostgresDeliveryWriter },
     RedisService,
     KafkaService,
     MetricsService,
@@ -60,6 +64,7 @@ import { SystemClock } from './time/system-clock.js';
     UNIT_OF_WORK,
     IDEMPOTENCY_EXECUTOR,
     AUDIT_WRITER,
+    DELIVERY_WRITER,
     RedisService,
     KafkaService,
     MetricsService,

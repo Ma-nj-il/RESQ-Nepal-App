@@ -1,9 +1,9 @@
 # RESQ Nepal backend v2
 
-This directory contains the isolated NestJS/TypeScript rebuild. The platform foundation and the
-Phase 3 identity, tenancy, RBAC, session, MFA, audit, and idempotency implementation are present.
-No legacy route or production workflow has been cut over. Gate 2 and Gate 3 remain **HOLD** until the
-blocked infrastructure-backed and independent review evidence is approved.
+This directory contains the isolated NestJS/TypeScript rebuild. The platform foundation, Phase 3
+identity/access slice, and Phase 4 provider registry, workforce, fleet, and private-document slice
+are present. No legacy route or production workflow has been cut over. Gates 2–4 remain **HOLD**
+until the blocked infrastructure-backed, provider, and independent review evidence is approved.
 
 ## Runtime roles
 
@@ -15,7 +15,7 @@ blocked infrastructure-backed and independent review evidence is approved.
 | Migration job | `apps/migration/main.ts`    | exits after migrations |
 
 The worker and relay currently provide lifecycle, dependency readiness, and observability plumbing;
-they do not yet process a business message.
+durable document/compliance job intents are written, but no business processor is enabled yet.
 
 ## Implemented API surface
 
@@ -26,6 +26,13 @@ they do not yet process a business message.
 - tenant permission, role, role-profile, and time-bounded assignment administration;
 - province/platform authority grant creation, independent approval, revocation, and bounded scope;
 - PostgreSQL RLS for identity, tenant, assignment, authority, audit, and idempotency data.
+- provider application review with province recommendation, separate platform approval, and atomic
+  organization/facility activation;
+- driver affiliation/verification, independent account/duty dimensions, ambulance compliance,
+  equipment, maintenance, and computed readiness;
+- private document upload/finalization/scan/review/download/expiry contracts with storage and malware
+  providers deliberately unavailable until approved adapters are configured;
+- tenant and authority provider/facility/workforce/fleet projections with facility-exact RLS.
 
 Public OTP accepts only `REGISTRATION_OR_LOGIN`. Local development uses the synthetic fixed code
 configured in `docker/local.env`; production rejects a fixed code and delivery remains fail-closed
@@ -47,6 +54,7 @@ In another terminal:
 ```bash
 npm run postman:health
 npm run postman:identity
+npm run postman:provider-operations
 npm run format:check
 npm run lint
 npm run typecheck
@@ -74,6 +82,6 @@ cache/queue URLs, pretty logs, and a migration without an expected prior version
 - Architecture is enforced by targeted ESLint rules and `test/unit/architecture.spec.ts`.
 - TypeORM synchronization and automatic migration-on-start are disabled in every runtime.
 
-See `docs/phase-2-status.md`, `docs/phase-3-status.md`, and `docs/threat-model.md` for gate evidence,
-blocked checks, and known limitations. Root authority creation is restricted to the reviewed process
-in `docs/runbooks/authority-root-bootstrap.md`.
+See `docs/phase-2-status.md`, `docs/phase-3-status.md`, `docs/phase-4-status.md`, and
+`docs/threat-model.md` for gate evidence, blocked checks, and known limitations. Root authority
+creation is restricted to the reviewed process in `docs/runbooks/authority-root-bootstrap.md`.

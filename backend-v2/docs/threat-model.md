@@ -1,6 +1,6 @@
-# Phase 2–3 foundation and identity/access threat model
+# Phase 2–4 foundation, identity/access, and provider operations threat model
 
-- **Scope:** `backend-v2/` foundation plus Phase 3 identity, tenancy, RBAC, and authority access
+- **Scope:** `backend-v2/` foundation plus Phase 3 identity/access and Phase 4 provider operations
 - **Method:** STRIDE-informed data-flow and abuse-case review
 - **Review state:** implementation review complete; independent Gate 2 security/operations approval pending
 - **Last updated:** 2026-11-03
@@ -9,8 +9,9 @@
 
 Phase 2 creates runtime, persistence, messaging, observability, migration, and delivery foundations.
 Phase 3 adds authentication, sessions, MFA, tenant/facility context resolution, custom RBAC,
-authority grants, audit, and idempotency endpoints. It does **not** implement a provider callback,
-object-storage operation, core dispatch workflow, production OTP provider, or legacy cutover.
+authority grants, audit, and idempotency endpoints. Phase 4 adds provider, workforce, fleet, and
+private-document contracts. Approved production storage/scanner adapters, core dispatch, provider
+callbacks, production OTP, and legacy cutover remain unavailable.
 
 The production boundary assumes:
 
@@ -134,3 +135,26 @@ tracked in `phase-3-status.md`.
 - Authority issuance and approval are performed by distinct users; neither may be the subject.
 - An application runtime cannot create a parentless authority grant.
 - RLS is forced and database claims are transaction-local.
+
+## 7. Phase 4 threat extension
+
+| ID    | Threat / abuse case                                                                          | Implemented controls                                                                                                                                                                                                    | Residual risk / required evidence                                                                                                    |
+| ----- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| TM-31 | An applicant reviews or approves their own provider, driver, ambulance, or document evidence | Service checks, database-bound caller/grant checks, append-only reviews, province recommendation plus separate platform final authority, and optimistic versions                                                        | Independent policy-owner review and supported-PostgreSQL race tests remain required                                                  |
+| TM-32 | A province grant for one facility exposes another province or tenant                         | Facility-geography and driver-affiliation authority functions evaluate the exact resource; provider, fleet, document, and projection tables force RLS                                                                   | Docker-backed cross-geography and multi-facility provider tests plus production-role review remain blocked                           |
+| TM-33 | A malicious upload bypasses private storage, size/hash/type checks, or malware quarantine    | Private object keys, bounded MIME/size allowlist, declared and provider metadata comparison, immutable hash, asynchronous scan states, quarantine, short grants, and audited content access                             | Storage/scanner provider, bucket policy, encryption/KMS, content-disposition, malware corpus, and egress tests are external blockers |
+| TM-34 | Expired or incomplete evidence leaves a driver or ambulance dispatchable                     | Eligibility/readiness are derived from independent compliance, document, equipment, maintenance, operational, and assignment dimensions; review/expiry emits durable recalculation intent                               | Worker processing, expiry race tests on supported PostgreSQL, retention policy, and operations acceptance remain Gate 4 blockers     |
+| TM-35 | Provider activation creates partial tenant or privilege state                                | Final approval is one security-definer transaction with caller/grant/level/version/self-review checks and creates organization, facility, membership, assignment, review, status, audit, and outbox evidence atomically | Exact production role/function ownership and rollback/failure injection require independent review                                   |
+| TM-36 | A provider outage is represented as successful upload or clean evidence                      | Production-default storage and scanner adapters fail closed with retryable 503 errors; no synthetic clean result or public object fallback exists                                                                       | Approved providers and truthful sandbox/live canaries are required before enabling uploads                                           |
+
+### Phase 4 invariants
+
+- Provider final approval requires platform authority and cannot be performed by the applicant or the
+  reviewer who recorded the province recommendation.
+- Authority reads are constrained by the exact facility geography or active driver affiliation; a
+  matching tenant alone is not sufficient for business projections.
+- Document bytes never transit the API, object keys remain private, and content grants are short-lived
+  and audited.
+- A document cannot be reviewed until upload metadata matches and malware scanning reports clean.
+- Expired, rejected, quarantined, missing, or incomplete evidence never counts toward readiness.
+- Storage and scanner absence is a visible failure, not a mock success.
