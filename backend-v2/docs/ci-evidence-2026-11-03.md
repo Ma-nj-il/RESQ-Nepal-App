@@ -21,6 +21,22 @@ production client, traffic and source-data migration remains **0%**.
   **PASS**. Identity Newman passes authenticated-profile checks, confirming the context correction,
   then fails refresh with HTTP 500. Provider and dispatch/product collections were skipped. Quality
   stopped on Phase 6 documentation formatting, now corrected locally.
+- [Backend run 41682049144](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41682049144),
+  commit `3bf7cdf4aec2fa7951f1d972fc3b96fa4d01ff90`: quality and image **PASS**. Four new
+  authentication persistence cases pass, including committed rotation, family/session revocation,
+  OTP/MFA counts and one-time TOTP steps. The provider case fails at PostgreSQL parameter inference
+  (`42P08`), before Newman. This confirms the returning-row fix independently of HTTP scripts.
+- [Backend run 41683243167](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41683243167),
+  commit `d08effc7934b1eb7e369d4274d80e80259001c0c`: quality and image **PASS**; all three
+  integration suites / **28 tests**, including all 184 static SQL preparations, **PASS**. Health and
+  all 16 identity Newman requests pass, including rotation/logout/reuse invalidation. Provider
+  submission returns HTTP 201 instead of its recorded 200; provider Newman fails there and
+  dispatch/product Newman is skipped.
+- [Backend run 41684428128](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41684428128),
+  commit `6e9b7dcb3263e6e7b869da883c215aea1f7d97e3`: **all jobs PASS**. Quality includes 25
+  unit suites / 135 tests. All three integration suites / 28 tests, all four Newman collections
+  (health, identity, provider, dispatch/product), hardened runtime smoke, image/SBOM and configured
+  HIGH/CRITICAL image scanning pass. This is the first fully passing backend run after the HTTP fixes.
 
 The first successful scanner execution at `b05fe8d` exposed six HIGH findings in Node's bundled
 npm (`undici` 6.28.0 and `brace-expansion` 5.0.9). All runtime entrypoints execute compiled Node code.
@@ -49,9 +65,27 @@ The application dependency lockfile was not downgraded or given vulnerability ex
   from the active transaction's query runner. Installed-driver contract tests cover zero/one/many rows;
   five additional PostgreSQL integration cases cover rotation/family revocation, session isolation and
   counts, persisted OTP/MFA attempts, one-time TOTP steps, and stale/foreign provider transitions.
+- PostgreSQL parameter inference also exposed status parameters used as both varchar assignments
+  and text comparisons in provider/driver transitions, plus maintenance status/completion expressions.
+  Explicit varchar/timestamptz casts resolve those statements. A read-only PREPARE check covers all
+  complete static query arguments against the migrated schema; all **184** pass locally with embedded
+  PostgreSQL. CI runs the same check on its real PostgreSQL instance. Interpolated statements still
+  require operation-specific execution coverage.
+- Identity Newman now checks successor access, immediate access/refresh invalidation after logout,
+  consumed-token reuse, and revocation of both successor refresh and access credentials.
+- Provider, dispatch and access-administration response handlers now propagate the recorded command
+  status. Installed Nest/Express HTTP regression tests reproduced five transition routes incorrectly
+  returning 201, then passed for initial and replayed responses after the correction; creation remains 201. Seven real-controller HTTP cases cover the affected response paths with mocked application services.
 
-Current local backend unit checks pass: **24 suites / 128 tests**. The returning-row corrections and
-five new integration cases require the next infrastructure-backed run; full Newman passage is pending.
+The HTTP status correction is verified remotely at `6e9b7dcb3263e6e7b869da883c215aea1f7d97e3`.
+The subsequent encrypted rehearsal-ledger implementation adds local persistence, authenticated
+hash-chain/anchor verification, atomic concurrent append, historical key versions, lost-receipt
+recovery and in-memory comparison of encrypted snapshots. Its synthetic checks do not establish
+power-loss durability, managed KMS readiness or full-volume migration acceptance.
+
+Current local checks pass: backend lint, typecheck, build, formatting and **26 suites / 143 tests**,
+plus root mobile lint and typecheck. Eight new encrypted-ledger cases include the real CLI and
+filesystem adapter with synthetic manifests and ephemeral keys. The ledger awaits its own CI run.
 
 ## Acceptance still required
 

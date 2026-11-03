@@ -11,7 +11,7 @@ client/traffic/data migration is **0%**.
 | 4     | Registry/workforce/fleet/documents/readiness and scoped administrative APIs                                     | HOLD: providers, persona/segregation, object/expiry/race acceptance                                                   |
 | 5     | Dispatch/trips/cancellation/tracking/safety, jobs/events and recovery                                           | HOLD: real races/outages/capacity/SOS simulation; realtime delivery remains open                                      |
 | 6     | Preferences, support, ratings, cash/reconciliation, notification inbox, mobile API/session, secure command recovery and mutation preview | HOLD: complete mobile/portal production flows, provider integrations, device/accessibility/offline/persona acceptance |
-| 7     | Strict offline metadata reconciliation, deterministic IDs, source accounting and independent-rerun comparison | HOLD: actual extracts/mappings/transforms, durable encrypted ledger, repeated full-volume migrations, client releases |
+| 7     | Strict metadata reconciliation, deterministic IDs, encrypted checkpoint ledger and independent-rerun comparison | HOLD: actual extracts/mappings/transforms, managed KMS/transaction-bound execution ledger, full-volume migrations, client releases |
 | 8     | Fail-closed readiness evaluator, one-writer/full-drain checks, controlled-cutover/stabilization runbook         | HOLD: actual authorized execution and stabilization                                                                   |
 
 ## Current implementation entry points
@@ -27,10 +27,9 @@ The available code work does not make every phase complete. External inputs rema
 the phase status documents identify them. Local synthetic checks must not be used as production
 acceptance evidence. Git publication is code delivery, not a deployment or cutover.
 
-Remote CI at `6e193d6` passes mobile validation/128 tests/exports, backend quality, all PostgreSQL
-migration/dispatch/product/RLS and dependency integration suites, and Newman health. Production image,
-hardened smoke, SBOM and HIGH/CRITICAL Trivy scan pass after removing build-only package managers from
-the runtime. At `e2a744b`, identity Newman confirms authenticated-context propagation, then encounters
-a refresh HTTP 500. The cause is incorrect handling of TypeORM UPDATE results; structured-returning
-corrections and five new database integration cases await CI. Local backend unit validation passes
-24 suites / 128 tests. See the CI evidence for exact run outcomes. Gates remain HOLD.
+Remote mobile CI at `6e193d6` passes validation/128 tests/exports. Backend CI at `6e9b7dc` passes
+all jobs: quality/135 unit tests, three PostgreSQL/dependency integration suites / 28 tests, all four
+Newman collections (health, identity, provider and dispatch/product), production image, hardened
+smoke, SBOM and configured HIGH/CRITICAL Trivy scan. The encrypted checkpoint ledger adds local
+persistence/recovery and encrypted rerun comparison; managed storage/KMS and source-specific
+execution still need implementation and acceptance. See the CI evidence for exact outcomes. Gates remain HOLD.

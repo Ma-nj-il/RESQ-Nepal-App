@@ -64,21 +64,24 @@ The report includes both exact input hashes and aggregate failure counts, withou
 `REPEATABLE` describes the supplied metadata only. Independent captures and measured rerun execution
 are required evidence; relabeling a manifest with another run ID does not establish a real second run.
 This comparison is for identical inputs, not final-delta processing or approved transform upgrades.
-The encrypted durable ledger and source-specific execution repositories remain pending.
+An encrypted local checkpoint ledger now persists these manifests and compares encrypted snapshots
+without writing decrypted maps. See [encrypted rehearsal ledger](encrypted-rehearsal-ledger.md) for
+CLI commands, trusted-anchor recovery, key rotation and limits. Source-specific execution repositories,
+transaction-bound migration accounting and managed KMS integration remain pending.
 
 ## Remaining inputs and execution
 
-| Required work                                                                        | Accountable function   | Current blocker                                                           |
-| ------------------------------------------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------- |
-| Read-only source discovery; encrypted consistent exports and object manifests        | Data/platform          | Approved source access and snapshots unavailable                          |
-| Canonical tenant/facility/geography and identity outcomes                            | Product/data/security  | Reviewed mappings and collision decisions unavailable                     |
-| Source-specific deterministic transforms and restricted staging/bulk repositories    | Data/engineering       | Actual source schemas and approved field/status mappings unavailable      |
-| Encrypted durable migration ledger/legacy-ID maps and rerun comparison               | Data/platform/security | Approved storage/KMS and target staging environment unavailable           |
-| Repeated full-volume loads with duration/lock/storage measurements                   | Data/platform          | PostgreSQL/PostGIS staging and representative volume unavailable          |
-| Target lifecycle, FK/RLS, assignment, exact finance, object/privacy and event checks | Data/security/finance  | Post-load environment and independent acceptance unavailable              |
-| Shadow comparisons and capability/cohort writer registry                             | Operations/engineering | Proven live sources/cohorts unavailable                                   |
-| Minimum-version mobile release and all three portal persona releases                 | Mobile/portal/product  | Native/device acceptance, portal sources and release evidence unavailable |
-| Restore/DR, support/training and communications rehearsal                            | Operations/product     | Environment, operators and approved run window unavailable                |
+| Required work                                                                        | Accountable function   | Current blocker                                                                |
+| ------------------------------------------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------ |
+| Read-only source discovery; encrypted consistent exports and object manifests        | Data/platform          | Approved source access and snapshots unavailable                               |
+| Canonical tenant/facility/geography and identity outcomes                            | Product/data/security  | Reviewed mappings and collision decisions unavailable                          |
+| Source-specific deterministic transforms and restricted staging/bulk repositories    | Data/engineering       | Actual source schemas and approved field/status mappings unavailable           |
+| Operationalize encrypted checkpoints and transaction-bound migration ledger          | Data/platform/security | Local adapter implemented; approved storage/KMS and target staging unavailable |
+| Repeated full-volume loads with duration/lock/storage measurements                   | Data/platform          | PostgreSQL/PostGIS staging and representative volume unavailable               |
+| Target lifecycle, FK/RLS, assignment, exact finance, object/privacy and event checks | Data/security/finance  | Post-load environment and independent acceptance unavailable                   |
+| Shadow comparisons and capability/cohort writer registry                             | Operations/engineering | Proven live sources/cohorts unavailable                                        |
+| Minimum-version mobile release and all three portal persona releases                 | Mobile/portal/product  | Native/device acceptance, portal sources and release evidence unavailable      |
+| Restore/DR, support/training and communications rehearsal                            | Operations/product     | Environment, operators and approved run window unavailable                     |
 
 Synthetic tests validate the tool's behavior and rejection paths. They are not a migration rehearsal
 against real production volume. Gate 7 remains HOLD until all roadmap section 7 invariants and owners'
@@ -91,3 +94,5 @@ acceptance records exist. See [Phase 8 preparation](phase-8-status.md).
 - Output permissions 0600, exact input SHA-256, and refusal to overwrite an earlier report: PASS.
 - Reconciliation/readiness tests cover drift, exclusions, exact money and independently invalid runs;
   see the current CI evidence for suite totals.
+- Encrypted ledger tests cover filesystem persistence/concurrency, tamper/rollback rejection,
+  historical-key verification, interrupted-publication states, lost receipts and encrypted comparison.

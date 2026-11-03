@@ -34,6 +34,7 @@
     "migration:run:local": "node --env-file=docker/local.env --import tsx apps/migration/main.ts",
     "migration:run:compiled": "node dist/apps/migration/main.js",
     "readiness": "node --import tsx apps/migration-readiness/main.ts",
+    "migration:ledger": "node --import tsx apps/migration-readiness/ledger-main.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
