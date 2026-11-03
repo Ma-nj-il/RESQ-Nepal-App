@@ -72,6 +72,7 @@ before shipping. See [`docs/maps-setup.md`](docs/maps-setup.md).
 | Command | What it does |
 | --- | --- |
 | `npx expo start` | Dev server + QR for Expo Go |
+| `npm run admin` | Start the responsive RESQ Nepal admin panel at `http://localhost:4173` |
 | `npx expo start --ios` / `--android` | Open in a simulator/emulator |
 | `npx tsc --noEmit` | Typecheck (must be 0 errors) |
 | `npx expo lint` | Lint (must exit 0) |

@@ -51,7 +51,8 @@
           "cameraPermission": "RESQ Nepal uses the camera only when you take a profile picture or photograph an identity document.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }
