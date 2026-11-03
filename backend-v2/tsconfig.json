@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": ["node", "jest"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["apps/**/*.ts", "migrations/**/*.ts", "src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["dist", "coverage", "node_modules"]
+}

@@ -1,0 +1,6 @@
+dist
+coverage
+node_modules
+artifacts
+package-lock.json
+postman/*.json

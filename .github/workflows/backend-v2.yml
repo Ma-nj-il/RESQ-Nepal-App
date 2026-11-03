@@ -1,0 +1,165 @@
+name: Backend v2 foundation
+
+on:
+  pull_request:
+    paths:
+      - "backend-v2/**"
+      - "docs/backend-rebuild/**"
+      - ".github/workflows/backend-v2.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend-v2/**"
+      - "docs/backend-rebuild/**"
+      - ".github/workflows/backend-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-v2-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend-v2
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: backend-v2/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run architecture
+      - run: npm run test:unit
+      - run: npm run build
+      - name: Block high or critical production dependency advisories
+        run: npm run security:audit
+      - name: Capture the complete dependency audit for review
+        if: always()
+        run: |
+          mkdir -p artifacts
+          npm audit --json > artifacts/npm-audit-full.json || true
+      - name: Upload dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-v2-npm-audit
+          path: backend-v2/artifacts/npm-audit-full.json
+          if-no-files-found: error
+          retention-days: 14
+
+  integration:
+    name: Migrations, dependencies, and Newman
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend-v2
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: backend-v2/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Start real dependencies
+        run: docker compose up --detach --wait postgres redis-cache redis-queue kafka object-storage
+      - name: Apply baseline with an explicit empty-database precondition
+        env:
+          RESQ_MIGRATION_EXPECTED_CURRENT: NONE
+        run: npm run migration:run:local
+      - name: Run zero, prior-version, RLS, and dependency integration suites
+        env:
+          RUN_INTEGRATION: "1"
+        run: >-
+          node --env-file=docker/local.env --experimental-vm-modules
+          ./node_modules/jest/bin/jest.js --selectProjects integration --runInBand
+      - name: Start API for black-box checks
+        run: |
+          npm run dev:api:local > artifacts-api.log 2>&1 &
+          echo "$!" > artifacts-api.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/health/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat artifacts-api.log
+          exit 1
+      - name: Run Postman health collection with Newman
+        run: npm run postman:health
+      - name: Upload API log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-v2-api-log
+          path: backend-v2/artifacts-api.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop API and dependency stack
+        if: always()
+        run: |
+          if [[ -f artifacts-api.pid ]]; then
+            kill "$(cat artifacts-api.pid)" 2>/dev/null || true
+          fi
+          docker compose down --volumes --remove-orphans
+
+  image:
+    name: Production image, SBOM, and scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the production target
+        run: docker build --pull --target runtime --tag resq-backend-v2:${{ github.sha }} backend-v2
+      - name: Smoke-test the hardened production image
+        run: |
+          docker run --detach --name resq-backend-v2-smoke \
+            --read-only \
+            --tmpfs /tmp:size=16m,noexec,nosuid \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --publish 127.0.0.1:3000:3000 \
+            --env NODE_ENV=test \
+            --env RESQ_LOG_LEVEL=fatal \
+            resq-backend-v2:${{ github.sha }}
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs resq-backend-v2-smoke
+          exit 1
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: resq-backend-v2:${{ github.sha }}
+          format: spdx-json
+          output-file: backend-v2-sbom.spdx.json
+          artifact-name: backend-v2-sbom.spdx.json
+      - name: Block high or critical image findings
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: resq-backend-v2:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: Stop image smoke test
+        if: always()
+        run: docker rm --force resq-backend-v2-smoke 2>/dev/null || true

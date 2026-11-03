@@ -1,0 +1,176 @@
+{
+  "info": {
+    "_postman_id": "27f02a45-dbaa-4aeb-ab2c-36c4cba00377",
+    "name": "RESQ backend v2 - foundation health",
+    "description": "Gate 2 health, metrics, and public error-envelope checks. Contains no credentials or production data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Liveness",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health/live",
+          "host": ["{{baseUrl}}"],
+          "path": ["health", "live"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns HTTP 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('reports API liveness without dependency details', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('status', 'ok');",
+              "  pm.expect(body).to.have.property('role', 'api');",
+              "  pm.expect(body).to.have.property('checkedAt');",
+              "  pm.expect(body).not.to.have.property('checks');",
+              "});",
+              "pm.test('returns a request correlation header', function () {",
+              "  pm.expect(pm.response.headers.get('X-Request-Id')).to.match(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Startup",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health/startup",
+          "host": ["{{baseUrl}}"],
+          "path": ["health", "startup"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns HTTP 200 after bootstrap', function () { pm.response.to.have.status(200); });",
+              "pm.test('reports startup complete', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.include({ status: 'ok', role: 'api' });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Readiness",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health/ready",
+          "host": ["{{baseUrl}}"],
+          "path": ["health", "ready"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const expectedStatus = Number(pm.environment.get('expectedReadinessStatus') || 200);",
+              "pm.test('returns the expected readiness status', function () { pm.response.to.have.status(expectedStatus); });",
+              "pm.test('reports only bounded dependency names and states', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.role).to.equal('api');",
+              "  pm.expect(body.checks).to.be.an('array').with.lengthOf(2);",
+              "  if (expectedStatus === 200) {",
+              "    pm.expect(body.status).to.equal('ok');",
+              "    pm.expect(body.checks).to.deep.include({ name: 'postgresql', status: 'up' });",
+              "    pm.expect(body.checks).to.deep.include({ name: 'redis-cache', status: 'up' });",
+              "  } else {",
+              "    pm.expect(body.status).to.equal('unavailable');",
+              "    pm.expect(body.checks.some((check) => check.status === 'down')).to.equal(true);",
+              "  }",
+              "  pm.expect(JSON.stringify(body)).not.to.include('postgresql://');",
+              "  pm.expect(JSON.stringify(body)).not.to.include('redis://');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prometheus metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/metrics",
+          "host": ["{{baseUrl}}"],
+          "path": ["metrics"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns HTTP 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('returns Prometheus text without request identifiers', function () {",
+              "  pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain');",
+              "  pm.expect(pm.response.text()).to.include('resq_http_requests_total');",
+              "  pm.expect(pm.response.text()).not.to.match(/request[_-]?id/i);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stable not-found envelope",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Request-Id",
+            "value": "postman-foundation-request-0001",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/foundation-route-that-does-not-exist",
+          "host": ["{{baseUrl}}"],
+          "path": ["foundation-route-that-does-not-exist"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns HTTP 404', function () { pm.response.to.have.status(404); });",
+              "pm.test('returns the stable redacted error envelope', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.error).to.deep.equal({",
+              "    code: 'RESOURCE.NOT_FOUND',",
+              "    message: 'The requested resource was not found.',",
+              "    retryable: false",
+              "  });",
+              "  pm.expect(body.meta.requestId).to.equal('postman-foundation-request-0001');",
+              "  pm.expect(body).not.to.have.property('stack');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
