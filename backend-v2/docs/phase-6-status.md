@@ -27,7 +27,9 @@
   Product forms cover support creation/replies/messages, receipts and ratings. Dispatch forms cover
   quotes/consent/booking/cancellation, bounded histories and labelled tracking snapshots. Access-context
   metadata and enrolled-authenticator step-up are available. Intents retain body/key/version across
-  explicit retry, with a 23-hour replay ceiling; interrupted-process recovery remains open.
+  explicit retry, with a 23-hour replay ceiling. Secure named-command recovery now survives process
+  recreation through account/lane-scoped write-ahead SecureStore records; native durability acceptance
+  remains open.
   Native/live acceptance is pending; see
   [mobile API/session foundation](../../docs/backend-rebuild/mobile-api-foundation.md) for launch
   prerequisites and scope. Default app flows remain on Supabase.
@@ -67,7 +69,7 @@ ownership/planning declarations; new consumer services are not deployed by this 
 | Supported integration discovery            | 3 suites / 22 tests skipped behind `RUN_INTEGRATION`                                            |
 | Embedded SQL debugging                     | All six migrations and eight serialized product scenarios executed with temporary PGlite 0.5.15 |
 | Mobile lint and typecheck                  | PASS; backend project excluded from the root Expo checker                                       |
-| Mobile unit tests                          | PASS, 114 tests, including 58 backend API/session/product/command/native-auth cases             |
+| Mobile unit tests                          | PASS, 128 tests, including 72 backend API/session/product/command/native-auth cases             |
 | Expo config introspection                  | PASS, SecureStore Android backup references and no iOS Face ID permission                       |
 | Mobile development and release exports     | PASS, Android/iOS/web; release native Hermes bytecode generated                                 |
 | Expo dependency compatibility              | PASS; six mismatches aligned, SecureStore/DevClient/Crypto installed                            |
@@ -95,9 +97,13 @@ those checks; it does **not** establish multi-connection race behavior or equiva
 PostgreSQL/PostGIS image and role setup. The PostgreSQL cases are implemented in
 `test/integration/product-services.cases.ts` and use the isolated dispatch fixture.
 
-The Docker daemon again timed out after 15 seconds. Supported database integration, Kafka/Redis/
-BullMQ delivery, Newman, image/SBOM, and Trivy checks remain blocked. Earlier dependency-audit and
-Phase 5 evidence remain recorded in their dated status document.
+The local Docker daemon still times out. Remote CI at `b05fe8d` passes all PostgreSQL migration,
+dispatch/product/RLS and dependency integration suites, plus the health Newman collection. The
+dispatch/product Newman collection fails and is under diagnosis. Image build, hardened runtime smoke,
+SBOM and Trivy execution work; Trivy blocks six HIGH findings in the base image's bundled npm
+dependencies. The runtime-tooling removal requires a new remote scan. Mobile CI at `9117464` passes;
+local durable-recovery development/release exports also pass on all three platforms. These partial
+remote results supersede the earlier infrastructure-blocked status without passing Gate 6.
 
 The runtime tracking-unavailable threshold was aligned to the existing contract/tests: 120 seconds
 from capture time, replacing the inconsistent five-minute module constant.
@@ -106,7 +112,7 @@ from capture time, replacing the inconsistent five-minute module constant.
 
 1. EAS project/signing/device preparation and native/live preview acceptance; production screen
    integration, managed-context selection/password/MFA enrollment, realtime/offline behavior,
-   durable command recovery, and removal of direct Supabase mutations on approved cutover paths.
+   native acceptance of durable command recovery, and removal of direct Supabase mutations on approved cutover paths.
    The preview is opt-in and development-only; the production mobile data path has not migrated.
 2. Hospital, province, and platform portal adapters and persona acceptance. Portal sources are absent
    from this checkout.

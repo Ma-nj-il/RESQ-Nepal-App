@@ -15,6 +15,8 @@ remains 0%.
 | `requester.ts`                         | Self profile, preferences, ratings, receipts, support tickets/messages, notifications/read state                        |
 | `dispatch.ts`                          | Coverage/quote, booking/cancellation, assignment/timeline, trips/tracking snapshots and safety incident adapters        |
 | `commandIntent.ts`                     | Immutable body/key/version, single-flight presses, explicit retry, Retry-After and bounded replay lifetime              |
+| `durableCommands.ts` / `commandRegistry.ts` | Account-bound named commands, serialized recovery and token-free UI state |
+| `secureCommandVault.ts`                | Write-ahead SecureStore payloads, bounded chunks, integrity checks and crash-safe settlement |
 | `errors.ts`                            | Structured public errors without raw transport objects                                                                  |
 | `secureRefreshVault.ts`                | One versioned SecureStore record scoped to normalized API origin and environment                                        |
 | `authController.ts`                    | Token-free canonical auth state, six-digit OTP, matching active profile, logout/revocation lifecycle                    |
@@ -146,9 +148,26 @@ Reload the app after changing them; a production/release bundle cannot enable th
   Only a definitive initial 400/403/404/412/422 backend rejection or `409 REQUEST.STALE_VERSION`
   permits correction (refresh the resource first). A later rejection
   cannot erase an earlier ambiguous outcome. At 23 hours (within the backend's default 24-hour
-  retention), or on clock rollback, replay stops and requires reconciliation. These intents are
-  memory-only: app restart/sign-out loses them. Check server outcomes after interrupted sessions;
-  durable secure command recovery remains a production-readiness requirement.
+  retention), or on clock rollback, replay stops and requires reconciliation.
+- Preview forms now use module-owned `DurableCommands` controllers for account, product and dispatch
+  lanes. Each lane allows one unresolved intent per authenticated account. Payloads contain only
+  allowlisted domain fields and a named operation; URLs, headers, credentials and callbacks are excluded.
+  SecureStore keys bind origin, environment, user and lane. Large Unicode payloads use ASCII-escaped
+  chunks of at most 1 KiB (64 chunks maximum), with a SHA-256 digest bound to command identity and scope.
+  The manifest stays below 2 KiB, with a separate checksum covering its phase, ambiguity, retry
+  timing and payload identity before any cleanup/replay decision. All values use device-only,
+  unlocked-device Keychain accessibility.
+- A `PREPARING` marker precedes payload writes; a `PENDING` manifest commits the complete request.
+  Write-ahead ambiguity is acknowledged before HTTP dispatch. A `SETTLED` marker precedes deletion,
+  so interrupted cleanup cannot resend confirmed work. Read/write failures block dispatch; malformed
+  or incomplete pending records block replacement. A new process cleans only unsent preparation or
+  settled payloads, never a pending request. Restoration itself never sends a mutation.
+- Sign-out hides account data and retains unresolved secure intents for the same account's next verified
+  sign-in. An account/session switch during persistence prevents dispatch under the successor identity.
+  Explicit retries preserve original body/key/version and persisted `Retry-After`. After recovered
+  confirmation, refresh the affected resource. Expired or corrupt unresolved requests remain blocked
+  pending server-outcome reconciliation; there is no blind discard/reissue action. Real-device
+  interruption, Keychain/Keystore durability and uninstall behavior still require acceptance evidence.
 - Booking/trip lists now use `afterId` input and `nextCursor` output (at most 50, ascending ID) for
   requester, tenant and authority scopes. Product pages use `nextAfterId`. Timeline retains its
   per-aggregate `nextCursor: null` contract. Every page is freshly authorized; cursors convey no access.
@@ -169,7 +188,7 @@ Reload the app after changing them; a production/release bundle cannot enable th
   project; this resolves the earlier Expo/backend configuration collision.
 - Root `EXPO_NO_DOTENV=1 npm run lint`: PASS. Backend files are checked by their own ESLint config.
 - Targeted API library/test ESLint: PASS, zero warnings.
-- `npm run test:unit`: PASS, 114 tests, including 58 backend transport/session/product/command/native-auth
+- `npm run test:unit`: PASS, 128 tests, including 72 backend transport/session/product/command/native-auth
   cases. The dispatch tests decode actual backend projection functions. Existing Node
   module-type warnings remain informational; no root package module-mode change was made.
 - Expo config introspection: PASS. Android manifest references both SecureStore backup resources;
@@ -184,6 +203,16 @@ Reload the app after changing them; a production/release bundle cannot enable th
   10 moderate transitive Expo CLI/config/glob/minimatch findings. npm's suggested forced downgrade to
   Expo 51 is incompatible with this SDK 58 app and was not applied; upstream-compatible remediation
   remains tracked for release review. Backend production dependency audit reports zero vulnerabilities.
+- Remote mobile CI at `9117464`: PASS, including clean installation, lint, typecheck, unit tests,
+  high/critical audit and development/release exports. The lockfile now includes the optional emnapi
+  peers required by npm 12; the previous npm 11-only local installation had not exposed their absence.
+- Durable-command fault injection covers every initial-write and settlement mutation boundary, lost
+  responses, byte-bounded Nepali payloads, changed/missing chunks, account isolation, logout during a
+  native write, late responses after account switching, corrupt manifest metadata, oversized retry
+  headers, restart without dispatch, retry deadlines and ambiguity preservation. These are injected
+  storage tests, not evidence of native crash consistency.
+- Local development and release exports with durable recovery: PASS for Android, iOS and web,
+  using synthetic API configuration and outputs outside the repository.
 
 `EXPO_NO_DOTENV=1 npx expo install --check`: PASS after aligning all six mismatches and installing
 SDK-compatible SecureStore, DevClient and Crypto:
@@ -209,7 +238,7 @@ on React Native, accessible device interaction, or end-to-end persona acceptance
 
 Complete EAS project/signing/device installation and native/live preview acceptance. Integrate the
 preview capabilities into approved production screens, managed-context selection, administrative
-password/MFA enrollment, realtime reconnect, durable command recovery and offline UX. The default app's
+password/MFA enrollment, realtime reconnect, native command-recovery acceptance and offline UX. The default app's
 authentication and demo/driver flows still require deliberate reconciliation with these backend
 capabilities. Direct Supabase writes require the roadmap's one-writer/minimum-version cutover controls.
 

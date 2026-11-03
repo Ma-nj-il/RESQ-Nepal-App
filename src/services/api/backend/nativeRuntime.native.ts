@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { randomUUID } from 'expo-crypto';
+import { randomUUID, digestStringAsync, CryptoDigestAlgorithm } from 'expo-crypto';
 import { createDispatchApi } from './dispatch';
 import { createBackendAuthController } from './authController';
 import { createRequesterApi } from './requester';
@@ -8,6 +8,9 @@ import { BackendTransport } from './transport';
 import { createSecureRefreshVault, refreshVaultKey, type VaultScope } from './secureRefreshVault';
 import { BackendError } from './errors';
 import type { NativeBackendRuntime } from './nativeRuntime';
+import { DurableCommands } from './durableCommands';
+import { createCommandHandlers } from './commandRegistry';
+import { createSecureCommandVault } from './secureCommandVault';
 
 // Module lifetime ownership survives component remounts without starting a second refresh owner.
 let instance: { key: string; promise: Promise<NativeBackendRuntime> } | undefined;
@@ -26,8 +29,17 @@ export function getNativeBackendRuntime(scope: VaultScope): Promise<NativeBacken
     });
     const transport = new BackendTransport({ origin: scope.origin });
     const session = new BackendSession(transport, createSecureRefreshVault(SecureStore, scope));
-    return { auth: createBackendAuthController(session), api: createRequesterApi(session),
-      dispatch: createDispatchApi(session), generateId: randomUUID,
+    const auth = createBackendAuthController(session);
+    const api = createRequesterApi(session);
+    const dispatch = createDispatchApi(session);
+    const handlers = createCommandHandlers(api, dispatch);
+    const owner = () => auth.store.getState().status === 'authenticated' ? auth.store.getState().identity : null;
+    const lane = (name: 'account' | 'product' | 'dispatch') => new DurableCommands(name, handlers,
+      (userId) => createSecureCommandVault(SecureStore, scope, userId, name,
+        (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value)), owner, randomUUID);
+    const commands = { account: lane('account'), product: lane('product'), dispatch: lane('dispatch') };
+    auth.store.subscribe(() => { for (const command of Object.values(commands)) command.activate(owner()); });
+    return { auth, api, dispatch, commands, generateId: randomUUID,
       security: { beginStepUp: () => session.beginStepUp(), verifyStepUp: (id: string, code: string) => session.verifyStepUp(id, code) } };
   })();
   instance = { key, promise };

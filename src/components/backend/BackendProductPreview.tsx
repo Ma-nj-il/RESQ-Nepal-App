@@ -23,7 +23,7 @@ export function BackendProductPreview({ runtime }: { runtime: NativeBackendRunti
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   const reading = useRef(false);
-  const command = useBackendCommand(runtime.generateId);
+  const command = useBackendCommand(runtime.commands.product);
   const disabled = command.busy || command.unresolved || readBusy;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const read = async (work: () => Promise<void>) => {
@@ -67,11 +67,9 @@ export function BackendProductPreview({ runtime }: { runtime: NativeBackendRunti
       value={draft} onChangeText={setDraft} multiline maxLength={4000} editable={!disabled} />
     <Button title={selected ? 'Send reply' : 'Create support ticket'} disabled={disabled || !draft.trim() || selected?.status === 'RESOLVED'}
       onPress={() => {
-        if (selected) command.submit({ id: selected.id, message: draft }, (value, identity) => runtime.api.reply(value.id, value.message, {
-          idempotencyKey: identity.idempotencyKey, expectedVersion: identity.expectedVersion!,
-        }), ({ data }) => { setDraft(''); setSelected((current) => current && ({ ...current, version: data.version }));
+        if (selected) command.submit('reply', { id: selected.id, message: draft }, ({ data }) => { setDraft(''); setSelected((current) => current && ({ ...current, version: data.version }));
           setMessages(null); }, selected.version);
-        else command.submit({ category, message: draft }, (value, identity) => runtime.api.createTicket(value, identity.idempotencyKey),
+        else command.submit('createTicket', { category, message: draft },
           ({ data }) => { setSelected(data); setMessages(null); setDraft(''); });
       }} />
     <Text accessibilityRole="header">Cash receipt and rating</Text>
@@ -86,9 +84,7 @@ export function BackendProductPreview({ runtime }: { runtime: NativeBackendRunti
       <Text>{receipt.fareProvenance}. Completed: {receipt.completedAt}</Text>
       <Text>Choose a rating (one immutable rating per completed trip).</Text>
       {[1, 2, 3, 4, 5].map((score) => <Button key={score} title={`Rate ${score} of 5`} disabled={disabled} onPress={() => {
-        command.submit({ id: receipt.tripId, score }, (value, identity) => runtime.api.rateTrip(value.id, value.score, {
-          idempotencyKey: identity.idempotencyKey, expectedVersion: identity.expectedVersion!,
-        }), () => setReceipt(null), receipt.version);
+        command.submit('rateTrip', { id: receipt.tripId, score }, () => setReceipt(null), receipt.version);
       }} />)}
     </View>}
   </View>;

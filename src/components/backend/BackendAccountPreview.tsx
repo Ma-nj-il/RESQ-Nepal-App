@@ -23,7 +23,7 @@ export function BackendAccountPreview({ runtime, profile }: {
   const [error, setError] = useState<string | null>(null);
   const active = useRef(true);
   const pending = useRef(false);
-  const command = useBackendCommand(runtime.generateId);
+  const command = useBackendCommand(runtime.commands.account);
   useEffect(() => {
     active.current = true;
     return () => { active.current = false; };
@@ -69,9 +69,7 @@ export function BackendAccountPreview({ runtime, profile }: {
         <Text style={styles.text}>Version: {settings.version}</Text>
         {(['bookingUpdates', 'tripUpdates', 'supportUpdates', 'marketing'] as const).map((key) =>
           <Button key={key} title={`Toggle ${key}`} variant="outline" disabled={busy || command.unresolved}
-            onPress={() => command.submit({ ...settings, [key]: !settings[key] }, (value, identity) => runtime.api.replacePreferences(value, {
-              idempotencyKey: identity.idempotencyKey, expectedVersion: identity.expectedVersion!,
-            }), ({ data }) => setSettings(data), settings.version)} />)}
+            onPress={() => command.submit('preferences', { ...settings, [key]: !settings[key] }, ({ data }) => setSettings(data), settings.version)} />)}
       </View>}
 
       <Text style={styles.heading}>In-app notifications</Text>

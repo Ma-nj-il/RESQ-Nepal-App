@@ -38,7 +38,7 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
   const [error, setError] = useState<string | null>(null);
   const active = useRef(true);
   const reading = useRef(false);
-  const command = useBackendCommand(runtime.generateId);
+  const command = useBackendCommand(runtime.commands.dispatch);
   const disabled = busy || command.unresolved;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const read = async (work: () => Promise<void>) => {
@@ -82,10 +82,8 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
       {events.map((item) => <Text key={item.id}>{item.occurredAt}: {item.aggregateType} {item.toStatus}</Text>)}
       <Input label="Cancellation reason" accessibilityLabel="Cancellation reason" maxLength={1024} value={reason} onChangeText={setReason} editable={!disabled} />
       <Button title="Request booking cancellation" disabled={disabled || reason.trim().length < 3}
-        onPress={() => command.submit({ id: selected.id, reasonCode: 'REQUESTER_REQUESTED', reason },
-          (value, identity) => runtime.dispatch.cancelBooking(value.id, { reasonCode: value.reasonCode, reason: value.reason }, {
-            idempotencyKey: identity.idempotencyKey, expectedVersion: identity.expectedVersion!,
-          }), ({ data }) => { setSelected(data); setEvents([]); setBookings((items) => items.map((item) => item.id === data.id ? data : item)); }, selected.version)} />
+        onPress={() => command.submit('cancelBooking', { id: selected.id, reasonCode: 'REQUESTER_REQUESTED', reason },
+          ({ data }) => { setSelected(data); setEvents([]); setBookings((items) => items.map((item) => item.id === data.id ? data : item)); }, selected.version)} />
     </View>}
     {trips.map((item) => <View key={item.id} style={{ gap: 8 }}>
       <Text>Trip {item.id}: {item.status}</Text>
@@ -124,10 +122,10 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
       <Text>{formatNprMinor(quote.fare.amountMinor)}; {quote.route.quality}; expires {quote.expiresAt}</Text>
       <Button title="Confirm booking" disabled={disabled || !consent || !locationConsent} onPress={() => {
         if (Date.parse(quote.expiresAt) <= Date.now()) { setQuote(null); setError('Quote expired. Request a new quote.'); return; }
-        command.submit({ ...routeInput(), fareQuoteId: quote.id, pickupGeographicUnitId: form.pickupGeographicUnitId,
+        command.submit('createBooking', { ...routeInput(), fareQuoteId: quote.id, pickupGeographicUnitId: form.pickupGeographicUnitId,
           patientName: form.patientName, pickupContactName: form.pickupContactName, pickupContactPhone: form.pickupContactPhone,
           urgency, emergencyTransportConsent: consent, locationSharingConsent: locationConsent },
-        (value, identity) => runtime.dispatch.createBooking(value, identity.idempotencyKey), ({ data }) => {
+        ({ data }) => {
           setSelected(data); setEvents([]); setQuote(null); setForm(initialForm); setConsent(false); setLocationConsent(false);
         });
       }} />

@@ -1,55 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
-import { CommandIntent, type IntentIdentity } from '../../services/api/backend/commandIntent';
-import { BackendError } from '../../services/api/backend/errors';
+import { useEffect, useRef } from 'react';
+import { useStore } from 'zustand';
+import type { DurableCommands } from '../../services/api/backend/durableCommands';
+import type { CommandInput, CommandName, CommandResult } from '../../services/api/backend/commandRegistry';
 
-/** Keeps the command body/key/version together until a server-confirmed outcome. */
-export function useBackendCommand(generateId: () => string) {
+/** The module-owned controller survives remounts and restores secure intents after process restart. */
+export function useBackendCommand(controller: DurableCommands) {
   const active = useRef(true);
-  const pending = useRef<{ run: () => Promise<void> } | null>(null);
-  const executing = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [unresolved, setUnresolved] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const state = useStore(controller.store);
   useEffect(() => {
     active.current = true;
     return () => { active.current = false; };
   }, []);
-
-  const retry = async () => {
-    if (executing.current || !pending.current) return;
-    executing.current = true;
-    setBusy(true);
-    try { await pending.current.run(); }
-    finally { executing.current = false; if (active.current) setBusy(false); }
-  };
-
-  function submit<T, R>(value: T, send: (value: T, identity: IntentIdentity) => Promise<R>,
-    confirmed: (result: R) => void, expectedVersion?: number) {
-    if (pending.current) return;
-    const intent = new CommandIntent(value, send, generateId, expectedVersion);
-    pending.current = { run: async () => {
-      try {
-        const result = await intent.run();
-        pending.current = null;
-        if (active.current) {
-          setUnresolved(false);
-          setNotice('Server confirmed the request.');
-          confirmed(result);
-        }
-      } catch (error) {
-        if (intent.canReplace) pending.current = null;
-        if (active.current) {
-          setUnresolved(pending.current !== null);
-          const message = error instanceof BackendError
-            ? `${error.message}${error.code === 'REQUEST.STALE_VERSION' ? ' Refresh the resource before submitting a revised request.' : ''}`
-            : 'The request outcome is unknown.';
-          setNotice(pending.current ? `${message} Retry the same request or check its server outcome before starting another.` : message);
-        }
-      }
-    } };
-    setUnresolved(true);
-    setNotice(null);
-    void retry();
+  function submit<K extends CommandName>(name: K, value: CommandInput<K>, confirmed: (result: CommandResult<K>) => void, expectedVersion?: number) {
+    void controller.submit(name, value, expectedVersion).then((result) => {
+      if (active.current) confirmed(result);
+    }).catch(() => {});
   }
-  return { submit, retry, busy, unresolved, notice };
+  return {
+    submit,
+    retry: () => controller.retry().catch(() => {}),
+    busy: ['loading', 'running'].includes(state.status),
+    unresolved: state.status !== 'ready',
+    notice: state.notice,
+  };
 }

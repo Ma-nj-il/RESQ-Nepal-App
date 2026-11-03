@@ -4,6 +4,8 @@ import type { createDispatchApi } from './dispatch';
 import type { VaultScope } from './secureRefreshVault';
 import { BackendError } from './errors';
 import type { BackendSession } from './session';
+import type { DurableCommands } from './durableCommands';
+import type { CommandLane } from './commandRegistry';
 
 export interface NativeBackendRuntime {
   auth: BackendAuthController;
@@ -11,6 +13,7 @@ export interface NativeBackendRuntime {
   dispatch: ReturnType<typeof createDispatchApi>;
   generateId: () => string;
   security: Pick<BackendSession, 'beginStepUp' | 'verifyStepUp'>;
+  commands: Record<CommandLane, DurableCommands>;
 }
 
 /** Web has no native refresh vault. A future browser client must use the cookie contract. */

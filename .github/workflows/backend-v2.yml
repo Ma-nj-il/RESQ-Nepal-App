@@ -136,7 +136,7 @@ jobs:
       - name: Run Postman health collection with Newman
         run: npm run postman:health
       - name: Run Phase 5–6 dispatch and product collection with Newman
-        run: npm run postman:core-dispatch
+        run: node --require ./tools/newman-faker-compat.cjs tools/newman-ci.cjs postman/core-dispatch.postman_collection.json
       - name: Upload API log on failure
         if: failure()
         uses: actions/upload-artifact@v4
