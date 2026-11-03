@@ -402,3 +402,50 @@ test('password cancellation before dispatch and during a native write cannot est
   assert.equal(f.session.identity(), null);
   assert.equal(f.calls.length, 1);
 });
+
+test('MFA code rejection preserves the session, including after a guarded access-token refresh', async () => {
+  for (const refreshFirst of [false, true]) {
+    const f = fixture(call => {
+      if (call.path.endsWith('/refresh')) return success(sessionData('next'));
+      if (refreshFirst && call.headers.Authorization.endsWith('.first')) return failure('AUTH.ACCESS_TOKEN_STALE');
+      return failure('AUTH.MFA_INVALID');
+    });
+    await f.login();
+    await assert.rejects(f.session.verifyStepUp(id, '123456'), { code: 'AUTH.MFA_INVALID' });
+    assert.equal(f.session.identity().assurance, 'AAL1');
+    assert.equal(f.vault.value.refreshToken, sessionData(refreshFirst ? 'next' : 'first').refreshToken);
+    await assert.rejects(f.session.verifyTotpEnrollment(id, '123456'), { code: 'AUTH.MFA_INVALID' });
+    assert.ok(f.session.identity());
+    // Ordinary API routes do not get a global exception to session revocation handling.
+    await assert.rejects(f.session.request(read), { code: 'AUTH.MFA_INVALID' });
+    assert.equal(f.session.identity(), null);
+  }
+});
+
+test('step-up cancellation while awaiting rotation preserves its successor without applying late AAL2', async () => {
+  const entered = deferred(), verified = deferred(), rotating = deferred(), successor = deferred();
+  const f = fixture(call => {
+    if (call.path.endsWith('/verifications')) { entered.resolve(); return verified.promise; }
+    if (call.path.endsWith('/refresh')) { rotating.resolve(); return successor.promise; }
+    return call.headers.Authorization.endsWith('.first') ? failure('AUTH.ACCESS_TOKEN_STALE') : success('ok');
+  });
+  await f.login(); const abort = new AbortController();
+  const upgrade = f.session.verifyStepUp(otherId, '123456', abort.signal); await entered.promise;
+  const reading = f.session.request(read); await rotating.promise;
+  verified.resolve(success({ userId: id, sessionId: id, assurance: 'AAL2', accessToken: 'synthetic.stepup', accessTokenExpiresAt: future }));
+  await new Promise(resolve => setImmediate(resolve)); abort.abort();
+  const rejected = assert.rejects(upgrade, { code: 'CLIENT.CANCELLED' });
+  successor.resolve(success(sessionData('next'))); await Promise.all([rejected, reading]);
+  assert.equal(f.vault.value.refreshToken, sessionData('next').refreshToken);
+  assert.equal(f.session.identity().assurance, 'AAL1');
+  assert.equal(f.calls.filter(call => call.path.endsWith('/verifications')).length, 1);
+});
+
+test('synchronous logout on upgraded identity prevents step-up from reporting successful ownership', async () => {
+  const f = fixture(() => success({ userId: id, sessionId: id, assurance: 'AAL2', accessToken: 'synthetic.stepup', accessTokenExpiresAt: future }));
+  await f.login(); let logout;
+  f.session.subscribe(identity => { if (identity?.assurance === 'AAL2') logout = f.session.logout(); });
+  await assert.rejects(f.session.verifyStepUp(id, '123456'), { code: 'CLIENT.SESSION_CHANGED' });
+  await logout;
+  assert.equal(f.session.identity(), null); assert.equal(f.vault.value, null);
+});

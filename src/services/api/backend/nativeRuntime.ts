@@ -8,13 +8,14 @@ import type { DurableCommands } from './durableCommands';
 import type { CommandLane } from './commandRegistry';
 import type { createRequesterRealtime } from './realtime';
 import type { MfaEnrollment } from './mfaEnrollment';
+import type { MfaStepUp } from './mfaStepUp';
 
 export interface NativeBackendRuntime {
   auth: BackendAuthController;
   api: ReturnType<typeof createRequesterApi>;
   dispatch: ReturnType<typeof createDispatchApi>;
   generateId: () => string;
-  security: Pick<BackendSession, 'beginStepUp' | 'verifyStepUp'> & { createEnrollment(): MfaEnrollment };
+  security: Pick<BackendSession, 'beginStepUp' | 'verifyStepUp'> & { createEnrollment(): MfaEnrollment; createStepUp(): MfaStepUp };
   commands: Record<CommandLane, DurableCommands>;
   realtime: ReturnType<typeof createRequesterRealtime>;
 }

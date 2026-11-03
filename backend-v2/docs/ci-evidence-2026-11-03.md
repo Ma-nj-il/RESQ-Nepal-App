@@ -7,6 +7,11 @@ production client, traffic and source-data migration remains **0%**.
 
 ## Verified remote runs
 
+- Password/TOTP sign-in at `804f6f50d2e6efbf1d86a07ceffd31bfbcac2787`:
+  [mobile run 41700955234](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41700955234)
+  **PASS**, including 167 tests and development/release exports;
+  [backend run 41700955281](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41700955281)
+  **PASS**, all three jobs. Exact SHA, completed status and individual job conclusions were inspected.
 - MFA enrollment and Kafka startup correction at `b3df6e4b2dfbadec31ef3af2607cc33f0e9e3dea`:
   [backend run 41699468578](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41699468578)
   **PASS**, all three jobs (quality/unit, migrations/dependencies/Newman, image/SBOM/scan).
@@ -152,7 +157,13 @@ The following mobile password/TOTP slice passes **167 mobile tests**, lint and t
 Its 15 added cases cover challenge-only password acceptance, mandatory AAL2/mobile credentials,
 secret-free state, duplicate submissions, expiry/rollback, rate limits, response loss, cancellation
 during transport/storage/profile reads and synchronous listener reentrancy. These use synthetic
-responses and native-storage fixtures. Its own exact-revision mobile CI is pending publication.
+responses and native-storage fixtures. Its exact-revision backend/mobile CI passes at `804f6f5`.
+
+The following authenticated step-up slice passes **179 mobile tests**, lint and typecheck locally.
+Twelve added cases cover component-owned challenge lifecycle, expiry/rollback, cancellation,
+definitive rejection and retry limits, unknown outcomes, session replacement and concurrent rotation.
+A regression confirms that a definitive invalid authenticator code preserves its authenticated
+session without weakening ordinary API revocation handling. Exact-revision CI awaits publication.
 
 Native binary signing/install and device crash/recovery/accessibility acceptance; complete production
 mobile and portal flows; approved provider integrations and canaries; production-role/security review;

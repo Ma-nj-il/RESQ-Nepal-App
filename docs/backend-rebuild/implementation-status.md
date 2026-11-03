@@ -23,6 +23,7 @@ client/traffic/data migration is **0%**.
 - [Mobile API foundation and development build instructions](mobile-api-foundation.md)
 - [Memory-only mobile MFA enrollment](mobile-mfa-enrollment.md)
 - [Password/TOTP mobile sign-in and cancellation](mobile-password-sign-in.md)
+- [Authenticated mobile MFA step-up](mobile-mfa-step-up.md)
 - [Phase 6 implementation and evidence](../../backend-v2/docs/phase-6-status.md)
 - [Phase 7 executable preparation](../../backend-v2/docs/phase-7-status.md)
 - [Phase 8 executable preparation and runbook](../../backend-v2/docs/phase-8-status.md)
@@ -32,10 +33,12 @@ The available code work does not make every phase complete. External inputs rema
 the phase status documents identify them. Local synthetic checks must not be used as production
 acceptance evidence. Git publication is code delivery, not a deployment or cutover.
 
-All backend and mobile CI jobs pass at `b3df6e4`, including corrected Kafka startup/two-replica
+All backend and mobile CI jobs pass at `804f6f5`, including corrected Kafka startup/two-replica
 fanout, supported-PostgreSQL integration, Newman, image checks and all-platform mobile exports.
-That revision has 196 backend / 152 mobile tests. Password/TOTP sign-in adds strict AAL2/mobile
-decoding, secret-free state, lifecycle cancellation and storage/listener fencing; its local mobile
-suite passes 167 tests, lint and typecheck. Exact remote evidence is in the CI document. Provider
+That revision has 196 backend / 167 mobile tests. Password/TOTP sign-in adds strict AAL2/mobile
+decoding, secret-free state, lifecycle cancellation and storage/listener fencing. Authenticated
+step-up now has component-owned challenges, expiry, cancellation and definitive code correction
+without unintended logout; its local mobile suite passes 179 tests, lint and typecheck.
+Exact remote evidence is in the CI document. Provider
 acceptance, managed storage/KMS, production clients and source-specific execution remain open.
 Gates remain HOLD.

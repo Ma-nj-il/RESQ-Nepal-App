@@ -1,7 +1,7 @@
 # Phase 6 / Gate 6 status
 
 - **Disposition:** HOLD — initial product backend slice implemented; Phase 6 is incomplete.
-- **Evidence date:** 2026-11-03.
+- **Evidence date:** 2026-11-04.
 - **Migration:** `CreateProductServices1793664000005`, following the five Phase 2–5 migrations.
 - **Production migration:** 0% of clients, traffic, or source data has moved.
 
@@ -33,6 +33,9 @@
   Native/live acceptance is pending; see
   [mobile API/session foundation](../../docs/backend-rebuild/mobile-api-foundation.md) for launch
   prerequisites and scope. Default app flows remain on Supabase.
+- Password/TOTP sign-in, memory-only TOTP enrollment and component-owned authenticated step-up
+  now include session/lifecycle fencing, cancellation and expiry handling. Requester realtime
+  invalidates consistent recovery reads through shared-group Kafka/Redis fanout.
 
 See [the implemented HTTP contract](./phase-6-product-api.md).
 
@@ -113,8 +116,12 @@ from capture time, replacing the inconsistent five-minute module constant.
 
 ## Remaining Phase 6 work
 
+All backend/mobile jobs pass at `804f6f5` (196 backend / 167 mobile tests), including migrations,
+Newman, image checks and all-platform exports. The following step-up changes pass 179 mobile tests,
+lint and typecheck locally. See [exact CI evidence](ci-evidence-2026-11-03.md).
+
 1. EAS project/signing/device preparation and native/live preview acceptance; production screen
-   integration, managed-context selection/password/MFA enrollment, realtime/offline behavior,
+   integration, managed-context selection, other realtime audiences and broader offline behavior,
    native acceptance of durable command recovery, and removal of direct Supabase mutations on approved cutover paths.
    The preview is opt-in and development-only; the production mobile data path has not migrated.
 2. Hospital, province, and platform portal adapters and persona acceptance. Portal sources are absent

@@ -21,6 +21,7 @@ remains 0%.
 | `secureRefreshVault.ts`                | One versioned SecureStore record scoped to normalized API origin and environment                                        |
 | `authController.ts`                    | Secret-free OTP/password/TOTP state, matching active profile, cancellation and logout/revocation lifecycle |
 | `mfaEnrollment.ts`                     | Component-owned TOTP setup, expiry, concealment, cancellation and ambiguous-outcome handling |
+| `mfaStepUp.ts`                         | Component-owned authenticated TOTP challenge, lifecycle fencing, definitive correction and ambiguity handling |
 | `nativeRuntime.native.ts`              | Module-lifetime native session/vault owner shared across component remounts                                             |
 | `nativeRuntime.ts`                     | Web refusal with `CLIENT.NATIVE_REQUIRED`                                                                               |
 | `previewConfig.ts`                     | Explicit development-only preview configuration validation                                                              |
@@ -65,7 +66,7 @@ still need device verification. iOS Keychain data may survive app uninstall; uni
 treated as logout or proof of server revocation.
 
 OTP verification sends `clientType: MOBILE`; browser cookie flows are not implemented by this library.
-Enrolled-authenticator step-up keeps the new access token private to `BackendSession`, verifies the
+[Enrolled-authenticator step-up](mobile-mfa-step-up.md) keeps the new access token private to `BackendSession`, verifies the
 same user/session and AAL2, and retains the current rotating refresh credential. Older concurrent
 refresh completion cannot overwrite the step-up result. Access-context metadata is read from the
 server; displaying it never authorizes an operation. New TOTP enrollment is available in the

@@ -13,6 +13,7 @@ import { createCommandHandlers } from './commandRegistry';
 import { createSecureCommandVault } from './secureCommandVault';
 import { createRequesterRealtime } from './realtime';
 import { MfaEnrollment } from './mfaEnrollment';
+import { MfaStepUp } from './mfaStepUp';
 
 // Module lifetime ownership survives component remounts without starting a second refresh owner.
 let instance: { key: string; promise: Promise<NativeBackendRuntime> } | undefined;
@@ -42,8 +43,9 @@ export function getNativeBackendRuntime(scope: VaultScope): Promise<NativeBacken
     const commands = { account: lane('account'), product: lane('product'), dispatch: lane('dispatch') };
     auth.store.subscribe(() => { for (const command of Object.values(commands)) command.activate(owner()); });
     return { auth, api, dispatch, commands, realtime: createRequesterRealtime(session, scope.origin), generateId: randomUUID,
-      security: { beginStepUp: () => session.beginStepUp(), verifyStepUp: (id: string, code: string) => session.verifyStepUp(id, code),
-        createEnrollment: () => new MfaEnrollment(session) } };
+      security: { beginStepUp: (signal?: AbortSignal) => session.beginStepUp(signal),
+        verifyStepUp: (id: string, code: string, signal?: AbortSignal) => session.verifyStepUp(id, code, signal),
+        createEnrollment: () => new MfaEnrollment(session), createStepUp: () => new MfaStepUp(session) } };
   })();
   instance = { key, promise };
   void promise.catch(() => { if (instance?.promise === promise) instance = undefined; });

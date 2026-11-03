@@ -110,20 +110,20 @@ export class BackendSession {
     }
   }
 
-  beginStepUp() {
+  beginStepUp(signal?: AbortSignal) {
     return this.request({ path: '/api/v1/auth/mfa-challenges', method: 'POST',
-      decode: mfaChallenge });
+      decode: mfaChallenge, signal });
   }
 
   /** Step-up returns access credentials only; rotating refresh credentials remain owned here. */
-  async verifyStepUp(challengeId: string, code: string): Promise<SessionIdentity> {
+  async verifyStepUp(challengeId: string, code: string, signal?: AbortSignal): Promise<SessionIdentity> {
     if (!/^\d{6}$/.test(code)) throw new BackendError({ code: 'CLIENT.MFA_CODE_INVALID', message: 'Enter the six-digit authenticator code.' });
     const generation = this.generation;
-    const { data } = await this.request({
+    const { data } = await this.requestWithAccess({
       path: `/api/v1/auth/mfa-challenges/${uuid(challengeId)}/verifications`, method: 'POST', body: { code },
-      decode: upgradedAccess,
-    });
-    return this.applyUpgradedAccess(data, generation);
+      decode: upgradedAccess, signal,
+    }, true);
+    return this.applyUpgradedAccess(data, generation, signal);
   }
 
   createTotpEnrollment(label: string, signal?: AbortSignal) {
@@ -134,8 +134,8 @@ export class BackendSession {
   async verifyTotpEnrollment(factorId: string, code: string, signal?: AbortSignal): Promise<SessionIdentity> {
     if (!/^\d{6}$/.test(code)) throw new BackendError({ code: 'CLIENT.MFA_CODE_INVALID', message: 'Enter the six-digit authenticator code.' });
     const generation = this.generation;
-    const { data } = await this.request({ path: `/api/v1/me/mfa/totp-enrollments/${uuid(factorId)}/verification`,
-      method: 'POST', body: { code }, decode: upgradedAccess, signal });
+    const { data } = await this.requestWithAccess({ path: `/api/v1/me/mfa/totp-enrollments/${uuid(factorId)}/verification`,
+      method: 'POST', body: { code }, decode: upgradedAccess, signal }, true);
     this.checkCancellation(signal);
     return this.applyUpgradedAccess(data, generation, signal);
   }
@@ -149,6 +149,7 @@ export class BackendSession {
         !/^[A-Za-z0-9._~-]+$/.test(data.accessToken) || Date.parse(data.accessTokenExpiresAt) <= this.now()) invalidResponse();
     this.current = { ...this.current, ...data };
     this.emitIdentity();
+    this.assertCurrent(generation);
     return this.identity()!;
   }
 
@@ -178,7 +179,11 @@ export class BackendSession {
     return promise;
   }
 
-  async request<T>(input: BackendRequest<T>): Promise<BackendResponse<T>> {
+  request<T>(input: BackendRequest<T>): Promise<BackendResponse<T>> {
+    return this.requestWithAccess(input);
+  }
+
+  private async requestWithAccess<T>(input: BackendRequest<T>, mfaVerification = false): Promise<BackendResponse<T>> {
     this.checkCancellation(input.signal);
     // Snapshot command identity before asynchronous refresh; never regenerate a key or version.
     const request = {
@@ -203,6 +208,7 @@ export class BackendSession {
     } catch (error) {
       this.assertCurrent(generation);
       if (!(error instanceof BackendError) || error.status !== 401) throw error;
+      if (mfaVerification && error.code === 'AUTH.MFA_INVALID' && !error.retryable) throw error;
       if (!['AUTH.ACCESS_TOKEN_EXPIRED', 'AUTH.ACCESS_TOKEN_STALE'].includes(error.code)) {
         await this.clearLocal();
         throw error;
@@ -218,7 +224,8 @@ export class BackendSession {
         return result;
       } catch (retryError) {
         this.assertCurrent(generation);
-        if (retryError instanceof BackendError && retryError.status === 401) await this.clearLocal();
+        if (retryError instanceof BackendError && retryError.status === 401 &&
+            !(mfaVerification && retryError.code === 'AUTH.MFA_INVALID' && !retryError.retryable)) await this.clearLocal();
         throw retryError;
       }
     }
