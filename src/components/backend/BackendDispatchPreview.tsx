@@ -3,10 +3,11 @@ import { Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import type { NativeBackendRuntime } from '../../services/api/backend/nativeRuntime';
-import type { booking, trip, fareQuote, tracking, timeline, QuoteInput } from '../../services/api/backend/dispatch';
+import type { booking, trip, fareQuote, tracking, QuoteInput } from '../../services/api/backend/dispatch';
 import { formatNprMinor } from '../../services/api/backend/decoders';
 import { BackendError } from '../../services/api/backend/errors';
 import { useBackendCommand } from './useBackendCommand';
+import { useBookingRecovery } from './useBookingRecovery';
 
 const initialForm = {
   serviceCategory: '', pickupLatitude: '', pickupLongitude: '', destinationLatitude: '', destinationLongitude: '',
@@ -24,8 +25,9 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
   const [trips, setTrips] = useState<ReturnType<typeof trip>[]>([]);
   const [bookingCursor, setBookingCursor] = useState<string | null>(null);
   const [tripCursor, setTripCursor] = useState<string | null>(null);
-  const [selected, setSelected] = useState<ReturnType<typeof booking> | null>(null);
-  const [events, setEvents] = useState<ReturnType<typeof timeline>[]>([]);
+  const { recovery, state: recovered } = useBookingRecovery(runtime);
+  const selected = recovered.snapshot?.booking;
+  const events = recovered.snapshot?.timeline.items ?? [];
   const [location, setLocation] = useState<ReturnType<typeof tracking> | null>(null);
   const [trackingObservedAt, setTrackingObservedAt] = useState<number | null>(null);
   const [form, setForm] = useState(initialForm);
@@ -62,6 +64,11 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
     <Text accessibilityRole="header">Booking and trip acceptance</Text>
     {error && <Text accessibilityRole="alert">{error}</Text>}
     {command.notice && <Text accessibilityRole="alert">{command.notice}</Text>}
+    {recovered.bookingId && <View style={{ gap: 8 }}>
+      <Text>Booking recovery: {recovered.status}</Text>
+      {recovered.message && <Text accessibilityRole="alert">{recovered.message}</Text>}
+      <Button title="Refresh selected booking" disabled={recovered.status === 'loading'} onPress={() => { void recovery.select(recovered.bookingId!); }} />
+    </View>}
     {command.unresolved && <Button title="Retry dispatch request" disabled={command.busy} onPress={() => { void command.retry(); }} />}
     <Button title="Refresh bookings and trips" disabled={busy} onPress={() => { void read(async () => {
       const [bookings, trips] = await Promise.all([runtime.dispatch.bookings(), runtime.dispatch.trips()]);
@@ -69,21 +76,23 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
         setBookingCursor(bookings.data.nextCursor); setTripCursor(trips.data.nextCursor); }
     }); }} />
     {bookings.map((item) => <Button key={item.id} title={`${item.bookingReference}: ${item.status}`} disabled={disabled}
-      onPress={() => { void read(async () => {
-        const [booking, history] = await Promise.all([runtime.dispatch.booking(item.id), runtime.dispatch.timeline(item.id)]);
-        if (active.current) { setSelected(booking.data); setEvents(history.data.items); }
-      }); }} />)}
+      onPress={() => { void recovery.select(item.id); }} />)}
     {bookingCursor && <Button title="Next bookings" disabled={busy} onPress={() => { void read(async () => {
       const { data } = await runtime.dispatch.bookings(bookingCursor);
       if (active.current) { setBookings(data.items); setBookingCursor(data.nextCursor); }
     }); }} />}
     {selected && <View style={{ gap: 8 }}>
       <Text>{selected.bookingReference}: {selected.status} (version {selected.version})</Text>
+      {recovered.snapshot?.trip && <Text>Assigned trip: {recovered.snapshot.trip.status} (version {recovered.snapshot.trip.version})</Text>}
+      {recovered.snapshot?.timeline.truncated && <Text>Showing the first 200 timeline entries.</Text>}
       {events.map((item) => <Text key={item.id}>{item.occurredAt}: {item.aggregateType} {item.toStatus}</Text>)}
       <Input label="Cancellation reason" accessibilityLabel="Cancellation reason" maxLength={1024} value={reason} onChangeText={setReason} editable={!disabled} />
-      <Button title="Request booking cancellation" disabled={disabled || reason.trim().length < 3}
-        onPress={() => command.submit('cancelBooking', { id: selected.id, reasonCode: 'REQUESTER_REQUESTED', reason },
-          ({ data }) => { setSelected(data); setEvents([]); setBookings((items) => items.map((item) => item.id === data.id ? data : item)); }, selected.version)} />
+      <Button title="Request booking cancellation" disabled={disabled || recovered.status !== 'ready' || reason.trim().length < 3}
+        onPress={() => {
+          if (recovery.getState().status !== 'ready') { void recovery.refresh(); return; }
+          command.submit('cancelBooking', { id: selected.id, reasonCode: 'REQUESTER_REQUESTED', reason },
+            ({ data }) => { recovery.observeBookingVersion(data.id, data.version); setBookings((items) => items.map((item) => item.id === data.id ? data : item)); }, selected.version);
+        }} />
     </View>}
     {trips.map((item) => <View key={item.id} style={{ gap: 8 }}>
       <Text>Trip {item.id}: {item.status}</Text>
@@ -126,7 +135,8 @@ export function BackendDispatchPreview({ runtime }: { runtime: NativeBackendRunt
           patientName: form.patientName, pickupContactName: form.pickupContactName, pickupContactPhone: form.pickupContactPhone,
           urgency, emergencyTransportConsent: consent, locationSharingConsent: locationConsent },
         ({ data }) => {
-          setSelected(data); setEvents([]); setQuote(null); setForm(initialForm); setConsent(false); setLocationConsent(false);
+          void recovery.select(data.id); recovery.observeBookingVersion(data.id, data.version);
+          setQuote(null); setForm(initialForm); setConsent(false); setLocationConsent(false);
         });
       }} />
     </View>}

@@ -30,13 +30,16 @@ export class TypeOrmUnitOfWork implements UnitOfWork {
   async execute<T>(
     requestContext: RequestContext,
     work: (transaction: TransactionContext) => Promise<T>,
+    mode?: 'READ_ONLY_SNAPSHOT',
   ): Promise<T> {
     const dataSource = await this.database.getDataSource();
     const runner = dataSource.createQueryRunner();
-    await runner.connect();
-    await runner.startTransaction('READ COMMITTED');
-
     try {
+      await runner.connect();
+      await runner.startTransaction(
+        mode === 'READ_ONLY_SNAPSHOT' ? 'REPEATABLE READ' : 'READ COMMITTED',
+      );
+      if (mode === 'READ_ONLY_SNAPSHOT') await runner.query('SET TRANSACTION READ ONLY');
       await this.applyRequestClaims(runner.manager, requestContext);
       const transaction = new TypeOrmTransactionContext(this.ids.generate(), runner.manager);
       const result = await work(transaction);

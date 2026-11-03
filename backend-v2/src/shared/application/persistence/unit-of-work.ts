@@ -9,6 +9,7 @@ export interface UnitOfWork {
   execute<T>(
     requestContext: RequestContext,
     work: (transaction: TransactionContext) => Promise<T>,
+    mode?: 'READ_ONLY_SNAPSHOT',
   ): Promise<T>;
 }
 

@@ -21,6 +21,7 @@ import { identityPersistenceCases } from './identity-persistence.cases.js';
 import { staticPostgresQueries } from './static-postgres-queries.js';
 import { documentWorkerCases } from './document-workers.cases.js';
 import { documentPersistenceCases } from './document-persistence.cases.js';
+import { dispatchRecoveryCases } from './dispatch-recovery.cases.js';
 
 const integrationEnabled = process.env['RUN_INTEGRATION'] === '1';
 const describeIntegration = integrationEnabled ? describe : describe.skip;
@@ -405,6 +406,12 @@ describeIntegration('Phase 5–6 dispatch and product PostgreSQL invariants', ()
   productIntegrationCases({ owner: () => owner, asApplication, createUser, seedDispatchFixture });
   documentWorkerCases({ owner: () => owner, createUser, seedDispatchFixture });
   documentPersistenceCases({ config: () => config, owner: () => owner, createUser });
+  dispatchRecoveryCases({
+    config: () => config,
+    owner: () => owner,
+    createUser,
+    seedDispatchFixture,
+  });
   identityPersistenceCases({ config: () => config, createUser });
 
   it('prepares static repository SQL against the migrated PostgreSQL schema', async () => {

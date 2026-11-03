@@ -1,5 +1,5 @@
 import {
-  amountMinor, boolean, bookingStatus, cursorPage, integer, money, number, object, oneOf, optional,
+  amountMinor, array, boolean, bookingStatus, cursorPage, integer, money, number, object, oneOf, optional,
   record, text, timestamp, tripStatus, uuid, windowPage,
 } from './decoders';
 import { invalidResponse } from './errors';
@@ -33,6 +33,27 @@ export const timeline = object({
   id: uuid, aggregateType: oneOf(['BOOKING', 'TRIP']), fromStatus: optional(text), toStatus: text,
   command: text, reasonCode: text, reason: optional(text), aggregateVersion: integer(1), occurredAt: timestamp,
 });
+export const assignment = object({
+  id: uuid, bookingId: uuid, offerId: uuid, tenantId: uuid, facilityId: uuid,
+  driverId: uuid, ambulanceId: uuid, acceptedAt: timestamp, version: integer(1),
+});
+const recoveryShape = object({
+  observedAt: timestamp, booking, assignment: optional(assignment), trip: optional(trip),
+  timeline: object({ items: array(timeline, 200), truncated: boolean }),
+});
+export function recoverySnapshot(value: unknown) {
+  const snapshot = recoveryShape(value);
+  const { booking, assignment, trip, timeline } = snapshot;
+  if ((assignment === undefined) !== (trip === undefined) ||
+      (assignment && assignment.bookingId !== booking.id) ||
+      (trip && (!assignment || trip.bookingId !== booking.id || trip.assignmentId !== assignment.id ||
+        trip.tenantId !== assignment.tenantId || trip.facilityId !== assignment.facilityId ||
+        trip.driverId !== assignment.driverId || trip.ambulanceId !== assignment.ambulanceId)) ||
+      timeline.items.some((item) => item.aggregateVersion > (item.aggregateType === 'BOOKING' ? booking.version : (trip?.version ?? 0))) ||
+      new Set(timeline.items.map(item => item.id)).size !== timeline.items.length) invalidResponse();
+  return snapshot;
+}
+export type RecoverySnapshot = ReturnType<typeof recoverySnapshot>;
 const populatedTracking = object({
   tripId: uuid, position: object({ latitude: number(-90, 90), longitude: number(-180, 180),
     accuracyMeters: number(0, 500), headingDegrees: optional(number(0, 360)), speedMetersPerSecond: optional(number(0, 100)) }),
@@ -88,11 +109,9 @@ export function createDispatchApi(session: BackendSession) {
     bookings: (afterId?: string) => session.request({ path: '/api/v1/bookings', decode: cursorPage(booking),
       query: { afterId: afterId === undefined ? undefined : uuid(afterId) } }),
     booking: (id: string) => session.request({ path: `/api/v1/bookings/${uuid(id)}`, decode: booking }),
+    recovery: (id: string, signal?: AbortSignal) => session.request({ path: `/api/v1/bookings/${uuid(id)}/recovery`, signal, decode: recoverySnapshot }),
     timeline: (id: string) => session.request({ path: `/api/v1/bookings/${uuid(id)}/timeline`, decode: windowPage(timeline, 200) }),
-    assignment: (id: string) => session.request({ path: `/api/v1/bookings/${uuid(id)}/assignment`, decode: object({
-      id: uuid, bookingId: uuid, offerId: uuid, tenantId: uuid, facilityId: uuid,
-      driverId: uuid, ambulanceId: uuid, acceptedAt: timestamp, version: integer(1),
-    }) }),
+    assignment: (id: string) => session.request({ path: `/api/v1/bookings/${uuid(id)}/assignment`, decode: assignment }),
     cancelBooking: (id: string, body: { reasonCode: string; reason: string }, command: CommandIdentity) => session.request({
       path: `/api/v1/bookings/${uuid(id)}/cancellation`, method: 'POST', body, ...command, decode: booking,
     }),

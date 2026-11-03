@@ -1,6 +1,6 @@
 # Backend rebuild delivery status
 
-Evidence date: **2026-11-03**. Implementation and acceptance are tracked separately. Production
+Evidence date: **2026-11-04**. Implementation and acceptance are tracked separately. Production
 client/traffic/data migration is **0%**.
 
 | Phase | Repository delivery                                                                                             | Acceptance gate                                                                                                       |
@@ -18,6 +18,7 @@ client/traffic/data migration is **0%**.
 
 - [Infrastructure-backed CI evidence](../../backend-v2/docs/ci-evidence-2026-11-03.md)
 - [Document workers, S3/ClamAV adapters, and acceptance boundaries](../../backend-v2/docs/document-workers.md)
+- [Consistent requester recovery snapshots and mobile lifecycle recovery](../../backend-v2/docs/dispatch-recovery.md)
 - [Mobile API foundation and development build instructions](mobile-api-foundation.md)
 - [Phase 6 implementation and evidence](../../backend-v2/docs/phase-6-status.md)
 - [Phase 7 executable preparation](../../backend-v2/docs/phase-7-status.md)
@@ -28,9 +29,10 @@ The available code work does not make every phase complete. External inputs rema
 the phase status documents identify them. Local synthetic checks must not be used as production
 acceptance evidence. Git publication is code delivery, not a deployment or cutover.
 
-Remote mobile CI at `6e193d6` passes validation/128 tests/exports. Backend CI at `6ea91f6` passes
-all jobs: quality/143 unit tests, three PostgreSQL/dependency integration suites / 28 tests, all four
-Newman collections (health, identity, provider and dispatch/product), production image, hardened
-smoke, SBOM and configured HIGH/CRITICAL Trivy scan. The encrypted checkpoint ledger adds verified
-persistence/recovery and encrypted rerun comparison; managed storage/KMS and source-specific
-execution still need implementation and acceptance. See the CI evidence for exact outcomes. Gates remain HOLD.
+Remote mobile CI at `6e193d6` passes validation/128 tests/exports. Backend CI at `2481a37` passes
+all three jobs, covering quality/unit checks, PostgreSQL/dependencies/Newman, and production
+image/hardened smoke/SBOM/configured HIGH/CRITICAL scanning. The document-worker revision has
+174 locally passing unit tests and adds nine supported-PostgreSQL document cases. The requester
+recovery slice adds a consistent lifecycle snapshot, mobile decoding and session/lifecycle fencing;
+its new PostgreSQL cases await exact-revision CI. Provider acceptance, managed storage/KMS and
+source-specific execution remain open. See the CI evidence for exact outcomes. Gates remain HOLD.

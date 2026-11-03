@@ -241,6 +241,7 @@ export interface CoreDispatchRepository {
   listBookingTimeline(
     transaction: TransactionContext,
     bookingId: string,
+    limit?: number,
   ): Promise<readonly TimelineRecord[]>;
   findAssignmentByBooking(
     transaction: TransactionContext,

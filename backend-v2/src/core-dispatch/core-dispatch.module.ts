@@ -14,6 +14,7 @@ import { CLOCK, type Clock } from '../shared/domain/clock.js';
 import { ID_GENERATOR, type IdGenerator } from '../shared/domain/id-generator.js';
 import { PostgresJobIntentRelay } from '../shared/infrastructure/messaging/postgres-job-intent-relay.js';
 import { BookingDispatchService } from './application/booking-dispatch.service.js';
+import { DispatchRecoveryService } from './application/dispatch-recovery.service.js';
 import { CoreDispatchJobProcessor } from './application/core-dispatch-job.processor.js';
 import {
   CORE_DISPATCH_POLICY,
@@ -72,6 +73,15 @@ const persistenceProviders = [
   controllers: [RequesterDispatchController, TenantDispatchController, AuthorityDispatchController],
   providers: [
     ...persistenceProviders,
+    {
+      provide: DispatchRecoveryService,
+      inject: [CORE_DISPATCH_REPOSITORY, UNIT_OF_WORK, CLOCK],
+      useFactory: (
+        repository: CoreDispatchRepository,
+        unit: UnitOfWork,
+        clock: Clock,
+      ): DispatchRecoveryService => new DispatchRecoveryService(repository, unit, clock),
+    },
     DevelopmentRoutingProvider,
     { provide: ROUTING_PROVIDER, useExisting: DevelopmentRoutingProvider },
     AesPatientDataProtector,

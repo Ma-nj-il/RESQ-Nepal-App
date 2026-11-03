@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
+import { DispatchRecoveryService } from '../../src/core-dispatch/application/dispatch-recovery.service.js';
 
 import {
   BOOKING_DISPATCH_SERVICE,
@@ -49,6 +50,7 @@ describe('command status through the installed Nest HTTP adapter', () => {
         { provide: BOOKING_DISPATCH_SERVICE, useValue: { cancelBooking: command } },
         { provide: TRIP_TRACKING_SERVICE, useValue: {} },
         { provide: SAFETY_SERVICE, useValue: {} },
+        { provide: DispatchRecoveryService, useValue: {} },
         {
           provide: ACCESS_ADMINISTRATION_SERVICE,
           useValue: {

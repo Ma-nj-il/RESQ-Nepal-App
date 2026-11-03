@@ -6,6 +6,7 @@ import {
   HttpCode,
   Inject,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Res,
@@ -16,6 +17,7 @@ import { RequireAuthorization } from '../../../identity-access/presentation/http
 import { RequestContextStorage } from '../../../shared/infrastructure/context/request-context.storage.js';
 import { successResponse } from '../../../shared/presentation/http/success-response.js';
 import { fareQuoteJson } from '../../application/core-dispatch-json.js';
+import { DispatchRecoveryService } from '../../application/dispatch-recovery.service.js';
 import {
   BOOKING_DISPATCH_SERVICE,
   SAFETY_SERVICE,
@@ -51,6 +53,7 @@ export class RequesterDispatchController {
     @Inject(TRIP_TRACKING_SERVICE) private readonly trips: TripTrackingServiceToken,
     @Inject(SAFETY_SERVICE) private readonly safety: SafetyServiceToken,
     @Inject(RequestContextStorage) private readonly contexts: RequestContextStorage,
+    @Inject(DispatchRecoveryService) private readonly recovery: DispatchRecoveryService,
   ) {}
 
   @Post('/service-coverage-checks')
@@ -133,6 +136,27 @@ export class RequesterDispatchController {
     return successResponse(this.contexts, {
       items: records.map(involvedTimelineProjection),
       nextCursor: null,
+    });
+  }
+
+  @Get('/bookings/:bookingId/recovery')
+  async recover(
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<unknown> {
+    const snapshot = await this.recovery.requesterSnapshot(this.contexts.require(), bookingId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    return successResponse(this.contexts, {
+      observedAt: snapshot.observedAt.toISOString(),
+      booking: requesterBookingProjection(snapshot.booking),
+      ...(snapshot.assignment === undefined
+        ? {}
+        : { assignment: requesterAssignmentProjection(snapshot.assignment) }),
+      ...(snapshot.trip === undefined ? {} : { trip: requesterTripProjection(snapshot.trip) }),
+      timeline: {
+        items: snapshot.timeline.map(involvedTimelineProjection),
+        truncated: snapshot.timelineTruncated,
+      },
     });
   }
 

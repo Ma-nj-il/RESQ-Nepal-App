@@ -475,6 +475,7 @@ export class PostgresCoreDispatchRepository implements CoreDispatchRepository {
   async listBookingTimeline(
     transaction: TransactionContext,
     bookingId: string,
+    limit?: number,
   ): Promise<readonly TimelineRecord[]> {
     interface TimelineRow {
       readonly id: string;
@@ -503,8 +504,8 @@ export class PostgresCoreDispatchRepository implements CoreDispatchRepository {
          FROM dispatch.trip_transitions transition
          JOIN dispatch.trips trip ON trip.id = transition.trip_id
         WHERE trip.booking_id = $1
-       ORDER BY occurred_at, aggregate_type, aggregate_version, id`,
-      [bookingId],
+        ORDER BY occurred_at, aggregate_type, aggregate_version, id LIMIT $2`,
+      [bookingId, limit ?? null],
     );
     return rows.map((row) => ({
       id: row.id,

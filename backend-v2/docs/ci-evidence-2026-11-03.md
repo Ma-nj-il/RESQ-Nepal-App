@@ -1,5 +1,7 @@
 # Infrastructure-backed CI evidence — 2026-11-03
 
+Updated 2026-11-04.
+
 This record supplements the earlier local-only Phase 2–5 snapshots. Gates 2–8 remain **HOLD**;
 production client, traffic and source-data migration remains **0%**.
 
@@ -41,6 +43,14 @@ production client, traffic and source-data migration remains **0%**.
   commit `6ea91f63ffce9c71c9d40623ae501f99e53d31a7`: **all jobs PASS** with the encrypted
   checkpoint ledger. Quality includes **26 suites / 143 tests**; all 28 integration tests, all four
   Newman collections, image build, hardened smoke, SBOM and the configured image scan pass again.
+- [Backend run 41690932171](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41690932171),
+  commit `2481a37497188637f57a2543fb572e297e805a17`: **all three jobs PASS**, including
+  quality/unit checks, migrations/dependencies/Newman, and production image/SBOM/scan.
+  This revision adds execution-bound document/compliance workers, migration 0006,
+  S3/ClamAV adapters, 36 event contracts, and nine document PostgreSQL cases. Its local
+  unit result is **29 suites / 174 tests**. Public REST job conclusions were inspected;
+  downloadable Actions logs were unavailable. Live bucket-policy/encryption/conditional-write
+  acceptance and ClamAV corpus/signature-freshness acceptance remain unexecuted.
 
 The first successful scanner execution at `b05fe8d` exposed six HIGH findings in Node's bundled
 npm (`undici` 6.28.0 and `brace-expansion` 5.0.9). All runtime entrypoints execute compiled Node code.
@@ -87,7 +97,7 @@ hash-chain/anchor verification, atomic concurrent append, historical key version
 recovery and in-memory comparison of encrypted snapshots. Its synthetic checks do not establish
 power-loss durability, managed KMS readiness or full-volume migration acceptance.
 
-Current local checks pass: backend lint, typecheck, build, formatting and **26 suites / 143 tests**,
+At the ledger revision, local checks passed: backend lint, typecheck, build, formatting and **26 suites / 143 tests**,
 plus root mobile lint and typecheck. Eight new encrypted-ledger cases include the real CLI and
 filesystem adapter with synthetic manifests and ephemeral keys. The ledger is also verified in the
 complete passing run at `6ea91f6` above.
