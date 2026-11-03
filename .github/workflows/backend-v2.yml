@@ -114,6 +114,7 @@ jobs:
         run: >-
           node --env-file=docker/local.env --experimental-vm-modules
           ./node_modules/jest/bin/jest.js --selectProjects integration --runInBand
+          --reporters=default --reporters=github-actions
       - name: Configure ephemeral Phase 5 data protection
         run: >-
           node -e "const fs=require('node:fs');const crypto=require('node:crypto');
