@@ -46,6 +46,7 @@ function refreshRecord(overrides: Partial<RefreshTokenRecord> = {}): RefreshToke
     userId: '018f0000-0000-7000-8000-000000000004',
     tokenVersion: 3,
     assurance: 'AAL2',
+    authenticationMethods: ['password', 'totp'],
     assuranceExpiresAt: new Date(NOW.getTime() - 1),
     clientType: 'MOBILE',
     expiresAt: new Date(NOW.getTime() + 60_000),
@@ -137,7 +138,7 @@ describe('authentication security invariants', () => {
     expect(result.tokens.assurance).toBe('AAL1');
     expect(repository.rotateRefreshToken.mock.calls[0]).toEqual([
       TRANSACTION,
-      expect.objectContaining({ assurance: 'AAL1' }),
+      expect.objectContaining({ assurance: 'AAL1', authenticationMethods: ['password'] }),
     ]);
     const rotation = repository.rotateRefreshToken.mock.calls[0]?.[1];
     expect(rotation).not.toHaveProperty('assuranceExpiresAt');

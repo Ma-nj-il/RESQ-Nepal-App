@@ -7,6 +7,11 @@ production client, traffic and source-data migration remains **0%**.
 
 ## Verified remote runs
 
+- Authenticated mobile step-up at `75759cc28f149ccbd2a71d6d96a4d9604fcc13b6`:
+  [backend run 41701757512](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41701757512)
+  **PASS**, all three jobs; [mobile run 41701757611](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41701757611)
+  **PASS**, including 179 tests and all configured exports. Exact SHA, completed status and individual
+  conclusions were inspected through the public Actions API on 2026-11-04.
 - Password/TOTP sign-in at `804f6f50d2e6efbf1d86a07ceffd31bfbcac2787`:
   [mobile run 41700955234](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41700955234)
   **PASS**, including 167 tests and development/release exports;
@@ -163,7 +168,15 @@ The following authenticated step-up slice passes **179 mobile tests**, lint and 
 Twelve added cases cover component-owned challenge lifecycle, expiry/rollback, cancellation,
 definitive rejection and retry limits, unknown outcomes, session replacement and concurrent rotation.
 A regression confirms that a definitive invalid authenticator code preserves its authenticated
-session without weakening ordinary API revocation handling. Exact-revision CI awaits publication.
+session without weakening ordinary API revocation handling. Exact-revision CI passes at `75759cc`.
+
+The following backend identity-integration slice adds eight real-service cases using application-role
+PostgreSQL persistence, Argon2, AES-GCM TOTP, HMAC refresh tokens, Ed25519 JWTs and transactional
+audits. It also adds forward migration `PreserveSessionAuthenticationMethods1793664000007`, so
+refresh rotation preserves truthful `password`/`otp`/`totp` provenance and removes only `totp` when
+AAL2 expires. Local PostgreSQL 18.6 checks pass the eight cases, six migration cases and all **185**
+static repository SQL preparations. The full 196-test unit suite, lint, typecheck, build, formatting
+and 36 event contracts pass. This is synthetic implementation evidence; exact-revision CI is pending.
 
 Native binary signing/install and device crash/recovery/accessibility acceptance; complete production
 mobile and portal flows; approved provider integrations and canaries; production-role/security review;

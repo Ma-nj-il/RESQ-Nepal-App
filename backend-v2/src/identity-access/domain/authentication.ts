@@ -4,6 +4,9 @@ export type AuthenticationAssurance = (typeof AUTHENTICATION_ASSURANCE_LEVELS)[n
 export const AUTH_CLIENT_TYPES = ['MOBILE', 'BROWSER'] as const;
 export type AuthClientType = (typeof AUTH_CLIENT_TYPES)[number];
 
+export const AUTHENTICATION_METHODS = ['otp', 'password', 'totp'] as const;
+export type AuthenticationMethod = (typeof AUTHENTICATION_METHODS)[number];
+
 export interface AccessTokenClaims {
   readonly issuer: string;
   readonly audience: string;
@@ -15,7 +18,7 @@ export interface AccessTokenClaims {
   readonly expiresAt: number;
   readonly assurance: AuthenticationAssurance;
   readonly tokenVersion: number;
-  readonly authenticationMethods: readonly string[];
+  readonly authenticationMethods: readonly AuthenticationMethod[];
 }
 
 export interface IssuedAccessToken {

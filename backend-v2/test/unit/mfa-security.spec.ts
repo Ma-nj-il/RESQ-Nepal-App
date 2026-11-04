@@ -186,7 +186,7 @@ describe('multi-factor security invariants', () => {
       enrollmentExpiresAt: new Date(NOW.getTime() + 600000),
     });
     repository.verifyTotpFactor.mockResolvedValue(true);
-    repository.upgradeSessionAssurance.mockResolvedValue(true);
+    repository.upgradeSessionAssurance.mockResolvedValue(['otp', 'totp']);
     const result = await buildService(repository, {
       matchingTotpStep: () => 100,
     }).verifyTotpEnrollment(

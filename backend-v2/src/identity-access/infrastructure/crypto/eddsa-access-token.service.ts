@@ -15,7 +15,12 @@ import {
   type ApplicationConfig,
 } from '../../../shared/infrastructure/config/application-config.js';
 import type { AccessTokenIssuer } from '../../application/ports/authentication-cryptography.js';
-import type { AccessTokenClaims, IssuedAccessToken } from '../../domain/authentication.js';
+import {
+  AUTHENTICATION_METHODS,
+  type AccessTokenClaims,
+  type AuthenticationMethod,
+  type IssuedAccessToken,
+} from '../../domain/authentication.js';
 
 interface JwtHeader {
   readonly alg: 'EdDSA';
@@ -34,7 +39,7 @@ interface JwtPayload {
   readonly exp: number;
   readonly aal: 'AAL1' | 'AAL2';
   readonly ver: number;
-  readonly amr: readonly string[];
+  readonly amr: readonly AuthenticationMethod[];
 }
 
 interface SigningKey {
@@ -79,7 +84,14 @@ function readPayload(value: unknown): JwtPayload {
     typeof value['ver'] !== 'number' ||
     !Number.isInteger(value['ver']) ||
     !Array.isArray(amr) ||
-    !amr.every((method) => typeof method === 'string')
+    amr.length < 1 ||
+    amr.length > AUTHENTICATION_METHODS.length ||
+    !amr.every(
+      (method): method is AuthenticationMethod =>
+        typeof method === 'string' &&
+        AUTHENTICATION_METHODS.includes(method as AuthenticationMethod),
+    ) ||
+    new Set(amr).size !== amr.length
   ) {
     throw invalidToken();
   }
@@ -147,7 +159,7 @@ export class EdDsaAccessTokenService implements AccessTokenIssuer {
     readonly sessionId: string;
     readonly assurance: 'AAL1' | 'AAL2';
     readonly tokenVersion: number;
-    readonly authenticationMethods: readonly string[];
+    readonly authenticationMethods: readonly AuthenticationMethod[];
     readonly now: Date;
     readonly tokenId: string;
   }): IssuedAccessToken {

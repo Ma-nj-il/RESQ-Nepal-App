@@ -26,6 +26,24 @@
 Production OTP delivery intentionally remains unavailable until an approved provider is configured.
 Public OTP supports only `REGISTRATION_OR_LOGIN`; recovery and standalone OTP step-up are not exposed.
 
+## Current identity integration addendum — 2026-11-04
+
+Eight PostgreSQL-backed cases now run the actual password/TOTP services, application-role repositories,
+Argon2 verifier, AES-GCM TOTP adapter, HMAC refresh tokens, Ed25519 JWTs and transactional audit writer
+together. They cover enrollment/login, uniform credential rejection, attempt exhaustion/expiry,
+concurrent challenge and TOTP-step replay, audit rollback, exact session step-up binding, suspension/
+revocation races, AAL2 expiry and refresh-family reuse.
+
+Forward migration `PreserveSessionAuthenticationMethods1793664000007` stores session authentication
+methods. New OTP sessions persist `otp`; password login persists `password,totp`; enrollment/step-up
+adds `totp`; refresh rotation preserves those methods and removes only `totp` when AAL2 expires.
+Historical sessions are conservatively backfilled as `otp`, because stronger provenance cannot be
+invented. API/worker processes must not run a revision expecting this column before migration 0007
+commits. No production sessions or credentials are migrated; production client/data migration is 0%.
+
+Local isolated PostgreSQL 18.6 passes the eight cases, all six migration integration cases, and all
+185 static SQL preparations. Exact-revision CI and external Gate 3 acceptance remain pending.
+
 ## Executed evidence on this host
 
 | Check                                   | Result                                                                                                                                                                |

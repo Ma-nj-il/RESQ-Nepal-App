@@ -2,6 +2,7 @@ import type { TransactionContext } from '../../../shared/application/persistence
 import type {
   AuthClientType,
   AuthenticatedSession,
+  AuthenticationMethod,
   AuthenticationAssurance,
 } from '../../domain/authentication.js';
 import type { SessionAuthorizationState } from '../../domain/authorization.js';
@@ -33,6 +34,7 @@ export interface RefreshTokenRecord {
   readonly userId: string;
   readonly tokenVersion: number;
   readonly assurance: AuthenticationAssurance;
+  readonly authenticationMethods: readonly AuthenticationMethod[];
   readonly assuranceExpiresAt?: Date;
   readonly clientType: AuthClientType;
   readonly expiresAt: Date;
@@ -97,6 +99,7 @@ export interface AuthenticationRepository {
       readonly clientType: AuthClientType;
       readonly deviceLabel?: string;
       readonly assurance: AuthenticationAssurance;
+      readonly authenticationMethods: readonly AuthenticationMethod[];
       readonly assuranceExpiresAt?: Date;
       readonly idleExpiresAt: Date;
       readonly absoluteExpiresAt: Date;
@@ -119,6 +122,7 @@ export interface AuthenticationRepository {
       readonly now: Date;
       readonly idleExpiresAt: Date;
       readonly assurance: AuthenticationAssurance;
+      readonly authenticationMethods: readonly AuthenticationMethod[];
       readonly assuranceExpiresAt?: Date;
     },
   ): Promise<void>;

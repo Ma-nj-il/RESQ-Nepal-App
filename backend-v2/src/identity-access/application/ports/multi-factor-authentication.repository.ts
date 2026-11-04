@@ -1,5 +1,5 @@
 import type { TransactionContext } from '../../../shared/application/persistence/unit-of-work.js';
-import type { AuthClientType } from '../../domain/authentication.js';
+import type { AuthenticationMethod, AuthClientType } from '../../domain/authentication.js';
 
 export interface AdministrativeIdentityRecord {
   readonly userId: string;
@@ -109,7 +109,7 @@ export interface MultiFactorAuthenticationRepository {
     sessionId: string,
     now: Date,
     assuranceExpiresAt: Date,
-  ): Promise<boolean>;
+  ): Promise<readonly AuthenticationMethod[] | undefined>;
 }
 
 export const MULTI_FACTOR_AUTHENTICATION_REPOSITORY = Symbol(

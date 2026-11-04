@@ -8,7 +8,11 @@ import type {
 } from '../../shared/application/persistence/unit-of-work.js';
 import type { Clock } from '../../shared/domain/clock.js';
 import type { IdGenerator } from '../../shared/domain/id-generator.js';
-import type { AuthClientType, SessionTokens } from '../domain/authentication.js';
+import type {
+  AuthenticationMethod,
+  AuthClientType,
+  SessionTokens,
+} from '../domain/authentication.js';
 import type {
   AccessTokenIssuer,
   AuthenticationCryptography,
@@ -65,6 +69,7 @@ type ChallengeVerification =
       readonly userId: string;
       readonly sessionId: string;
       readonly tokenVersion: number;
+      readonly authenticationMethods: readonly AuthenticationMethod[];
     };
 
 export type MultiFactorVerificationResult =
@@ -261,18 +266,17 @@ export class MultiFactorAuthenticationService {
 
         if (challenge.purpose === 'STEP_UP') {
           const assuranceExpiresAt = addSeconds(now, this.policy.aal2LifetimeSeconds);
-          if (
-            challenge.sessionId === undefined ||
-            !(await this.repository.upgradeSessionAssurance(
-              transaction,
-              challenge.userId,
-              challenge.sessionId,
-              now,
-              assuranceExpiresAt,
-            ))
-          ) {
+          if (challenge.sessionId === undefined)
             return { kind: 'INVALID', attemptsExceeded: false };
-          }
+          const authenticationMethods = await this.repository.upgradeSessionAssurance(
+            transaction,
+            challenge.userId,
+            challenge.sessionId,
+            now,
+            assuranceExpiresAt,
+          );
+          if (authenticationMethods === undefined)
+            return { kind: 'INVALID', attemptsExceeded: false };
           await this.appendAudit(transaction, principalContext, {
             now,
             action: 'authentication.mfa.step-up',
@@ -285,6 +289,7 @@ export class MultiFactorAuthenticationService {
             userId: challenge.userId,
             sessionId: challenge.sessionId,
             tokenVersion,
+            authenticationMethods,
           };
         }
 
@@ -314,6 +319,7 @@ export class MultiFactorAuthenticationService {
           clientType: challenge.clientType,
           ...(challenge.deviceLabel === undefined ? {} : { deviceLabel: challenge.deviceLabel }),
           assurance: 'AAL2',
+          authenticationMethods: ['password', 'totp'],
           assuranceExpiresAt,
           idleExpiresAt: earlier(
             addSeconds(now, this.policy.sessionIdleTtlSeconds),
@@ -348,7 +354,8 @@ export class MultiFactorAuthenticationService {
       sessionId: result.sessionId,
       assurance: 'AAL2',
       tokenVersion: result.tokenVersion,
-      authenticationMethods: result.kind === 'LOGIN' ? ['password', 'totp'] : ['otp', 'totp'],
+      authenticationMethods:
+        result.kind === 'LOGIN' ? ['password', 'totp'] : result.authenticationMethods,
       now,
       tokenId: this.ids.generate(),
     });
@@ -437,50 +444,55 @@ export class MultiFactorAuthenticationService {
   }> {
     const { userId, sessionId } = this.requireAuthenticatedSession(context);
     const now = this.clock.now();
-    await this.unitOfWork.execute(context, async (transaction) => {
-      const factor = await this.repository.findOwnedTotpFactorForUpdate(
-        transaction,
-        userId,
-        factorId,
-      );
-      if (
-        factor === undefined ||
-        factor.verifiedAt !== undefined ||
-        factor.revokedAt !== undefined ||
-        factor.enrollmentExpiresAt === undefined ||
-        factor.enrollmentExpiresAt.getTime() <= now.getTime()
-      ) {
-        throw invalidMfa();
-      }
-      const step = this.matchingStep(factor, code, now);
-      const assuranceExpiresAt = addSeconds(now, this.policy.aal2LifetimeSeconds);
-      if (
-        step === undefined ||
-        !(await this.repository.verifyTotpFactor(transaction, userId, factorId, step, now)) ||
-        !(await this.repository.upgradeSessionAssurance(
+    const authenticationMethods = await this.unitOfWork.execute(
+      context,
+      async (transaction): Promise<readonly AuthenticationMethod[]> => {
+        const factor = await this.repository.findOwnedTotpFactorForUpdate(
+          transaction,
+          userId,
+          factorId,
+        );
+        if (
+          factor === undefined ||
+          factor.verifiedAt !== undefined ||
+          factor.revokedAt !== undefined ||
+          factor.enrollmentExpiresAt === undefined ||
+          factor.enrollmentExpiresAt.getTime() <= now.getTime()
+        ) {
+          throw invalidMfa();
+        }
+        const step = this.matchingStep(factor, code, now);
+        const assuranceExpiresAt = addSeconds(now, this.policy.aal2LifetimeSeconds);
+        if (
+          step === undefined ||
+          !(await this.repository.verifyTotpFactor(transaction, userId, factorId, step, now))
+        ) {
+          throw invalidMfa();
+        }
+        const methods = await this.repository.upgradeSessionAssurance(
           transaction,
           userId,
           sessionId,
           now,
           assuranceExpiresAt,
-        ))
-      ) {
-        throw invalidMfa();
-      }
-      await this.appendAudit(transaction, context, {
-        now,
-        action: 'authentication.mfa.enrollment.verify',
-        resourceType: 'mfa_factor',
-        resourceId: factorId,
-        reasonCode: 'AUTH.MFA_ENROLLMENT_VERIFIED',
-      });
-    });
+        );
+        if (methods === undefined) throw invalidMfa();
+        await this.appendAudit(transaction, context, {
+          now,
+          action: 'authentication.mfa.enrollment.verify',
+          resourceType: 'mfa_factor',
+          resourceId: factorId,
+          reasonCode: 'AUTH.MFA_ENROLLMENT_VERIFIED',
+        });
+        return methods;
+      },
+    );
     const access = this.accessTokens.issue({
       userId,
       sessionId,
       assurance: 'AAL2',
       tokenVersion: context.authentication?.tokenVersion ?? 0,
-      authenticationMethods: ['otp', 'totp'],
+      authenticationMethods,
       now,
       tokenId: this.ids.generate(),
     });

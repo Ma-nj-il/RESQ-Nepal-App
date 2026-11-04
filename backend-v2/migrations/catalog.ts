@@ -30,6 +30,10 @@ import {
   DOCUMENT_WORKERS_SQL,
   BindDocumentWorkers1793664000006,
 } from './1793664000006-bind-document-workers.js';
+import {
+  PreserveSessionAuthenticationMethods1793664000007,
+  SESSION_AUTHENTICATION_METHODS_SQL,
+} from './1793664000007-preserve-session-authentication-methods.js';
 
 type MigrationConstructor = new () => MigrationInterface;
 
@@ -41,6 +45,7 @@ export const MIGRATIONS: readonly MigrationConstructor[] = Object.freeze([
   CreateCoreDispatch1793664000004,
   CreateProductServices1793664000005,
   BindDocumentWorkers1793664000006,
+  PreserveSessionAuthenticationMethods1793664000007,
 ]);
 
 function checksum(sql: string): string {
@@ -55,4 +60,5 @@ export const MIGRATION_CHECKSUMS: Readonly<Record<string, string>> = Object.free
   CreateCoreDispatch1793664000004: checksum(CORE_DISPATCH_SQL),
   CreateProductServices1793664000005: checksum(PRODUCT_SERVICES_SQL),
   BindDocumentWorkers1793664000006: checksum(DOCUMENT_WORKERS_SQL),
+  PreserveSessionAuthenticationMethods1793664000007: checksum(SESSION_AUTHENTICATION_METHODS_SQL),
 });

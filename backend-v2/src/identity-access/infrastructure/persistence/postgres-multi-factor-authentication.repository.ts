@@ -10,6 +10,7 @@ import type {
   MultiFactorChallengeRecord,
   TotpFactorRecord,
 } from '../../application/ports/multi-factor-authentication.repository.js';
+import type { AuthenticationMethod } from '../../domain/authentication.js';
 
 interface ChallengeRow {
   readonly id: string;
@@ -342,20 +343,24 @@ export class PostgresMultiFactorAuthenticationRepository implements MultiFactorA
     sessionId: string,
     now: Date,
     assuranceExpiresAt: Date,
-  ): Promise<boolean> {
+  ): Promise<readonly AuthenticationMethod[] | undefined> {
     const manager = entityManagerFor(transaction);
     await setTransactionClaim(manager, 'app.authentication_user_id', userId);
     await setTransactionClaim(manager, 'app.authentication_session_id', sessionId);
-    const rows: { id: string }[] = await queryRows(
+    const rows: { authentication_methods: AuthenticationMethod[] }[] = await queryRows(
       manager,
       `UPDATE identity.auth_sessions
-          SET assurance = 'AAL2', assurance_expires_at = LEAST($4, absolute_expires_at),
-              session_version = session_version + 1, last_used_at = $3, updated_at = $3
+           SET assurance = 'AAL2', assurance_expires_at = LEAST($4, absolute_expires_at),
+               authentication_methods = CASE
+                 WHEN array_position(authentication_methods, 'totp'::varchar) IS NULL
+                   THEN array_append(authentication_methods, 'totp'::varchar)
+                 ELSE authentication_methods END,
+               session_version = session_version + 1, last_used_at = $3, updated_at = $3
         WHERE user_id = $1 AND id = $2 AND revoked_at IS NULL
           AND risk_blocked_at IS NULL AND idle_expires_at > $3 AND absolute_expires_at > $3
-        RETURNING id`,
+         RETURNING authentication_methods`,
       [userId, sessionId, now, assuranceExpiresAt],
     );
-    return rows.length === 1;
+    return rows[0]?.authentication_methods;
   }
 }

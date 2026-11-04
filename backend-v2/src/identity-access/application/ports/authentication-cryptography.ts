@@ -1,4 +1,8 @@
-import type { AccessTokenClaims, IssuedAccessToken } from '../../domain/authentication.js';
+import type {
+  AccessTokenClaims,
+  AuthenticationMethod,
+  IssuedAccessToken,
+} from '../../domain/authentication.js';
 
 export interface AuthenticationCryptography {
   generateOtp(): string;
@@ -16,7 +20,7 @@ export interface AccessTokenIssuer {
     readonly sessionId: string;
     readonly assurance: AccessTokenClaims['assurance'];
     readonly tokenVersion: number;
-    readonly authenticationMethods: readonly string[];
+    readonly authenticationMethods: readonly AuthenticationMethod[];
     readonly now: Date;
     readonly tokenId: string;
   }): IssuedAccessToken;

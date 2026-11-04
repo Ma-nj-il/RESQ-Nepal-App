@@ -18,6 +18,7 @@ import { PostgresIdempotencyRepository } from '../../src/shared/infrastructure/p
 import { TypeOrmUnitOfWork } from '../../src/shared/infrastructure/persistence/typeorm-unit-of-work.js';
 import { productIntegrationCases } from './product-services.cases.js';
 import { identityPersistenceCases } from './identity-persistence.cases.js';
+import { mfaAuthenticationCases } from './mfa-authentication.cases.js';
 import { staticPostgresQueries } from './static-postgres-queries.js';
 import { documentWorkerCases } from './document-workers.cases.js';
 import { documentPersistenceCases } from './document-persistence.cases.js';
@@ -413,6 +414,7 @@ describeIntegration('Phase 5–6 dispatch and product PostgreSQL invariants', ()
     seedDispatchFixture,
   });
   identityPersistenceCases({ config: () => config, createUser });
+  mfaAuthenticationCases({ config: () => config, owner: () => owner, createUser });
 
   it('prepares static repository SQL against the migrated PostgreSQL schema', async () => {
     const queries = staticPostgresQueries(resolve('src'));

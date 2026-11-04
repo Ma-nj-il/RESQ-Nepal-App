@@ -33,12 +33,14 @@ The available code work does not make every phase complete. External inputs rema
 the phase status documents identify them. Local synthetic checks must not be used as production
 acceptance evidence. Git publication is code delivery, not a deployment or cutover.
 
-All backend and mobile CI jobs pass at `804f6f5`, including corrected Kafka startup/two-replica
+All backend and mobile CI jobs pass at `75759cc`, including corrected Kafka startup/two-replica
 fanout, supported-PostgreSQL integration, Newman, image checks and all-platform mobile exports.
-That revision has 196 backend / 167 mobile tests. Password/TOTP sign-in adds strict AAL2/mobile
+That revision has 196 backend / 179 mobile tests. Password/TOTP sign-in adds strict AAL2/mobile
 decoding, secret-free state, lifecycle cancellation and storage/listener fencing. Authenticated
 step-up now has component-owned challenges, expiry, cancellation and definitive code correction
 without unintended logout; its local mobile suite passes 179 tests, lint and typecheck.
-Exact remote evidence is in the CI document. Provider
+The next backend slice adds eight real-service PostgreSQL identity cases and migration 0007 for
+truthful authentication-method preservation; local migration, SQL, unit and quality checks pass.
+Exact remote evidence for that slice is pending. Provider
 acceptance, managed storage/KMS, production clients and source-specific execution remain open.
 Gates remain HOLD.

@@ -49,6 +49,7 @@ export function identityPersistenceCases(harness: {
       refreshTokenDigest: randomBytes(32),
       clientType: 'MOBILE' as const,
       assurance: 'AAL1' as const,
+      authenticationMethods: ['otp' as const],
       now: new Date(),
       refreshTokenExpiresAt: new Date(Date.now() + 3_600_000),
       idleExpiresAt: new Date(Date.now() + 3_600_000),
@@ -81,6 +82,7 @@ export function identityPersistenceCases(harness: {
           now: new Date(),
           idleExpiresAt: original.idleExpiresAt,
           assurance: 'AAL1',
+          authenticationMethods: ['otp'],
         });
       });
       await uow.execute(context(), async (transaction) => {
@@ -240,7 +242,7 @@ export function identityPersistenceCases(harness: {
             new Date(),
             new Date(Date.now() + 300_000),
           ),
-        ).toBe(true);
+        ).toEqual(['otp', 'totp']);
         expect(
           await mfa.upgradeSessionAssurance(
             tx,
@@ -249,7 +251,7 @@ export function identityPersistenceCases(harness: {
             new Date(),
             new Date(Date.now() + 300_000),
           ),
-        ).toBe(false);
+        ).toBeUndefined();
       });
     });
   });

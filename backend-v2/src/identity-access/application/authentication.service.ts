@@ -4,7 +4,11 @@ import { ApplicationError } from '../../shared/application/errors/application-er
 import type { UnitOfWork } from '../../shared/application/persistence/unit-of-work.js';
 import type { Clock } from '../../shared/domain/clock.js';
 import type { IdGenerator } from '../../shared/domain/id-generator.js';
-import type { AuthClientType, SessionTokens } from '../domain/authentication.js';
+import type {
+  AuthenticationMethod,
+  AuthClientType,
+  SessionTokens,
+} from '../domain/authentication.js';
 import { InvalidPhoneNumberError, normalizePhoneNumber } from '../domain/phone-number.js';
 import {
   type AccessTokenIssuer,
@@ -46,6 +50,7 @@ type RefreshResult =
       readonly sessionId: string;
       readonly tokenVersion: number;
       readonly assurance: 'AAL1' | 'AAL2';
+      readonly authenticationMethods: readonly AuthenticationMethod[];
       readonly rawRefreshToken: string;
       readonly refreshExpiresAt: Date;
     };
@@ -197,6 +202,7 @@ export class AuthenticationService {
           clientType: input.clientType,
           ...(input.deviceLabel === undefined ? {} : { deviceLabel: input.deviceLabel }),
           assurance: 'AAL1',
+          authenticationMethods: ['otp'],
           idleExpiresAt,
           absoluteExpiresAt,
           now,
@@ -340,6 +346,10 @@ export class AuthenticationService {
           now,
           idleExpiresAt,
           assurance,
+          authenticationMethods:
+            assurance === 'AAL2'
+              ? current.authenticationMethods
+              : current.authenticationMethods.filter((method) => method !== 'totp'),
           ...(assuranceExpiresAt === undefined ? {} : { assuranceExpiresAt }),
         });
         return {
@@ -348,6 +358,10 @@ export class AuthenticationService {
           sessionId: current.sessionId,
           tokenVersion: current.tokenVersion,
           assurance,
+          authenticationMethods:
+            assurance === 'AAL2'
+              ? current.authenticationMethods
+              : current.authenticationMethods.filter((method) => method !== 'totp'),
           rawRefreshToken: successor,
           refreshExpiresAt: successorExpiresAt,
         };
@@ -372,7 +386,7 @@ export class AuthenticationService {
       sessionId: result.sessionId,
       assurance: result.assurance,
       tokenVersion: result.tokenVersion,
-      authenticationMethods: result.assurance === 'AAL2' ? ['otp', 'totp'] : ['otp'],
+      authenticationMethods: result.authenticationMethods,
       now,
       tokenId: this.ids.generate(),
     });

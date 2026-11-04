@@ -178,9 +178,9 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
     await setTransactionClaim(manager, 'app.authentication_family_id', input.familyId);
     await manager.query(
       `INSERT INTO identity.auth_sessions (
-        id, user_id, client_type, device_label, assurance, assurance_expires_at, idle_expires_at,
-        absolute_expires_at, last_used_at, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9)`,
+        id, user_id, client_type, device_label, assurance, assurance_expires_at,
+        authentication_methods, idle_expires_at, absolute_expires_at, last_used_at, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::varchar[], $8, $9, $10, $10, $10)`,
       [
         input.sessionId,
         input.userId,
@@ -188,6 +188,7 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
         input.deviceLabel ?? null,
         input.assurance,
         input.assuranceExpiresAt ?? null,
+        input.authenticationMethods,
         input.idleExpiresAt,
         input.absoluteExpiresAt,
         input.now,
@@ -236,13 +237,14 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
     const sessions: {
       user_id: string;
       assurance: RefreshTokenRecord['assurance'];
+      authentication_methods: RefreshTokenRecord['authenticationMethods'];
       assurance_expires_at: Date | null;
       client_type: RefreshTokenRecord['clientType'];
       idle_expires_at: Date;
       absolute_expires_at: Date;
       revoked_at: Date | null;
     }[] = await manager.query(
-      `SELECT user_id, assurance, assurance_expires_at, client_type, idle_expires_at,
+      `SELECT user_id, assurance, assurance_expires_at, authentication_methods, client_type, idle_expires_at,
               absolute_expires_at, revoked_at
          FROM identity.auth_sessions
         WHERE id = $1
@@ -265,6 +267,7 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
       userId: session.user_id,
       tokenVersion: user.token_version,
       assurance: session.assurance,
+      authenticationMethods: session.authentication_methods,
       ...(session.assurance_expires_at === null
         ? {}
         : { assuranceExpiresAt: session.assurance_expires_at }),
@@ -311,6 +314,7 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
     await manager.query(
       `UPDATE identity.auth_sessions
           SET idle_expires_at = $2, assurance = $4, assurance_expires_at = $5,
+              authentication_methods = $6::varchar[],
               last_used_at = $3, updated_at = $3
         WHERE id = $1`,
       [
@@ -319,6 +323,7 @@ export class PostgresAuthenticationRepository implements AuthenticationRepositor
         input.now,
         input.assurance,
         input.assuranceExpiresAt ?? null,
+        input.authenticationMethods,
       ],
     );
   }

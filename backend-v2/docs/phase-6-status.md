@@ -2,7 +2,8 @@
 
 - **Disposition:** HOLD — initial product backend slice implemented; Phase 6 is incomplete.
 - **Evidence date:** 2026-11-04.
-- **Migration:** `CreateProductServices1793664000005`, following the five Phase 2–5 migrations.
+- **Product migration:** `CreateProductServices1793664000005`; later migrations 0006 and 0007 bind
+  document workers and preserve session authentication-method provenance.
 - **Production migration:** 0% of clients, traffic, or source data has moved.
 
 ## Implemented
