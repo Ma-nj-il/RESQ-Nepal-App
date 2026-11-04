@@ -7,6 +7,17 @@ production client, traffic and source-data migration remains **0%**.
 
 ## Verified remote runs
 
+- Phase 6–8 acceptance-readiness tooling at
+  `958eb8d24de2bc8cd2f6030f7e84c50ba7d32556`:
+  [backend run 41769679742](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41769679742)
+  **PASS**, all three jobs. Quality/unit/build, real PostgreSQL/dependency migrations and integration,
+  all Newman collections, production image hardening, SBOM and configured vulnerability scan passed.
+  [mobile run 41769679676](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41769679676)
+  **PASS**, including locked install, Expo compatibility, lint/typecheck, unit tests, dependency audit
+  and development/release exports. Exact SHA, completed run status and every job/step conclusion were
+  inspected through the public Actions API on 2026-11-04. These runs validate repository tooling and
+  existing integrations; they do not supply missing owner, provider, device, production-data or
+  cutover acceptance evidence.
 - Session authentication provenance at `ed95b06256e28a1477fef4c7969ee46bd6aa626f`:
   [backend run 41765374995](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41765374995)
   **PASS**, all three jobs. This includes quality/unit/build, migration and real-dependency integration,

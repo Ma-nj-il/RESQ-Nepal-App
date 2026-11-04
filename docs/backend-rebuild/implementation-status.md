@@ -49,3 +49,9 @@ Current repository follow-on checks pass 33 backend unit suites / 278 tests, bac
 build/formatting, and 179 mobile tests plus Expo lint/typecheck/dependency compatibility. These cover
 global partition reconciliation, stabilization evidence rejection and shared-control accessibility
 semantics; they are local synthetic/static evidence, not production acceptance.
+
+Exact-commit remote validation at `958eb8d` also passes: backend run
+[41769679742](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41769679742) passes all three jobs,
+and mobile run [41769679676](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41769679676)
+passes its complete configured workflow. This remains repository/CI evidence only; it does not change
+any gate disposition or production migration percentage.
