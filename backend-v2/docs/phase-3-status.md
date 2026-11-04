@@ -42,7 +42,8 @@ invented. API/worker processes must not run a revision expecting this column bef
 commits. No production sessions or credentials are migrated; production client/data migration is 0%.
 
 Local isolated PostgreSQL 18.6 passes the eight cases, all six migration integration cases, and all
-185 static SQL preparations. Exact-revision CI and external Gate 3 acceptance remain pending.
+185 static SQL preparations. Exact-revision backend run 41765374995 passes all jobs at `ed95b06`.
+External Gate 3 acceptance remains pending.
 
 ## Executed evidence on this host
 

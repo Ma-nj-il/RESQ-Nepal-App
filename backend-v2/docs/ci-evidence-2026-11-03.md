@@ -7,6 +7,12 @@ production client, traffic and source-data migration remains **0%**.
 
 ## Verified remote runs
 
+- Session authentication provenance at `ed95b06256e28a1477fef4c7969ee46bd6aa626f`:
+  [backend run 41765374995](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41765374995)
+  **PASS**, all three jobs. This includes quality/unit/build, migration and real-dependency integration,
+  four Newman collections, hardened image smoke, SBOM, and configured HIGH/CRITICAL scans. Exact SHA,
+  completed run status, and every job/step conclusion were inspected through the public Actions API
+  on 2026-11-04.
 - Authenticated mobile step-up at `75759cc28f149ccbd2a71d6d96a4d9604fcc13b6`:
   [backend run 41701757512](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41701757512)
   **PASS**, all three jobs; [mobile run 41701757611](https://github.com/Ma-nj-il/RESQ-Nepal-App/actions/runs/41701757611)
@@ -176,7 +182,9 @@ audits. It also adds forward migration `PreserveSessionAuthenticationMethods1793
 refresh rotation preserves truthful `password`/`otp`/`totp` provenance and removes only `totp` when
 AAL2 expires. Local PostgreSQL 18.6 checks pass the eight cases, six migration cases and all **185**
 static repository SQL preparations. The full 196-test unit suite, lint, typecheck, build, formatting
-and 36 event contracts pass. This is synthetic implementation evidence; exact-revision CI is pending.
+and 36 event contracts pass. Exact-revision backend CI passes at `ed95b06`, including the real-service
+integration and migration job. Two additional fresh local PostgreSQL 18.6 full-suite reruns passed all
+41 cases; the earlier isolated document-expiry observation did not reproduce locally or in CI.
 
 Native binary signing/install and device crash/recovery/accessibility acceptance; complete production
 mobile and portal flows; approved provider integrations and canaries; production-role/security review;

@@ -40,7 +40,7 @@ decoding, secret-free state, lifecycle cancellation and storage/listener fencing
 step-up now has component-owned challenges, expiry, cancellation and definitive code correction
 without unintended logout; its local mobile suite passes 179 tests, lint and typecheck.
 The next backend slice adds eight real-service PostgreSQL identity cases and migration 0007 for
-truthful authentication-method preservation; local migration, SQL, unit and quality checks pass.
-Exact remote evidence for that slice is pending. Provider
+truthful authentication-method preservation. Backend run 41765374995 passes all three jobs at
+`ed95b06`, including migration/dependency/Newman and image evidence. Provider
 acceptance, managed storage/KMS, production clients and source-specific execution remain open.
 Gates remain HOLD.
