@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "evaluatedAt": "2026-11-03T10:00:00Z",
+  "transformVersion": "synthetic-unapproved",
+  "finalReconciliationReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "evidence": [],
+  "rehearsalRuns": [
+    {
+      "runId": "synthetic-1",
+      "reportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "completedAt": "2026-11-03T08:00:00Z",
+      "fullVolume": false,
+      "status": "FAIL"
+    },
+    {
+      "runId": "synthetic-2",
+      "reportSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "completedAt": "2026-11-03T09:00:00Z",
+      "fullVolume": false,
+      "status": "FAIL"
+    }
+  ],
+  "zeroTolerance": {
+    "unaccountedSources": 0,
+    "orphanOrCrossTenantReferences": 0,
+    "duplicateOrOverlappingAssignments": 0,
+    "invalidLifecycleSequences": 0,
+    "unauthorizedReads": 0,
+    "monetaryReconciliationFailures": 0,
+    "restrictedObjectFailures": 0,
+    "undocumentedIdentityOutcomes": 0,
+    "auditOutboxInboxFailures": 0,
+    "applicationRoleMigrationBypasses": 0,
+    "unreviewedExceptions": 0
+  },
+  "unresolvedCriticalOrHigh": 0
+}

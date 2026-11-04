@@ -6,11 +6,16 @@ product-services slices are present. No legacy route or production workflow has 
 Gates 2–6 remain **HOLD** pending provider, capacity, operations and independent acceptance.
 The [CI evidence](docs/ci-evidence-2026-11-03.md) records passing infrastructure-backed checks.
 
-Offline migration reconciliation, an [encrypted rehearsal ledger](docs/encrypted-rehearsal-ledger.md)
-with anchored recovery, and cutover-readiness tooling are available. See
+Offline single/global-partition migration reconciliation, an
+[encrypted rehearsal ledger](docs/encrypted-rehearsal-ledger.md) with anchored recovery, and
+cutover/stabilization-readiness tooling are available. See
 [Phase 7](docs/phase-7-status.md), [Phase 8](docs/phase-8-status.md), and the
 [overall delivery status](../docs/backend-rebuild/implementation-status.md). Gates 7–8 also remain
 HOLD; these tools do not authorize or perform production migration.
+
+The readiness CLI also has strict, non-authorizing `phase6-acceptance`, `migration-acceptance`, and
+`retirement` modes. They validate evidence completeness and zero-tolerance declarations without
+connecting to providers, devices, portals, source databases or production infrastructure.
 
 ## Runtime roles
 

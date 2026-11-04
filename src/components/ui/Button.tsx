@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, Text,  ActivityIndicator, ViewStyle } from 'react-native';
+import { TouchableOpacity, Text, ActivityIndicator, ViewStyle } from 'react-native';
 import { colors, spacing, typography, radii } from '../../constants/theme';
 
 interface ButtonProps {
@@ -12,10 +12,14 @@ interface ButtonProps {
   icon?: React.ReactNode;
   style?: ViewStyle;
   fullWidth?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  testID?: string;
 }
 
 export const Button: React.FC<ButtonProps> = ({
-  title, onPress, variant = 'primary', size = 'md', disabled, loading, icon, style, fullWidth
+  title, onPress, variant = 'primary', size = 'md', disabled, loading, icon, style, fullWidth,
+  accessibilityLabel, accessibilityHint, testID,
 }) => {
   const baseStyle: ViewStyle = {
     flexDirection: 'row',
@@ -23,6 +27,8 @@ export const Button: React.FC<ButtonProps> = ({
     justifyContent: 'center',
     borderRadius: radii.full,
     gap: spacing.sm,
+    minHeight: 44,
+    minWidth: 44,
     ...(fullWidth && { width: '100%' as any }),
   };
   const sizeStyle: ViewStyle = {
@@ -44,10 +50,15 @@ export const Button: React.FC<ButtonProps> = ({
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
+      testID={testID}
       style={[baseStyle, sizeStyle, variantStyle, (disabled || loading) && { opacity: 0.5 }, style]}
     >
-      {loading ? <ActivityIndicator color={textColor} size="small" /> : icon}
-      <Text style={[typography.button, { color: textColor, fontSize: size === 'sm' ? 14 : 16 }]}>{title}</Text>
+      {loading ? <ActivityIndicator color={textColor} size="small" accessibilityElementsHidden /> : icon}
+      <Text accessible={false} style={[typography.button, { color: textColor, fontSize: size === 'sm' ? 14 : 16 }]}>{title}</Text>
     </TouchableOpacity>
   );
 };

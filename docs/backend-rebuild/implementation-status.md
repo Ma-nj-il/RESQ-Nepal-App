@@ -10,9 +10,9 @@ client/traffic/data migration is **0%**.
 | 3     | Identity, OTP/password/MFA, rotating sessions, tenancy/RBAC/authority and RLS                                   | HOLD: full infrastructure/security review and drills                                                                  |
 | 4     | Registry/workforce/fleet/documents/readiness, scoped APIs, execution-bound document/compliance workers and S3/ClamAV adapters | HOLD: provider deployment, persona/segregation, object/expiry/race acceptance |
 | 5     | Dispatch/trips/cancellation/tracking/safety, jobs/events, consistent recovery and requester realtime delivery | HOLD: real races/outages/capacity/SOS simulation; other realtime audiences remain open |
-| 6     | Preferences, support, ratings, cash/reconciliation, notification inbox, mobile API/session, secure command recovery and mutation preview | HOLD: complete mobile/portal production flows, provider integrations, device/accessibility/offline/persona acceptance |
-| 7     | Strict metadata reconciliation, deterministic IDs, encrypted checkpoint ledger and independent-rerun comparison | HOLD: actual extracts/mappings/transforms, managed KMS/transaction-bound execution ledger, full-volume migrations, client releases |
-| 8     | Fail-closed readiness evaluator, one-writer/full-drain checks, controlled-cutover/stabilization runbook         | HOLD: actual authorized execution and stabilization                                                                   |
+| 6     | Product/mobile API, secure command recovery, accessibility semantics and detailed persona/device/provider evidence evaluator | HOLD: complete mobile/portal production flows, provider integrations and real native/persona/security acceptance |
+| 7     | Metadata/global partition reconciliation, deterministic IDs, encrypted ledger, rerun comparison and zero-tolerance Gate 7 evaluator | HOLD: actual extracts/mappings/transforms, managed KMS/staging and measured full-volume/post-load acceptance |
+| 8     | Fail-closed cutover, stabilization and legacy-retirement evaluators plus one-writer/full-drain runbooks | HOLD: authorized cutover, measured stabilization, owner acceptance and separately authorized retirement |
 
 ## Current implementation entry points
 
@@ -44,3 +44,8 @@ truthful authentication-method preservation. Backend run 41765374995 passes all 
 `ed95b06`, including migration/dependency/Newman and image evidence. Provider
 acceptance, managed storage/KMS, production clients and source-specific execution remain open.
 Gates remain HOLD.
+
+Current repository follow-on checks pass 33 backend unit suites / 278 tests, backend lint/typecheck/
+build/formatting, and 179 mobile tests plus Expo lint/typecheck/dependency compatibility. These cover
+global partition reconciliation, stabilization evidence rejection and shared-control accessibility
+semantics; they are local synthetic/static evidence, not production acceptance.

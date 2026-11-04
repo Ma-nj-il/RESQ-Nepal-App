@@ -1,7 +1,7 @@
 # Phase 8 / Gate 8 status
 
 - **Disposition:** HOLD — cutover readiness evaluator/runbook prepared; cutover and stabilization have not executed.
-- **Evidence date:** 2026-11-03.
+- **Evidence date:** 2026-11-04.
 - **Production migration:** 0%. Legacy retirement is a separate approval.
 
 ## Readiness evaluator
@@ -49,6 +49,40 @@ Before target writes, rollback may restore approved routing/client versions. Aft
 stop new affected mutations, restore dependencies or roll back compatible application code with the
 expanded schema, then forward-fix idempotently. Do not route authoritative work back to legacy or
 restore over post-boundary records without the separately rehearsed compensation/DR procedure.
+
+## Stabilization evaluator
+
+After an authorized cutover, operators can create a new immutable report with:
+
+```sh
+npm run readiness -- stabilization INPUT.json NEW_REPORT.json
+```
+
+The strict input requires the approved window and checkpoint cadence, a cutover-report hash, fresh
+passing owner evidence for SLOs, business reconciliation, security, providers, queues/events, support,
+operations, data and finance, and ordered GO checkpoints. It holds on monitoring gaps, failed health,
+critical/high issues, authorization violations, duplicate active assignments, unaccounted records,
+any minor-unit mismatch, legacy authoritative writes, or failed dispatch/SOS canaries.
+
+Even a clean window returns only `READY_FOR_OWNER_REVIEW`, `productionAuthorized: false`, and
+`retirementAuthorized: false`. The synthetic HOLD fixture contains no acceptance evidence and is not
+stabilization execution. Legacy retirement remains a separate owner decision and evidence set.
+
+## Legacy retirement evaluator
+
+```sh
+npm run readiness -- retirement INPUT.json NEW_REPORT.json
+```
+
+Retirement input binds the accepted stabilization report to a complete legacy dependency inventory.
+It requires fresh evidence for zero traffic/writes, cron/bridge/webhook/provider disuse, legal archive
+and retention review, rollback-window closure, credential revocation, immutable/deleted legacy data,
+compatibility removal, infrastructure closure and cost/security owner signoff. Empty inventories,
+duplicate entries, active/unknown dependencies or critical/high issues HOLD. Read-only retention is
+allowed only as declared evidence, not silently inferred.
+
+This mode contains no deletion commands and always returns `retirementAuthorized: false`; destructive
+retirement still requires explicit owner authorization. Its synthetic fixture intentionally HOLDs.
 
 ## Gate 8 acceptance still missing
 

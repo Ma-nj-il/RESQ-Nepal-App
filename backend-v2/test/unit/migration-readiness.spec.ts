@@ -10,6 +10,16 @@ import {
   type RehearsalInput,
 } from '../../apps/migration-readiness/reconciliation.js';
 import { compareRehearsals } from '../../apps/migration-readiness/repeatability.js';
+import {
+  reconcilePartitionSet,
+  type PartitionSet,
+} from '../../apps/migration-readiness/partitions.js';
+import {
+  evaluateStabilization,
+  requiredStabilizationEvidence,
+  stabilizationSchema,
+  type StabilizationInput,
+} from '../../apps/migration-readiness/stabilization.js';
 
 const hash = 'a'.repeat(64);
 const otherHash = 'b'.repeat(64);
@@ -263,6 +273,103 @@ describe('independent migration rerun comparison', () => {
   });
 });
 
+describe('partition-set manifest reconciliation', () => {
+  function partitionFixture(): {
+    index: PartitionSet;
+    partitions: { partitionId: string; manifestSha256: string; value: RehearsalInput }[];
+  } {
+    const sourcePartition = fixture();
+    sourcePartition.runId = 'partition-source';
+    sourcePartition.targets = [];
+    const targetPartition = fixture();
+    targetPartition.runId = 'partition-target';
+    targetPartition.sourceCounts = [{ system: 'supabase', type: 'PRINCIPAL', count: 0 }];
+    targetPartition.sources = [];
+    targetPartition.ledger = [];
+    return {
+      index: {
+        formatVersion: 1,
+        setId: 'synthetic-partition-set',
+        transformVersion: 'review-v1',
+        exportSha256: hash,
+        partitions: [
+          { partitionId: 'source', runId: sourcePartition.runId, manifestSha256: hash },
+          { partitionId: 'target', runId: targetPartition.runId, manifestSha256: otherHash },
+        ],
+      },
+      partitions: [
+        { partitionId: 'source', manifestSha256: hash, value: sourcePartition },
+        { partitionId: 'target', manifestSha256: otherHash, value: targetPartition },
+      ],
+    };
+  }
+
+  it('checks maps and records globally instead of requiring self-contained shards', () => {
+    const input = partitionFixture();
+    expect(reconcileManifest(input.partitions[0]?.value).disposition).toBe('HOLD');
+    expect(reconcileManifest(input.partitions[1]?.value).disposition).toBe('HOLD');
+    expect(reconcilePartitionSet(input.index, input.partitions)).toMatchObject({
+      disposition: 'RECONCILED',
+      productionAuthorized: false,
+      partitionSetId: input.index.setId,
+      partitionCount: 2,
+      failures: [],
+    });
+  });
+
+  it('holds on missing, undeclared, duplicate or hash-drifted partitions', () => {
+    const missing = partitionFixture();
+    expect(
+      reconcilePartitionSet(missing.index, missing.partitions.slice(0, 1)).failures,
+    ).toContainEqual({
+      code: 'MISSING_PARTITION',
+      count: 1,
+    });
+    const corrupted = partitionFixture();
+    const firstPartition = first(corrupted.partitions);
+    firstPartition.manifestSha256 = otherHash;
+    corrupted.partitions.push({ ...firstPartition });
+    corrupted.partitions.push({ ...firstPartition, partitionId: 'undeclared' });
+    expect(reconcilePartitionSet(corrupted.index, corrupted.partitions).failures).toEqual(
+      expect.arrayContaining([
+        { code: 'PARTITION_HASH_MISMATCH', count: 2 },
+        { code: 'DUPLICATE_SUPPLIED_PARTITION', count: 1 },
+        { code: 'UNDECLARED_PARTITION', count: 1 },
+      ]),
+    );
+  });
+
+  it('detects identities duplicated across otherwise separate files', () => {
+    const input = partitionFixture();
+    const duplicate = structuredClone(first(input.partitions));
+    duplicate.partitionId = 'target';
+    duplicate.manifestSha256 = otherHash;
+    duplicate.value.runId = 'partition-target';
+    input.partitions[1] = duplicate;
+    expect(reconcilePartitionSet(input.index, input.partitions).failures).toEqual(
+      expect.arrayContaining([
+        { code: 'DUPLICATE_SOURCE', count: 1 },
+        { code: 'DUPLICATE_LEDGER_SOURCE', count: 1 },
+      ]),
+    );
+  });
+
+  it('binds every partition to the approved export, transform and declared run', () => {
+    const input = partitionFixture();
+    const manifest = first(input.partitions).value;
+    manifest.runId = 'changed-run';
+    manifest.transformVersion = 'changed-transform';
+    manifest.exportSha256 = otherHash;
+    expect(reconcilePartitionSet(input.index, input.partitions).failures).toEqual(
+      expect.arrayContaining([
+        { code: 'PARTITION_RUN_MISMATCH', count: 1 },
+        { code: 'PARTITION_TRANSFORM_MISMATCH', count: 1 },
+        { code: 'PARTITION_EXPORT_MISMATCH', count: 1 },
+      ]),
+    );
+  });
+});
+
 function cutoverFixture(): ReturnType<typeof cutoverSchema.parse> {
   return {
     formatVersion: 1,
@@ -337,5 +444,116 @@ describe('cutover readiness evaluation', () => {
     expect(evaluateCutover(input, new Date('2026-11-05T00:00:00Z')).blockers).toEqual(
       expect.arrayContaining(['STALE_EVALUATION', 'UNDECLARED_COHORT', 'ONE_WRITER_VIOLATION']),
     );
+  });
+});
+
+function stabilizationFixture(): StabilizationInput {
+  const health = {
+    slo: 'PASS' as const,
+    businessReconciliation: 'PASS' as const,
+    security: 'PASS' as const,
+    providers: 'PASS' as const,
+    queuesAndEvents: 'PASS' as const,
+    support: 'PASS' as const,
+  };
+  const checkpoint = (observedAt: string): StabilizationInput['checkpoints'][number] => ({
+    observedAt,
+    decision: 'GO',
+    decisionOwner: 'test-commander',
+    artifactSha256: hash,
+    health: { ...health },
+    openCriticalOrHigh: 0,
+    authorizationBoundaryViolations: 0,
+    duplicateActiveAssignments: 0,
+    unaccountedBusinessRecords: 0,
+    monetaryReconciliationFailures: 0,
+    legacyAuthoritativeWrites: 0,
+    failedDispatchOrSosCanaries: 0,
+  });
+  return {
+    formatVersion: 1,
+    releaseCommit: 'a'.repeat(40),
+    cutoverReportSha256: hash,
+    startedAt: '2026-11-03T08:00:00Z',
+    evaluatedAt: '2026-11-03T10:00:00Z',
+    approvedWindowMinutes: 120,
+    maxCheckpointGapMinutes: 60,
+    incidentCommander: 'test-commander',
+    evidence: requiredStabilizationEvidence.map((kind) => ({
+      kind,
+      status: 'PASS',
+      artifactSha256: hash,
+      owner: 'test-owner',
+      validUntil: '2026-11-04T10:00:00Z',
+    })),
+    checkpoints: [
+      checkpoint('2026-11-03T08:30:00Z'),
+      checkpoint('2026-11-03T09:30:00Z'),
+      checkpoint('2026-11-03T10:00:00Z'),
+    ],
+  };
+}
+
+describe('post-cutover stabilization readiness evaluation', () => {
+  it('requires owner review and never authorizes production or retirement', () => {
+    expect(evaluateStabilization(stabilizationFixture(), now)).toEqual({
+      formatVersion: 1,
+      releaseCommit: 'a'.repeat(40),
+      disposition: 'READY_FOR_OWNER_REVIEW',
+      productionAuthorized: false,
+      retirementAuthorized: false,
+      blockers: [],
+    });
+  });
+
+  it.each(requiredStabilizationEvidence)('holds without %s evidence', (kind) => {
+    const input = stabilizationFixture();
+    input.evidence = input.evidence.filter((row) => row.kind !== kind);
+    expect(evaluateStabilization(input, now).blockers).toContain(`EVIDENCE_${kind}`);
+  });
+
+  it('holds on gaps, a short window, unsafe outcomes and non-go decisions', () => {
+    const input = stabilizationFixture();
+    input.approvedWindowMinutes = 121;
+    input.maxCheckpointGapMinutes = 20;
+    const checkpoint = first(input.checkpoints);
+    checkpoint.decision = 'ROLLBACK';
+    checkpoint.health.security = 'FAIL';
+    checkpoint.openCriticalOrHigh = 1;
+    checkpoint.authorizationBoundaryViolations = 1;
+    checkpoint.duplicateActiveAssignments = 1;
+    checkpoint.unaccountedBusinessRecords = 1;
+    checkpoint.monetaryReconciliationFailures = 1;
+    checkpoint.legacyAuthoritativeWrites = 1;
+    checkpoint.failedDispatchOrSosCanaries = 1;
+    expect(evaluateStabilization(input, now).blockers).toEqual(
+      expect.arrayContaining([
+        'STABILIZATION_WINDOW_INCOMPLETE',
+        'CHECKPOINT_GAP',
+        'NON_GO_DECISION',
+        'HEALTH_CHECK_FAILURE',
+        'OPEN_CRITICAL_HIGH',
+        'AUTHORIZATION_BOUNDARY_VIOLATION',
+        'DUPLICATE_ACTIVE_ASSIGNMENT',
+        'UNACCOUNTED_BUSINESS_RECORD',
+        'MONETARY_MISMATCH',
+        'LEGACY_AUTHORITATIVE_WRITE',
+        'FAILED_DISPATCH_SOS_CANARY',
+      ]),
+    );
+  });
+
+  it('rejects stale, out-of-order and out-of-window evidence', () => {
+    const input = stabilizationFixture();
+    first(input.checkpoints).observedAt = '2026-11-03T10:01:00Z';
+    expect(evaluateStabilization(input, new Date('2026-11-03T12:00:00Z')).blockers).toEqual(
+      expect.arrayContaining(['STALE_EVALUATION', 'CHECKPOINT_ORDER_OR_RANGE']),
+    );
+  });
+
+  it('strictly rejects credential-like or unrecognized fields', () => {
+    expect(
+      stabilizationSchema.safeParse({ ...stabilizationFixture(), apiToken: 'forbidden' }).success,
+    ).toBe(false);
   });
 });

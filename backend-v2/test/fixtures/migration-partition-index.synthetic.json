@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "setId": "synthetic-partition-set",
+  "transformVersion": "synthetic-v1",
+  "exportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "partitions": [
+    {
+      "partitionId": "source",
+      "runId": "synthetic-source-partition",
+      "manifestSha256": "7fb8d981d9df765d35149e0489e4ddaa48fdd32a126206e2c006107c79e30a53"
+    },
+    {
+      "partitionId": "target",
+      "runId": "synthetic-target-partition",
+      "manifestSha256": "ef2dd25812a983673c33d8f01c36feddebd0340a748defd462df2b2d7e0634bc"
+    }
+  ]
+}

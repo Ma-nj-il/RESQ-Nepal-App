@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "releaseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "stabilizationReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "evaluatedAt": "2026-11-03T10:00:00Z",
+  "evidence": [],
+  "legacyDependencies": [
+    {
+      "dependencyId": "synthetic-unknown",
+      "kind": "APPLICATION",
+      "status": "UNKNOWN",
+      "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "owner": "synthetic-unassigned"
+    }
+  ],
+  "unresolvedCriticalOrHigh": 0
+}

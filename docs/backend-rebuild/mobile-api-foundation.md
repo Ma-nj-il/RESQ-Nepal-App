@@ -239,6 +239,10 @@ injected fetch/SecureStore implementations. Bundling and config introspection do
 binary compilation, live server behavior, secure-storage durability, redirect/abort/cache behavior
 on React Native, accessible device interaction, or end-to-end persona acceptance.
 
+Shared buttons and inputs provide explicit screen-reader labels/roles, disabled and busy state,
+alert semantics, and 44-point minimum targets. These static semantics do not replace native testing
+with screen readers, switch control, large text, contrast/motion settings and approved personas.
+
 ## Remaining integration
 
 Complete EAS project/signing/device installation and native/live preview acceptance. Integrate the

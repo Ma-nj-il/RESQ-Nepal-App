@@ -132,6 +132,28 @@ lint and typecheck locally. See [exact CI evidence](ci-evidence-2026-11-03.md).
 4. Full-persona role/RLS/concurrency acceptance, provider canaries, accessibility/error/offline acceptance,
    privacy/security review, capacity tests, and operational drills.
 
+Shared mobile `Button` and `Input` controls now expose explicit accessibility roles, labels,
+disabled/busy state, alert semantics and 44-point minimum targets. This closes a static implementation
+gap only. Screen-reader, switch-control, text-scaling, contrast, motion and end-to-end device/persona
+acceptance remain required and are not inferred from lint or typecheck.
+
+### Gate 6 evidence evaluator
+
+```sh
+npm run readiness -- phase6-acceptance INPUT.json NEW_REPORT.json
+```
+
+The strict offline contract requires fresh passing artifacts for native iOS/Android installs,
+accessibility, offline recovery, realtime reconnect, minimum-version handling, managed-context
+authorization, portal adapters, provider canaries, security/privacy, capacity/SLO and operations.
+It separately requires passing evidence for all requester, driver, facility, tenant, province,
+authority and platform personas, plus routing/maps, OTP, outbound notifications, private storage and
+malware scanning. Missing, duplicate, failed or expired records and any critical/high issue HOLD.
+
+The evaluator checks evidence inventory, not authenticity or real outcomes. It always emits
+`gateApproved: false` and `productionAuthorized: false`; accountable owners must inspect the artifacts
+and decide Gate 6. The committed fixture intentionally contains no evidence and exits `2`.
+
 ## Phase 7–8 handoff
 
 The roadmap's migration pipeline remains the source of requirements. Source snapshots, canonical

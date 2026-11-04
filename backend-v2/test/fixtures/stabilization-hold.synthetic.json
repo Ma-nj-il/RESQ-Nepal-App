@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "releaseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "cutoverReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "startedAt": "2026-11-03T08:00:00Z",
+  "evaluatedAt": "2026-11-03T10:00:00Z",
+  "approvedWindowMinutes": 120,
+  "maxCheckpointGapMinutes": 60,
+  "incidentCommander": "synthetic-unassigned",
+  "evidence": [],
+  "checkpoints": [
+    {
+      "observedAt": "2026-11-03T09:00:00Z",
+      "decision": "HOLD",
+      "decisionOwner": "synthetic-unassigned",
+      "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "health": {
+        "slo": "FAIL",
+        "businessReconciliation": "FAIL",
+        "security": "FAIL",
+        "providers": "FAIL",
+        "queuesAndEvents": "FAIL",
+        "support": "FAIL"
+      },
+      "openCriticalOrHigh": 0,
+      "authorizationBoundaryViolations": 0,
+      "duplicateActiveAssignments": 0,
+      "unaccountedBusinessRecords": 0,
+      "monetaryReconciliationFailures": 0,
+      "legacyAuthoritativeWrites": 0,
+      "failedDispatchOrSosCanaries": 0
+    },
+    {
+      "observedAt": "2026-11-03T10:00:00Z",
+      "decision": "HOLD",
+      "decisionOwner": "synthetic-unassigned",
+      "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "health": {
+        "slo": "FAIL",
+        "businessReconciliation": "FAIL",
+        "security": "FAIL",
+        "providers": "FAIL",
+        "queuesAndEvents": "FAIL",
+        "support": "FAIL"
+      },
+      "openCriticalOrHigh": 0,
+      "authorizationBoundaryViolations": 0,
+      "duplicateActiveAssignments": 0,
+      "unaccountedBusinessRecords": 0,
+      "monetaryReconciliationFailures": 0,
+      "legacyAuthoritativeWrites": 0,
+      "failedDispatchOrSosCanaries": 0
+    }
+  ]
+}

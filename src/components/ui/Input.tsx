@@ -9,20 +9,31 @@ interface InputProps extends TextInputProps {
   rightElement?: React.ReactNode;
 }
 
-export const Input: React.FC<InputProps> = ({ label, error, icon, rightElement, style, ...props }) => {
+export const Input: React.FC<InputProps> = ({
+  label,
+  error,
+  icon,
+  rightElement,
+  style,
+  accessibilityLabel,
+  accessibilityState,
+  ...props
+}) => {
   return (
     <View style={styles.container}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && <Text style={styles.label} accessible={false}>{label}</Text>}
       <View style={[styles.inputContainer, error && { borderColor: colors.error }, style]}>
         {icon && <View style={styles.icon}>{icon}</View>}
         <TextInput
           style={styles.input}
           placeholderTextColor={colors.textTertiary}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ ...accessibilityState, disabled: accessibilityState?.disabled ?? props.editable === false }}
           {...props}
         />
         {rightElement}
       </View>
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="assertive">{error}</Text>}
     </View>
   );
 };
@@ -38,6 +49,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
+    minHeight: 44,
   },
   icon: { marginRight: spacing.sm },
   input: { flex: 1, paddingVertical: spacing.md, fontSize: 16, color: colors.text },

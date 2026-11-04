@@ -1,7 +1,7 @@
 # Phase 7 / Gate 7 status
 
 - **Disposition:** HOLD — offline preparation implemented; production-source migration and full-volume rehearsal are incomplete.
-- **Evidence date:** 2026-11-03.
+- **Evidence date:** 2026-11-04.
 - **Production migration:** 0% of source data, clients, or traffic.
 
 ## Executable preparation
@@ -15,6 +15,10 @@ npm run readiness -- reconcile test/fixtures/migration-manifest.synthetic.json /
 npm run readiness -- cutover test/fixtures/cutover-hold.synthetic.json /approved/local/path/cutover.json
 # Compare independently captured runs of the same immutable export and transform:
 npm run readiness -- compare BASELINE.json RERUN.json /approved/local/path/repeatability.json
+# Reconcile multiple bounded manifests globally. PARTITION_DIR contains <partitionId>.json files.
+npm run readiness -- partitions INDEX.json PARTITION_DIR /approved/local/path/partition-report.json
+# Evaluate complete Gate 7 evidence after real rehearsals and post-load checks:
+npm run readiness -- migration-acceptance INPUT.json /approved/local/path/gate-7-report.json
 ```
 
 Exit codes: `0` means the selected offline check passed; `2` means HOLD; `1` means invalid input or
@@ -49,8 +53,12 @@ and hashes do not provide encryption or signatures.
 authenticity/completeness, transformed row hashes, real database constraints/RLS, lifecycle sequences,
 active-resource contention, private object hashes/scans, audit/outbox/inbox correctness, or signoff.
 Independent extraction, post-load database/security checks and signed evidence establish those facts.
-The current in-memory CLI accepts files up to 64 MiB; full-volume execution needs reviewed partitioning
-plus global identity/FK/money reconciliation, or a streaming/database implementation.
+Each input file is limited to 64 MiB. The `partitions` mode binds up to 512 files to one immutable
+index/export/transform and evaluates their source identities, mappings, target identities, parents,
+ownership and money as one global manifest. A parent or target may reside in another partition;
+duplicates and collisions across files still HOLD. The current implementation retains decoded metadata
+in memory, so representative-volume measurement may still require smaller partitions or a reviewed
+streaming/database implementation.
 
 ### Independent rerun comparison
 
@@ -87,12 +95,21 @@ Synthetic tests validate the tool's behavior and rejection paths. They are not a
 against real production volume. Gate 7 remains HOLD until all roadmap section 7 invariants and owners'
 acceptance records exist. See [Phase 8 preparation](phase-8-status.md).
 
+The `migration-acceptance` mode requires at least two distinct passing full-volume runs and fresh
+artifacts for snapshot provenance/profiling, mappings/transforms, repeatability, post-load constraints,
+RLS, lifecycle/assignment checks, exact finance, private objects, identity outcomes, audit/events,
+performance, restore/DR, reviewed exceptions and staging deletion. Every roadmap zero-tolerance count
+must be zero. It returns only `READY_FOR_OWNER_REVIEW`, never Gate approval or production authority.
+
 ## Executed local evidence
 
 - Synthetic CLI manifest: `RECONCILED`, exit 0.
+- Two-file synthetic partition set with a cross-file source-to-target map: `RECONCILED`, exit 0.
 - Missing-evidence cutover fixture: `HOLD`, exit 2.
 - Output permissions 0600, exact input SHA-256, and refusal to overwrite an earlier report: PASS.
 - Reconciliation/readiness tests cover drift, exclusions, exact money and independently invalid runs;
   see the current CI evidence for suite totals.
 - Encrypted ledger tests cover filesystem persistence/concurrency, tamper/rollback rejection,
   historical-key verification, interrupted-publication states, lost receipts and encrypted comparison.
+- Current local backend validation passes 33 unit suites / 278 tests, lint, typecheck, build and
+  formatting. This is repository evidence only; infrastructure/full-volume acceptance remains blocked.
