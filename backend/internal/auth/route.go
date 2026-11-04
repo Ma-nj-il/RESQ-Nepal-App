@@ -19,12 +19,24 @@ func (h *Route) RegisterRoutes(r *gin.Engine, jwtProvider jwtkeys.KeyProvider) {
 	{
 		auth.POST("/register", h.handler.Register)
 		auth.POST("/login", h.handler.Login)
+		auth.POST("/token/refresh", h.handler.Refresh)
+		auth.POST("/password/reset/recovery-code", h.handler.ResetPasswordWithRecoveryCode)
+		auth.POST("/account/reactivate", h.handler.ReactivateAccount)
 
 		protected := auth.Group("")
-		protected.Use(middleware.AuthMiddlewareWithProvider(jwtProvider))
+		protected.Use(middleware.AuthMiddlewareWithProvider(jwtProvider), h.handler.RequireActiveSession())
 		{
+			protected.POST("/logout", h.handler.Logout)
+			protected.GET("/sessions", h.handler.ListSessions)
+			protected.DELETE("/sessions/:id", h.handler.RevokeSession)
+			protected.POST("/sessions/revoke-all", h.handler.RevokeAllSessions)
 			protected.GET("/profile", h.handler.GetProfile)
+			protected.PATCH("/profile", h.handler.UpdateProfile)
 			protected.PUT("/profile", h.handler.UpdateProfile)
+			protected.POST("/password/change", h.handler.ChangePassword)
+			protected.POST("/recovery-codes/regenerate", h.handler.RegenerateRecoveryCodes)
+			protected.POST("/account/deactivate", h.handler.DeactivateAccount)
+			protected.DELETE("/account", h.handler.DeleteAccount)
 		}
 	}
 }

@@ -1,7 +1,7 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -227,6 +227,10 @@ const HomeScreen: React.FC = () => {
 
   const handleFindAmbulance = () => {
     setHint(null);
+    if (user?.auth_source === 'user-service') {
+      setHint('Booking is unavailable until the ambulance booking API is connected to user-service accounts.');
+      return;
+    }
     if (!pickup) {
       setHint('Set your pickup location first.');
       navigation.navigate('LocationSearch', { mode: 'pickup' });
@@ -286,7 +290,7 @@ const HomeScreen: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Open menu"
           >
-            <Text style={styles.menuButtonIcon}>☰</Text>
+            <AppText style={styles.menuButtonIcon}>☰</AppText>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -296,7 +300,7 @@ const HomeScreen: React.FC = () => {
             accessibilityLabel="Emergency SOS"
             accessibilityHint="Opens the SOS screen; arming the alert takes three deliberate taps"
           >
-            <Text style={styles.sosTopText}>SOS</Text>
+            <AppText style={styles.sosTopText}>SOS</AppText>
           </TouchableOpacity>
         </View>
       </View>
@@ -322,15 +326,15 @@ const HomeScreen: React.FC = () => {
                   <View style={[styles.locationDot, { backgroundColor: colors.success }]} />
                 </View>
                 <View style={styles.locationTextWrap}>
-                  <Text style={styles.locationLabel}>Your location</Text>
-                  <Text
+                  <AppText style={styles.locationLabel}>Your location</AppText>
+                  <AppText
                     style={pickup ? styles.locationValue : styles.locationPlaceholder}
                     numberOfLines={2}
                   >
                     {pickup ? pickup.address : 'Tap to set pickup location'}
-                  </Text>
+                  </AppText>
                 </View>
-                <Text style={styles.locationChevron}>›</Text>
+                <AppText style={styles.locationChevron}>›</AppText>
               </TouchableOpacity>
 
               <View style={styles.locationDivider} />
@@ -346,41 +350,41 @@ const HomeScreen: React.FC = () => {
                   <View style={[styles.locationDot, { backgroundColor: colors.primary }]} />
                 </View>
                 <View style={styles.locationTextWrap}>
-                  <Text style={styles.locationLabel}>Where to?</Text>
-                  <Text
+                  <AppText style={styles.locationLabel}>Where to?</AppText>
+                  <AppText
                     style={destination ? styles.locationValue : styles.locationPlaceholder}
                     numberOfLines={2}
                   >
                     {destination ? destination.address : 'Tap to search hospital or destination'}
-                  </Text>
+                  </AppText>
                 </View>
-                <Text style={styles.locationChevron}>›</Text>
+                <AppText style={styles.locationChevron}>›</AppText>
               </TouchableOpacity>
             </View>
 
             {isLocating ? (
-              <Text style={styles.metaLine}>Reading your current location…</Text>
+              <AppText style={styles.metaLine}>Reading your current location…</AppText>
             ) : routeStatus === 'loading' ? (
-              <Text style={styles.metaLine}>Calculating road route…</Text>
+              <AppText style={styles.metaLine}>Calculating road route…</AppText>
             ) : roadRoute ? (
-              <Text style={styles.metaLine}>
+              <AppText style={styles.metaLine}>
                 Road estimate: {formatKm(routeDistanceKm)} · about {roadRoute.durationMinutes} min
                 {' '}(no live traffic)
-              </Text>
+              </AppText>
             ) : routeStatus === 'no-route' ? (
-              <Text style={styles.metaLine}>No drivable route was found; distance and ETA are unavailable.</Text>
+              <AppText style={styles.metaLine}>No drivable route was found; distance and ETA are unavailable.</AppText>
             ) : routeStatus === 'unavailable' ? (
-              <Text style={styles.metaLine}>Road route unavailable; distance and ETA are unknown.</Text>
+              <AppText style={styles.metaLine}>Road route unavailable; distance and ETA are unknown.</AppText>
             ) : null}
 
-            {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+            {hint ? <AppText style={styles.hint}>{hint}</AppText> : null}
             {hospitalLoadFailed ? (
-              <Text style={styles.metaLine}>
+              <AppText style={styles.metaLine}>
                 Nearby hospital pins are unavailable. Search the directory to choose a destination.
-              </Text>
+              </AppText>
             ) : null}
 
-            <Text style={styles.sectionLabel}>Select Ambulance Type</Text>
+            <AppText style={styles.sectionLabel}>Select Ambulance Type</AppText>
 
             <View style={styles.categoryRow}>
               {SERVICE_CATEGORY_LIST.map((category) => {
@@ -411,15 +415,15 @@ const HomeScreen: React.FC = () => {
                   >
                     {isSelected ? (
                       <View style={[styles.categoryCheck, { backgroundColor: accent }]}>
-                        <Text style={styles.categoryCheckText}>✓</Text>
+                        <AppText style={styles.categoryCheckText}>✓</AppText>
                       </View>
                     ) : null}
                     <View style={[styles.categoryIconWrap, { backgroundColor: soft }]}>
-                      <Text style={styles.categoryIcon}>🚑</Text>
+                      <AppText style={styles.categoryIcon}>🚑</AppText>
                     </View>
-                    <Text style={styles.categoryName} numberOfLines={1}>
+                    <AppText style={styles.categoryName} numberOfLines={1}>
                       {copy.label}
-                    </Text>
+                    </AppText>
                   </TouchableOpacity>
                 );
               })}

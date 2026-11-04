@@ -1,23 +1,22 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Input, Button, LoadingOverlay } from '../../components/ui';
 import { colors, spacing, typography} from '../../constants/theme';
 import { authService } from '../../services/auth/authService';
-import { isSupabaseConfigured } from '../../services/database/client';
 
 const ChangePasswordScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,33 +25,27 @@ const ChangePasswordScreen: React.FC = () => {
 
   const handleSave = async () => {
     setError(null);
-    if (!newPassword || !confirmPassword) {
-      setError('Please fill in both fields.');
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError('Complete all password fields.');
       return;
     }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.');
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      setError('Password must contain 8 to 72 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
-    if (!isSupabaseConfigured) {
-      Alert.alert(
-        'Not saved',
-        'No database is configured, so a password cannot be stored in this build.',
-      );
-      return;
-    }
     setLoading(true);
-    const result = await authService.updatePassword(newPassword);
-    setLoading(false);
-    if (!result.success) {
-      setError(result.message || 'Could not save the password. Check your connection and try again.');
-      return;
+    try {
+      await authService.changePassword(currentPassword, newPassword);
+      setSuccess(true);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not change the password.');
+    } finally {
+      setLoading(false);
     }
-    setSuccess(true);
   };
 
   return (
@@ -64,29 +57,35 @@ const ChangePasswordScreen: React.FC = () => {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <Text style={styles.backText}>←</Text>
+              <AppText style={styles.backText}>←</AppText>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Change Password</Text>
+            <AppText style={styles.headerTitle}>Change Password</AppText>
             <View style={styles.backButton} />
           </View>
 
           {success ? (
             <View style={styles.successBox}>
-              <Text style={styles.successIcon}>✅</Text>
-              <Text style={styles.successTitle}>Password Saved</Text>
-              <Text style={styles.successMessage}>
-                Your account now has a password on file. You keep signing in with your phone
-                number and OTP in this build.
-              </Text>
+              <AppText style={styles.successIcon}>✅</AppText>
+              <AppText style={styles.successTitle}>Password Saved</AppText>
+              <AppText style={styles.successMessage}>
+                Your password was changed. Other signed-in devices were revoked.
+              </AppText>
               <Button title="Done" onPress={() => navigation.goBack()} style={{ marginTop: spacing.lg }} />
             </View>
           ) : (
             <>
-              <Text style={styles.description}>
-                Set a password for this account (at least 8 characters). Phone OTP remains the
-                sign-in method in this build — the password is stored with your account and will
-                be usable once password sign-in is enabled.
-              </Text>
+              <AppText style={styles.description}>
+                Confirm your current password, then choose a new password containing 8 to 72 characters.
+              </AppText>
+
+              <Input
+                label="Current Password"
+                placeholder="Enter current password"
+                secureTextEntry
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                textContentType="password"
+              />
 
               <Input
                 label="New Password"
@@ -94,6 +93,7 @@ const ChangePasswordScreen: React.FC = () => {
                 secureTextEntry
                 value={newPassword}
                 onChangeText={setNewPassword}
+                textContentType="newPassword"
               />
               <Input
                 label="Confirm New Password"
@@ -102,6 +102,7 @@ const ChangePasswordScreen: React.FC = () => {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 error={error ?? undefined}
+                textContentType="newPassword"
               />
 
               <Button title="Save Password" onPress={handleSave} fullWidth style={{ marginTop: spacing.md }} />

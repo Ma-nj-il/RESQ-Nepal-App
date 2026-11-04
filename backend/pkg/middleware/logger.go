@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -74,7 +76,7 @@ func RequestLogger(serviceName string) gin.HandlerFunc {
 			zap.String("service", serviceName),
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
-			zap.String("query", c.Request.URL.RawQuery),
+			zap.String("query", sanitizeQuery(c.Request.URL.RawQuery)),
 			zap.String("ip", c.ClientIP()),
 			zap.Int("status", status),
 			zap.Duration("latency", duration),
@@ -106,7 +108,17 @@ func sanitizePayload(payload []byte) string {
 	if len(payload) == 0 {
 		return ""
 	}
-	sanitized := security.StripHTMLTags(string(payload))
+	var value interface{}
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return "[non-JSON payload omitted]"
+	}
+	redactLogValue(value)
+	redacted, err := json.Marshal(value)
+	if err != nil {
+		return "[payload omitted]"
+	}
+
+	sanitized := security.StripHTMLTags(string(redacted))
 	sanitized = security.SanitizeString(sanitized)
 	sanitized = strings.Join(strings.Fields(sanitized), " ")
 
@@ -115,6 +127,46 @@ func sanitizePayload(payload []byte) string {
 		sanitized = sanitized[:maxPayloadLength] + "...(truncated)"
 	}
 	return sanitized
+}
+
+func sanitizeQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "[query omitted]"
+	}
+	for key := range values {
+		if isSensitiveLogKey(key) {
+			values[key] = []string{"[REDACTED]"}
+		}
+	}
+	return values.Encode()
+}
+
+func redactLogValue(value interface{}) {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		for key, child := range typed {
+			if isSensitiveLogKey(key) {
+				typed[key] = "[REDACTED]"
+				continue
+			}
+			redactLogValue(child)
+		}
+	case []interface{}:
+		for _, child := range typed {
+			redactLogValue(child)
+		}
+	}
+}
+
+func isSensitiveLogKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	return key == "email" || key == "phone_number" || key == "code_hash" ||
+		strings.Contains(key, "password") || strings.Contains(key, "token") ||
+		strings.Contains(key, "recovery_code")
 }
 
 func NewGinRouter(log *zap.Logger) *gin.Engine {

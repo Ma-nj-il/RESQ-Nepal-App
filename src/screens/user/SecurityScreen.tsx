@@ -1,156 +1,165 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { AppText } from '../../components/ui/AppText';
+import React, { useState } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Header, Toggle } from '../../components/ui';
+import { Button, Header, Input } from '../../components/ui';
 import { colors, spacing, typography, radii } from '../../constants/theme';
+import { authService } from '../../services/auth/authService';
 import { useAuthStore } from '../../store/authStore';
-import { supportRequestsService } from '../../services/database/supportRequests';
-import { isSupabaseConfigured } from '../../services/database/client';
+import { confirmAction } from '../../utils/confirmAction';
 
-interface SecurityOption {
-  id: string;
-  label: string;
-  description: string;
-  enabled: boolean;
-}
-
-type RequestKind = 'deactivation' | 'deletion';
+type BusyAction = 'codes' | 'deactivate' | 'delete' | null;
 
 export const SecurityScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const user = useAuthStore((state) => state.user);
-  // Local-only toggles: these are example options from the design. Only phone
-  // OTP sign-in is active in this build, so the state is never presented as a
-  // working security control.
-  const [securityOptions, setSecurityOptions] = useState<SecurityOption[]>([
-    { id: 'biometric', label: 'Biometric ID', description: 'Example option — not connected in this build', enabled: false },
-    { id: 'face', label: 'Face ID', description: 'Example option — not connected in this build', enabled: false },
-    { id: 'sms', label: 'SMS Authenticator', description: 'Phone OTP sign-in is the active method', enabled: true },
-    { id: 'google', label: 'Google Authenticator', description: 'Example option — not connected in this build', enabled: false },
-  ]);
+  const logout = useAuthStore((state) => state.logout);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState<BusyAction>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 
+  const requirePassword = (): boolean => {
+    if (password) return true;
+    setError('Enter your current password before performing a security action.');
+    return false;
+  };
 
-  const handleToggle = useCallback((id: string) => {
-    setSecurityOptions((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, enabled: !o.enabled } : o))
+  const generateCodes = async () => {
+    if (!requirePassword()) return;
+    setBusy('codes');
+    setError(null);
+    try {
+      setRecoveryCodes(await authService.regenerateRecoveryCodes(password));
+      setPassword('');
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not generate recovery codes.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deactivate = () => {
+    if (!requirePassword()) return;
+    confirmAction(
+      'Deactivate account',
+      'Your account and every active session will be disabled. You can reactivate later with your email and password.',
+      async () => {
+        setBusy('deactivate');
+        setError(null);
+        try {
+          await authService.deactivateAccount(password);
+          logout();
+        } catch (actionError) {
+          setError(actionError instanceof Error ? actionError.message : 'Could not deactivate the account.');
+        } finally {
+          setBusy(null);
+        }
+      },
+      { confirmLabel: 'Deactivate', destructive: true },
     );
-  }, []);
+  };
 
-  const handleChangePassword = useCallback(() => {
-    navigation.navigate('ChangePassword');
-  }, [navigation]);
-
-  const handleDeviceManagement = useCallback(() => {
-    navigation.navigate('DeviceManagement');
-  }, [navigation]);
-
-  const submitRequest = useCallback(
-    async (kind: RequestKind) => {
-      if (!isSupabaseConfigured || !user?.id) {
-        Alert.alert(
-          'Not recorded',
-          'No database is configured, so this request could not be recorded in this build. Nothing was sent.',
-        );
-        return;
-      }
-      try {
-        await supportRequestsService.create({
-          user_id: user.id,
-          subject: kind === 'deletion' ? 'Account deletion request' : 'Account deactivation request',
-          message: `Requested from ${kind === 'deletion' ? 'Security → Delete Account' : 'Security → Deactivate Account'} in the app.`,
-        });
-        Alert.alert(
-          'Request Recorded',
-          'Your request has been saved for the RESQ Nepal team to review. Identity confirmation may be required before it is processed.',
-        );
-      } catch {
-        Alert.alert('Could not send request', 'Check your connection and try again.');
-      }
-    },
-    [user],
-  );
-
-  const handleDeactivate = useCallback(() => {
-    Alert.alert('Deactivate Account', 'Are you sure you want to deactivate your account?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Deactivate', style: 'destructive', onPress: () => void submitRequest('deactivation') },
-    ]);
-  }, [submitRequest]);
-
-  const handleDelete = useCallback(() => {
-    Alert.alert(
-      'Delete Account',
-      'This action is permanent and cannot be undone. All your data will be lost.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => void submitRequest('deletion') },
-      ]
+  const deleteAccount = () => {
+    if (!requirePassword()) return;
+    confirmAction(
+      'Delete account permanently',
+      'Direct account information will be anonymized and all sessions will be revoked. Legally required operational records may be retained.',
+      async () => {
+        setBusy('delete');
+        setError(null);
+        try {
+          await authService.deleteAccount(password);
+          logout();
+        } catch (actionError) {
+          setError(actionError instanceof Error ? actionError.message : 'Could not delete the account.');
+        } finally {
+          setBusy(null);
+        }
+      },
+      { confirmLabel: 'Delete permanently', destructive: true },
     );
-  }, [submitRequest]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <Header title="Account & Security" showBack onBack={() => navigation.goBack()} />
-
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Security Options */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Authentication Methods</Text>
-          <Text style={styles.sectionNote}>
-            Example options from the design. In this build the only active sign-in method is
-            phone OTP; the switches below are not connected to real authentication.
-          </Text>
-          {securityOptions.map((option) => (
-            <View key={option.id} style={styles.optionRow}>
-              <View style={styles.optionInfo}>
-                <Text style={styles.optionLabel}>{option.label}</Text>
-                <Text style={styles.optionDescription}>{option.description}</Text>
-              </View>
-              <Toggle value={option.enabled} onValueChange={() => handleToggle(option.id)} />
-            </View>
-          ))}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.infoCard}>
+          <AppText style={styles.sectionTitle}>Authentication</AppText>
+          <AppText style={styles.bodyText}>
+            Email and password sign-in is active. SMS verification, authenticator MFA, and social login remain unavailable until their providers are configured.
+          </AppText>
         </View>
 
-        {/* Change Password */}
-        <TouchableOpacity style={styles.menuRow} onPress={handleChangePassword}>
-          <View style={styles.menuInfo}>
-            <Text style={styles.menuLabel}>Change Password</Text>
-            <Text style={styles.menuDescription}>Set or update your account password</Text>
+        <TouchableOpacity style={styles.menuRow} onPress={() => navigation.navigate('ChangePassword')}>
+          <View style={styles.flex}>
+            <AppText style={styles.menuLabel}>Change Password</AppText>
+            <AppText style={styles.menuDescription}>Confirm your current password and revoke other devices</AppText>
           </View>
-          <Text style={styles.arrow}>›</Text>
+          <AppText style={styles.arrow}>›</AppText>
         </TouchableOpacity>
 
-        {/* Device Management */}
-        <TouchableOpacity style={styles.menuRow} onPress={handleDeviceManagement}>
-          <View style={styles.menuInfo}>
-            <Text style={styles.menuLabel}>Device Management</Text>
-            <Text style={styles.menuDescription}>Manage devices linked to your account</Text>
+        <TouchableOpacity style={styles.menuRow} onPress={() => navigation.navigate('DeviceManagement')}>
+          <View style={styles.flex}>
+            <AppText style={styles.menuLabel}>Device Management</AppText>
+            <AppText style={styles.menuDescription}>View and revoke active account sessions</AppText>
           </View>
-          <Text style={styles.arrow}>›</Text>
+          <AppText style={styles.arrow}>›</AppText>
         </TouchableOpacity>
 
-        {/* Danger Zone */}
+        <View style={styles.securityCard}>
+          <AppText style={styles.sectionTitle}>Sensitive actions</AppText>
+          <Input
+            label="Current password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            textContentType="password"
+          />
+          {error && <AppText style={styles.error}>{error}</AppText>}
+
+          <Button
+            title="Generate new recovery codes"
+            variant="outline"
+            fullWidth
+            loading={busy === 'codes'}
+            disabled={busy !== null}
+            onPress={() => void generateCodes()}
+          />
+
+          {recoveryCodes.length > 0 && (
+            <View style={styles.codesCard}>
+              <AppText style={styles.codesTitle}>Save these codes now</AppText>
+              <AppText style={styles.codesNote}>
+                They are displayed once. Each code can reset your password one time.
+              </AppText>
+              {recoveryCodes.map((code) => (
+                <AppText key={code} selectable style={styles.code}>{code}</AppText>
+              ))}
+            </View>
+          )}
+        </View>
+
         <View style={styles.dangerZone}>
-          <Text style={styles.dangerTitle}>Danger Zone</Text>
-
-          <TouchableOpacity style={styles.dangerRow} onPress={handleDeactivate}>
-            <View style={styles.menuInfo}>
-              <Text style={styles.dangerLabel}>Deactivate Account</Text>
-              <Text style={styles.dangerDescription}>
-                Temporarily disable your account. You can reactivate it anytime.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.dangerRow} onPress={handleDelete}>
-            <View style={styles.menuInfo}>
-              <Text style={[styles.dangerLabel, styles.deleteLabel]}>Delete Account</Text>
-              <Text style={styles.deleteDescription}>
-                Permanently delete your account and all associated data. This cannot be undone.
-              </Text>
-            </View>
-          </TouchableOpacity>
+          <AppText style={styles.dangerTitle}>Account lifecycle</AppText>
+          <Button
+            title="Deactivate account"
+            variant="outline"
+            fullWidth
+            loading={busy === 'deactivate'}
+            disabled={busy !== null}
+            onPress={deactivate}
+          />
+          <Button
+            title="Delete account permanently"
+            variant="danger"
+            fullWidth
+            loading={busy === 'delete'}
+            disabled={busy !== null}
+            onPress={deleteAccount}
+            style={styles.deleteButton}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -159,57 +168,42 @@ export const SecurityScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollView: { flex: 1 },
-  section: {
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    borderRadius: radii.lg,
+  content: { paddingBottom: spacing.xxxl },
+  flex: { flex: 1 },
+  infoCard: {
+    margin: spacing.lg,
+    marginBottom: spacing.sm,
     padding: spacing.lg,
+    borderRadius: radii.lg,
+    backgroundColor: colors.blueLight,
   },
-  sectionTitle: { ...typography.h4, marginBottom: spacing.sm },
-  sectionNote: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  optionInfo: { flex: 1, marginRight: spacing.md },
-  optionLabel: { ...typography.body, fontWeight: '600' },
-  optionDescription: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
+  sectionTitle: { ...typography.h4, color: colors.text, marginBottom: spacing.sm },
+  bodyText: { ...typography.bodySmall, color: colors.textSecondary, lineHeight: 19 },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     padding: spacing.lg,
     borderRadius: radii.lg,
+    backgroundColor: colors.surface,
   },
-  menuInfo: { flex: 1 },
   menuLabel: { ...typography.body, fontWeight: '600' },
   menuDescription: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
   arrow: { fontSize: 20, color: colors.textTertiary },
-  dangerZone: {
-    marginTop: spacing.xl,
+  securityCard: {
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.xxxl,
-  },
-  dangerTitle: { ...typography.h4, color: colors.error, marginBottom: spacing.md },
-  dangerRow: {
-    backgroundColor: colors.surface,
+    marginTop: spacing.xl,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.redLight,
+    backgroundColor: colors.surface,
   },
-  dangerLabel: { ...typography.body, fontWeight: '600', color: colors.warning },
-  dangerDescription: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
-  deleteLabel: { color: colors.error },
-  deleteDescription: { ...typography.bodySmall, color: colors.error, marginTop: 2 },
+  error: { ...typography.bodySmall, color: colors.error, marginBottom: spacing.md },
+  codesCard: { marginTop: spacing.lg, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.input },
+  codesTitle: { ...typography.body, fontWeight: '700', color: colors.text },
+  codesNote: { ...typography.caption, color: colors.textSecondary, marginVertical: spacing.sm },
+  code: { ...typography.bodySmall, color: colors.text, letterSpacing: 1, paddingVertical: 2 },
+  dangerZone: { marginHorizontal: spacing.lg, marginTop: spacing.xl },
+  dangerTitle: { ...typography.h4, color: colors.error, marginBottom: spacing.md },
+  deleteButton: { marginTop: spacing.md },
 });

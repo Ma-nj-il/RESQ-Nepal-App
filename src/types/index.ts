@@ -25,10 +25,14 @@ export type TripStatus = 'ongoing' | 'completed' | 'cancelled';
 
 export interface User {
   id: string;
+  auth_source?: 'user-service' | 'supabase' | 'demo' | 'local';
   full_name: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   phone: string;
   avatar_url?: string;
+  is_verified?: boolean;
   gender?: string;
   date_of_birth?: string;
   /** Stored on the private profile; masked anywhere it is displayed. */

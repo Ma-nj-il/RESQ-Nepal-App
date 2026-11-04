@@ -1,7 +1,7 @@
-import React, { useCallback } from 'react';
+import { AppText } from '../../components/ui/AppText';
+import React, { useCallback, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal} from 'react-native';
 import { Button } from '../../components/ui';
@@ -16,15 +16,15 @@ interface LogoutScreenProps {
 
 export const LogoutScreen: React.FC<LogoutScreenProps> = ({ visible, onClose }) => {
   const { logout } = useAuthStore();
+  const [error, setError] = useState<string | null>(null);
 
   const handleLogout = useCallback(async () => {
-    // End the real Supabase session first so the persisted session is
-    // cleared; the local store is cleared regardless so the user is not
-    // stuck on an authenticated screen.
+    setError(null);
     try {
       await authService.signOut();
     } catch {
-      // Ignore — local sign-out still proceeds.
+      setError('The saved session could not be removed. Please try again.');
+      return;
     }
     logout();
     onClose();
@@ -39,8 +39,9 @@ export const LogoutScreen: React.FC<LogoutScreenProps> = ({ visible, onClose }) 
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <Text style={styles.title}>Logout</Text>
-          <Text style={styles.message}>Sure you want to log out?</Text>
+          <AppText style={styles.title}>Logout</AppText>
+          <AppText style={styles.message}>Sure you want to log out?</AppText>
+          {error && <AppText style={styles.error}>{error}</AppText>}
 
           <View style={styles.buttonContainer}>
             <Button
@@ -83,6 +84,7 @@ const styles = StyleSheet.create({
   },
   title: { ...typography.h2, marginBottom: spacing.sm },
   message: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xxl },
+  error: { ...typography.bodySmall, color: colors.error, textAlign: 'center', marginBottom: spacing.md },
   buttonContainer: {
     flexDirection: 'row',
     gap: spacing.md,

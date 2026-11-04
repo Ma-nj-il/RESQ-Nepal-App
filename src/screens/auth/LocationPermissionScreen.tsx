@@ -1,11 +1,11 @@
+import { AppText } from '../../components/ui/AppText';
 import React from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radii, shadows } from '../../constants/theme';
 import { Button } from '../../components/ui';
 import { useAuthStore } from '../../store/authStore';
 import { locationService } from '../../services/location/locationService';
-import { isSupabaseConfigured } from '../../services/database/client';
 import { isDemoMode } from '../../utils/demoMode';
 
 interface LocationPermissionScreenProps {
@@ -17,7 +17,7 @@ const LocationPermissionScreen: React.FC<LocationPermissionScreenProps> = ({ nav
 
   const completeOnboarding = () => {
     if (user) {
-      // A real account session already exists (created in the OTP step).
+      // A real account session already exists (created by the user service).
       // AppNavigator swaps the auth stack for the user/driver stack.
       setMode(user.mode === 'driver' ? 'driver' : 'user');
       setAuthenticated(true);
@@ -39,27 +39,12 @@ const LocationPermissionScreen: React.FC<LocationPermissionScreenProps> = ({ nav
       setAuthenticated(true);
       return;
     }
-    if (isSupabaseConfigured) {
-      // Never fabricate a signed-in user when connected to a real database.
-      Alert.alert(
-        'Session expired',
-        'Your sign-in session was not found. Please sign in again.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Welcome') }],
-      );
-      return;
-    }
-    // Sample mode (no Supabase configured): continue with a clearly local
-    // guest session — this is not a real, verified account.
-    setUser({
-      id: 'local-user',
-      full_name: 'Sample User',
-      email: '',
-      phone: '',
-      mode: 'user',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-    setAuthenticated(true);
+    // Never fabricate a signed-in user when the user-service session is absent.
+    Alert.alert(
+      'Session expired',
+      'Your sign-in session was not found. Please sign in again.',
+      [{ text: 'OK', onPress: () => navigation.navigate('Welcome') }],
+    );
   };
 
   const handleGrantPermission = async () => {
@@ -87,16 +72,16 @@ const LocationPermissionScreen: React.FC<LocationPermissionScreenProps> = ({ nav
         <View style={styles.card}>
           {/* Location Icon */}
           <View style={styles.iconContainer}>
-            <Text style={styles.locationIcon}>📍</Text>
+            <AppText style={styles.locationIcon}>📍</AppText>
           </View>
 
           {/* Heading */}
-          <Text style={styles.heading}>Enable Location</Text>
+          <AppText style={styles.heading}>Enable Location</AppText>
 
           {/* Description */}
-          <Text style={styles.description}>
+          <AppText style={styles.description}>
             To be able to use the service, we require permission to access your location.
-          </Text>
+          </AppText>
 
           {/* Grant Permission Button */}
           <Button

@@ -1,4 +1,4 @@
-import { AmbulanceCategory, BookingStatus, PaymentMethod } from '../types';
+import type { AmbulanceCategory, BookingStatus, PaymentMethod } from '../types';
 
 /** Formats an amount as Nepali Rupees, e.g. `Rs. 1,250`. */
 export const formatCurrency = (amount: number, withDecimals = false): string => {
@@ -93,4 +93,11 @@ export const haversineKm = (
 export const isValidNepaliPhone = (phone: string): boolean => {
   const digits = phone.replace(/\D/g, '');
   return /^9[678]\d{8}$/.test(digits);
+};
+
+/** Keeps a Nepali mobile number as the local 10 digits used by phone fields. */
+export const normalizeNepaliPhoneInput = (phone: string): string => {
+  let digits = phone.replace(/\D/g, '');
+  if (digits.length > 10 && digits.startsWith('977')) digits = digits.slice(3);
+  return digits.slice(0, 10);
 };

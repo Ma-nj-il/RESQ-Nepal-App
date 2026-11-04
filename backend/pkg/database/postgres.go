@@ -49,7 +49,6 @@ func NewDBPool(cfg *config.DatabaseConfig, replicaDSNs []string, queryTimeoutSec
 }
 
 func newGormDB(dsn string, maxOpen, maxIdle int, connMaxLifetime time.Duration, statementTimeout int) (*gorm.DB, error) {
-	fmt.Printf("%+v\n", dsn)
 	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})

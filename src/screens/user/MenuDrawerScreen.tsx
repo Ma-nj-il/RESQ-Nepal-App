@@ -1,12 +1,11 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -17,6 +16,7 @@ import { Avatar } from '../../components/ui';
 import { colors, radii, spacing, typography } from '../../constants/theme';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/auth/authService';
+import { confirmAction } from '../../utils/confirmAction';
 
 const DRAWER_WIDTH = Math.min(340, Math.round(Dimensions.get('window').width * 0.86));
 
@@ -64,11 +64,11 @@ const MenuRow: React.FC<{
     hitSlop={2}
   >
     <View style={[styles.activeMarker, active && styles.activeMarkerVisible]} />
-    <Text style={[styles.rowIcon, active && styles.activeIcon]}>{item.icon}</Text>
-    <Text style={[styles.rowLabel, active && styles.activeLabel]} numberOfLines={1}>
+    <AppText style={[styles.rowIcon, active && styles.activeIcon]}>{item.icon}</AppText>
+    <AppText style={[styles.rowLabel, active && styles.activeLabel]} numberOfLines={1}>
       {item.label}
-    </Text>
-    <Text style={styles.chevron}>›</Text>
+    </AppText>
+    <AppText style={styles.chevron}>›</AppText>
   </TouchableOpacity>
 );
 
@@ -121,21 +121,15 @@ const MenuDrawerScreen: React.FC = () => {
   );
 
   const handleLogout = useCallback(() => {
-    Alert.alert('Log out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await authService.signOut();
-          } catch {
-            // Local sign-out still proceeds if the network is unavailable.
-          }
-          logout();
-        },
+    confirmAction(
+      'Log out',
+      'Are you sure you want to log out?',
+      async () => {
+        await authService.signOut();
+        logout();
       },
-    ]);
+      { confirmLabel: 'Log out', destructive: true },
+    );
   }, [logout]);
 
   const handleSwitchToDriverMode = useCallback(() => {
@@ -160,9 +154,9 @@ const MenuDrawerScreen: React.FC = () => {
         <SafeAreaView style={styles.safe} edges={['bottom']}>
           <View style={[styles.top, { paddingTop: insets.top + spacing.sm }]}>
             <View style={styles.brandMark}>
-              <Text style={styles.brandCross}>✚</Text>
+              <AppText style={styles.brandCross}>✚</AppText>
             </View>
-            <Text style={styles.brand}>RESQ Nepal</Text>
+            <AppText style={styles.brand}>RESQ Nepal</AppText>
             <TouchableOpacity
               style={styles.close}
               onPress={() => close()}
@@ -170,17 +164,17 @@ const MenuDrawerScreen: React.FC = () => {
               accessibilityLabel="Close menu"
               hitSlop={4}
             >
-              <Text style={styles.closeText}>✕</Text>
+              <AppText style={styles.closeText}>✕</AppText>
             </TouchableOpacity>
           </View>
 
           <View style={styles.profile}>
             <Avatar name={user?.full_name || 'User'} uri={user?.avatar_url} size="md" />
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName} numberOfLines={1}>
+              <AppText style={styles.profileName} numberOfLines={1}>
                 {user?.full_name || 'Guest User'}
-              </Text>
-              <Text style={styles.profileRole}>Patient account</Text>
+              </AppText>
+              <AppText style={styles.profileRole}>Patient account</AppText>
             </View>
           </View>
 
@@ -192,7 +186,7 @@ const MenuDrawerScreen: React.FC = () => {
             ]}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.sectionLabel}>YOUR RESQ</Text>
+            <AppText style={styles.sectionLabel}>YOUR RESQ</AppText>
             <View style={styles.section}>
               {DESTINATIONS.filter((item) => item.section === 'primary').map((item) => (
                 <MenuRow
@@ -204,7 +198,7 @@ const MenuDrawerScreen: React.FC = () => {
               ))}
             </View>
 
-            <Text style={styles.sectionLabel}>ACCOUNT</Text>
+            <AppText style={styles.sectionLabel}>ACCOUNT</AppText>
             <View style={styles.section}>
               {DESTINATIONS.filter((item) => item.section === 'account').map((item) => (
                 <MenuRow
@@ -216,7 +210,7 @@ const MenuDrawerScreen: React.FC = () => {
               ))}
             </View>
 
-            <Text style={styles.sectionLabel}>SUPPORT</Text>
+            <AppText style={styles.sectionLabel}>SUPPORT</AppText>
             <View style={styles.section}>
               {DESTINATIONS.filter((item) => item.section === 'support').map((item) => (
                 <MenuRow
@@ -235,9 +229,9 @@ const MenuDrawerScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Switch to Driver Mode"
               >
-                <Text style={styles.rowIcon}>⇄</Text>
-                <Text style={styles.rowLabel}>Switch to Driver Mode</Text>
-                <Text style={styles.chevron}>›</Text>
+                <AppText style={styles.rowIcon}>⇄</AppText>
+                <AppText style={styles.rowLabel}>Switch to Driver Mode</AppText>
+                <AppText style={styles.chevron}>›</AppText>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.footerRow, styles.logoutRow]}
@@ -245,8 +239,8 @@ const MenuDrawerScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Log out"
               >
-                <Text style={[styles.rowIcon, styles.danger]}>↪</Text>
-                <Text style={[styles.rowLabel, styles.danger]}>Log Out</Text>
+                <AppText style={[styles.rowIcon, styles.danger]}>↪</AppText>
+                <AppText style={[styles.rowLabel, styles.danger]}>Log Out</AppText>
               </TouchableOpacity>
             </View>
           </ScrollView>

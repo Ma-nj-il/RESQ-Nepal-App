@@ -1,240 +1,195 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { AppText } from '../../components/ui/AppText';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import * as ImagePicker from 'expo-image-picker';
-import { Button, Input, Avatar, Header } from '../../components/ui';
-import { colors, spacing, typography, radii} from '../../constants/theme';
+import { Avatar, Button, Header, Input } from '../../components/ui';
+import { colors, radii, spacing, typography } from '../../constants/theme';
+import { UserServiceError } from '../../services/api/userService';
+import { authService } from '../../services/auth/authService';
 import { useAuthStore } from '../../store/authStore';
-import { profilesService, isSupabaseConfigured } from '../../services/database';
+import { isDemoMode } from '../../utils/demoMode';
+import { isValidNepaliPhone } from '../../utils/format';
 
-const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
+const normalizeNepaliPhone = (value: string): string | null => {
+  const digits = value.replace(/\D/g, '');
+  const localNumber = digits.length === 13 && digits.startsWith('977') ? digits.slice(3) : digits;
+  return isValidNepaliPhone(localNumber) ? `+977${localNumber}` : null;
+};
 
 export const PersonalInfoScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { user } = useAuthStore();
-
-  const [fullName, setFullName] = useState(user?.full_name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const user = useAuthStore((state) => state.user);
+  const [firstName, setFirstName] = useState(user?.first_name || user?.full_name || '');
+  const [lastName, setLastName] = useState(user?.last_name || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [gender, setGender] = useState(user?.gender || '');
-  const [dateOfBirth, setDateOfBirth] = useState(user?.date_of_birth || '');
-  const [showGenderPicker, setShowGenderPicker] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [originalPhone, setOriginalPhone] = useState(user?.phone || '');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [avatarUri, setAvatarUri] = useState<string | undefined>(user?.avatar_url);
+  const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
+  const remoteUserId =
+    user && !isDemoMode() && !user.id.startsWith('demo-') && !user.id.startsWith('local-')
+      ? user.id
+      : null;
+
+  useEffect(() => {
+    if (!remoteUserId) return;
+
+    let active = true;
+    void authService
+      .getProfile()
+      .then((session) => {
+        if (!active) return;
+        useAuthStore.getState().setUser(session.user);
+        setFirstName(session.user.first_name || '');
+        setLastName(session.user.last_name || '');
+        setPhone(session.user.phone);
+        setOriginalPhone(session.user.phone);
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (error instanceof UserServiceError && error.status === 401) {
+          useAuthStore.getState().logout();
+          Alert.alert('Session expired', 'Please sign in again.');
+        } else {
+          setFeedback({
+            message: error instanceof UserServiceError ? error.message : 'Could not load your latest profile.',
+            error: true,
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [remoteUserId]);
 
   const validate = useCallback((): boolean => {
-    const newErrors: Record<string, string> = {};
-    if (!fullName.trim()) newErrors.fullName = 'Full name is required';
-    if (!email.trim()) newErrors.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Invalid email format';
-    if (!phone.trim()) newErrors.phone = 'Phone number is required';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [fullName, email, phone]);
+    const nextErrors: Record<string, string> = {};
+    if (!firstName.trim()) nextErrors.firstName = 'First name is required';
+    if (!lastName.trim()) nextErrors.lastName = 'Last name is required';
+    if (!normalizeNepaliPhone(phone)) nextErrors.phone = 'Enter a valid Nepali mobile number';
+    if (normalizeNepaliPhone(phone) !== normalizeNepaliPhone(originalPhone) && !currentPassword) {
+      nextErrors.currentPassword = 'Current password is required to change your phone number';
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }, [currentPassword, firstName, lastName, originalPhone, phone]);
 
   const handleSave = useCallback(async () => {
-    if (!validate()) return;
+    if (!validate() || !user) return;
+    setFeedback(null);
+
+    if (isDemoMode() || user.id.startsWith('demo-') || user.id.startsWith('local-')) {
+      const updated = {
+        ...user,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        full_name: `${firstName.trim()} ${lastName.trim()}`,
+        phone: normalizeNepaliPhone(phone) || phone.trim(),
+      };
+      useAuthStore.getState().setUser(updated);
+      setFeedback({ message: 'Demo profile updated for this session.', error: false });
+      return;
+    }
+
     setIsLoading(true);
     try {
-      if (isSupabaseConfigured && user?.id) {
-        const updated = await profilesService.update(user.id, {
-          full_name: fullName.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          gender: gender || undefined,
-          date_of_birth: dateOfBirth || undefined,
-          avatar_url: avatarUri,
-        });
-        // Keep the local session in sync with the saved profile.
-        useAuthStore.getState().setUser({ ...user, ...updated });
+      const session = await authService.updateProfile({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone_number: normalizeNepaliPhone(phone) || undefined,
+        current_password: currentPassword || undefined,
+      });
+      useAuthStore.getState().setUser(session.user);
+      setOriginalPhone(session.user.phone);
+      setCurrentPassword('');
+      setFeedback({ message: 'Your user-service profile was saved.', error: false });
+      if (Platform.OS !== 'web') Alert.alert('Profile updated', 'Your user-service profile was saved.');
+    } catch (error) {
+      if (error instanceof UserServiceError && error.status === 401) {
+        useAuthStore.getState().logout();
+        Alert.alert('Session expired', 'Please sign in again.');
+      } else {
+        const message =
+          error instanceof UserServiceError ? error.message : 'Please check your connection and try again.';
+        setFeedback({ message, error: true });
+        if (Platform.OS !== 'web') Alert.alert('Could not update profile', message);
       }
-      Alert.alert(
-        'Success',
-        isSupabaseConfigured
-          ? 'Personal information updated.'
-          : 'Sample mode — database not configured, so nothing was saved.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
-      );
-    } catch {
-      Alert.alert('Error', 'Failed to update information. Please try again.');
     } finally {
       setIsLoading(false);
     }
-  }, [avatarUri, dateOfBirth, email, fullName, gender, navigation, phone, user, validate]);
-
-  const pickImage = useCallback(async (source: 'camera' | 'library') => {
-    try {
-      if (source === 'camera') {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
-          return;
-        }
-        const result = await ImagePicker.launchCameraAsync({
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.8,
-        });
-        if (!result.canceled && result.assets[0]) {
-          setAvatarUri(result.assets[0].uri);
-        }
-      } else {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('Permission needed', 'Photo library access is required to choose a photo.');
-          return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.8,
-        });
-        if (!result.canceled && result.assets[0]) {
-          setAvatarUri(result.assets[0].uri);
-        }
-      }
-    } catch {
-      Alert.alert('Error', 'Could not open the image picker on this device.');
-    }
-  }, []);
-
-  const handleImagePicker = useCallback(() => {
-    Alert.alert('Change Photo', 'Choose an option', [
-      { text: 'Camera', onPress: () => pickImage('camera') },
-      { text: 'Gallery', onPress: () => pickImage('library') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [pickImage]);
+  }, [currentPassword, firstName, lastName, phone, user, validate]);
 
   return (
     <SafeAreaView style={styles.container}>
       <Header title="Personal Info" showBack onBack={() => navigation.goBack()} />
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Avatar Section */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatarContainer}>
-            <Avatar name={fullName || 'User'} uri={avatarUri} size="xl" />
-            <TouchableOpacity style={styles.cameraButton} onPress={handleImagePicker}>
-              <Text style={styles.cameraIcon}>📷</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.avatarHint}>Tap to change photo</Text>
+          <Avatar name={user?.full_name || 'User'} uri={user?.avatar_url} size="xl" />
+          <AppText style={styles.avatarHint}>
+            Profile photo upload is not available in the current user-service API.
+          </AppText>
         </View>
 
-        {/* Form */}
+        {feedback && (
+          <AppText style={[styles.feedback, feedback.error ? styles.feedbackError : styles.feedbackSuccess]}>
+            {feedback.message}
+          </AppText>
+        )}
+
         <View style={styles.form}>
           <Input
-            label="Full Name"
-            value={fullName}
-            onChangeText={setFullName}
-            placeholder="Enter your full name"
-            error={errors.fullName}
+            label="First name"
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="First name"
+            autoCapitalize="words"
+            error={errors.firstName}
           />
-
+          <Input
+            label="Last name"
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="Last name"
+            autoCapitalize="words"
+            error={errors.lastName}
+          />
           <Input
             label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={errors.email}
+            value={user?.email || ''}
+            editable={false}
+            placeholder="Email"
           />
-
+          <AppText style={styles.readOnlyHint}>Email changes are not supported by this API.</AppText>
           <Input
-            label="Phone Number"
+            label="Phone number"
             value={phone}
             onChangeText={setPhone}
-            placeholder="+977 XXX XXX XXX"
+            placeholder="+97798XXXXXXXX"
             keyboardType="phone-pad"
-            icon={<Text style={styles.flag}>🇳🇵</Text>}
             error={errors.phone}
           />
-
-          {/* Gender Dropdrop */}
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowGenderPicker(!showGenderPicker)}
-          >
-            <Text style={styles.dropdownLabel}>Gender</Text>
-            <View style={styles.dropdownRight}>
-              <Text style={[styles.dropdownValue, !gender && styles.dropdownPlaceholder]}>
-                {gender || 'Select gender'}
-              </Text>
-              <Text style={styles.dropdownArrow}>▼</Text>
-            </View>
-          </TouchableOpacity>
-
-          {showGenderPicker && (
-            <View style={styles.pickerContainer}>
-              {genderOptions.map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.pickerOption}
-                  onPress={() => {
-                    setGender(option);
-                    setShowGenderPicker(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.pickerOptionText,
-                      gender === option && styles.pickerOptionSelected,
-                    ]}
-                  >
-                    {option}
-                  </Text>
-                  {gender === option && <Text style={styles.checkmark}>✓</Text>}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* Date of Birth */}
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowDatePicker(!showDatePicker)}
-          >
-            <Text style={styles.dropdownLabel}>Date of Birth</Text>
-            <View style={styles.dropdownRight}>
-              <Text style={[styles.dropdownValue, !dateOfBirth && styles.dropdownPlaceholder]}>
-                {dateOfBirth || 'Select date'}
-              </Text>
-              <Text style={styles.dropdownArrow}>📅</Text>
-            </View>
-          </TouchableOpacity>
-
-          {showDatePicker && (
-            <View style={styles.datePickerContainer}>
-              <Text style={styles.datePickerNote}>
-                A full calendar picker is not part of this build. Use “Set Today” or keep the
-                field empty — you can update it later from your profile.
-              </Text>
-              <Button
-                title="Set Today"
-                variant="outline"
-                size="sm"
-                onPress={() => {
-                  setDateOfBirth(new Date().toISOString().split('T')[0]);
-                  setShowDatePicker(false);
-                }}
-              />
-            </View>
-          )}
+          <Input
+            label="Current password (required only when changing phone)"
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            secureTextEntry
+            textContentType="password"
+            error={errors.currentPassword}
+          />
         </View>
 
-        {/* Save Button */}
         <Button
-          title="Save"
+          title="Save profile"
           variant="primary"
           size="lg"
           fullWidth
-          onPress={handleSave}
+          onPress={() => void handleSave()}
           loading={isLoading}
+          disabled={isLoading}
           style={styles.saveButton}
         />
       </ScrollView>
@@ -246,70 +201,34 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollView: { flex: 1 },
   avatarSection: { alignItems: 'center', paddingVertical: spacing.xxl },
-  avatarContainer: { position: 'relative' },
-  cameraButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.surface,
+  avatarHint: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    maxWidth: 280,
+    textAlign: 'center',
+    lineHeight: 19,
   },
-  cameraIcon: { fontSize: 16 },
-  avatarHint: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.sm },
-  form: { paddingHorizontal: spacing.lg },
-  flag: { fontSize: 20 },
-  dropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.input,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.md,
-  },
-  dropdownLabel: { ...typography.bodySmall, fontWeight: '600', color: colors.text },
-  dropdownRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  dropdownValue: { ...typography.body },
-  dropdownPlaceholder: { color: colors.textTertiary },
-  dropdownArrow: { fontSize: 12, color: colors.textTertiary },
-  pickerContainer: {
+  form: {
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+  },
+  readOnlyHint: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginTop: -spacing.sm,
     marginBottom: spacing.md,
-    overflow: 'hidden',
   },
-  pickerOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  pickerOptionText: { ...typography.body },
-  pickerOptionSelected: { color: colors.primary, fontWeight: '600' },
-  checkmark: { color: colors.primary, fontSize: 18, fontWeight: '700' },
-  datePickerContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+  feedback: {
+    ...typography.bodySmall,
+    textAlign: 'center',
+    marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
-    alignItems: 'center',
+    lineHeight: 19,
   },
-  datePickerNote: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.sm },
+  feedbackError: { color: colors.error },
+  feedbackSuccess: { color: colors.success },
   saveButton: { marginHorizontal: spacing.lg, marginTop: spacing.lg, marginBottom: spacing.xxxl },
 });

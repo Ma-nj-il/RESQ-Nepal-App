@@ -1,39 +1,82 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, TextInput, Alert } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, typography, radii } from '../../constants/theme';
-import { Button} from '../../components/ui';
-import { isValidNepaliPhone } from '../../utils/format';
+import { Button, Input } from '../../components/ui';
+import { colors, radii, spacing, typography } from '../../constants/theme';
+import { UserServiceError } from '../../services/api/userService';
+import { authService } from '../../services/auth/authService';
+import { useAuthStore } from '../../store/authStore';
+import { isDemoMode } from '../../utils/demoMode';
 
 interface LoginScreenProps {
   navigation: any;
+  route?: any;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) => {
+  const [email, setEmail] = useState(route?.params?.email || '');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [canReactivate, setCanReactivate] = useState(false);
 
-  const handleBack = () => {
-    navigation.goBack();
+  const enterSession = (session: Awaited<ReturnType<typeof authService.login>>) => {
+    const store = useAuthStore.getState();
+    store.setUser(session.user);
+    store.setMode(session.mode);
+    store.setAuthenticated(true);
   };
 
-  const handleSignIn = () => {
-    if (!isValidNepaliPhone(phoneNumber)) {
-      Alert.alert('Check phone number', 'Enter a valid 10-digit Nepali mobile number (starting 96/97/98).');
+  const handleSignIn = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      setFormError('Enter a valid email address.');
       return;
     }
-    navigation.navigate('OTP', { phone: `+977${phoneNumber}` });
+    if (!password) {
+      setFormError('Enter your account password.');
+      return;
+    }
+
+    setFormError(null);
+    setCanReactivate(false);
+    setIsSubmitting(true);
+    try {
+      const session = await authService.login(normalizedEmail, password, rememberMe);
+      enterSession(session);
+    } catch (error) {
+      const message =
+        error instanceof UserServiceError
+          ? error.message
+          : 'Could not sign in. Check your connection and try again.';
+      setFormError(message);
+      setCanReactivate(error instanceof UserServiceError && error.code === 'AUTH_ACCOUNT_DEACTIVATED');
+      if (Platform.OS !== 'web') Alert.alert('Sign in failed', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSignUp = () => {
-    navigation.navigate('PhoneRegistration');
-  };
-
-  const handleSocialLogin = (provider: string) => {
-    Alert.alert(
-      `${provider} sign-in`,
-      `${provider} sign-in is not available in this build. Please continue with your phone number.`,
-    );
+  const handleReactivate = async () => {
+    setIsSubmitting(true);
+    setFormError(null);
+    try {
+      enterSession(await authService.reactivate(email.trim().toLowerCase(), password, rememberMe));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Could not reactivate this account.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -42,9 +85,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* Back Arrow */}
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Text style={styles.backArrow}>←</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <AppText style={styles.backArrow}>←</AppText>
         </TouchableOpacity>
 
         <ScrollView
@@ -52,169 +94,137 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Heading */}
-          <Text style={styles.heading}>Welcome Back! 👋</Text>
-          <Text style={styles.subtitle}>Enter your phone number to access your RESQ Nepal account.</Text>
+          <AppText style={styles.heading}>Welcome Back</AppText>
+          <AppText style={styles.subtitle}>
+            Sign in with the email and password registered with RESQ Nepal.
+          </AppText>
 
-          {/* Phone Input */}
-          <View style={styles.phoneContainer}>
-            <View style={styles.phoneInputWrapper}>
-              <View style={styles.countryCodeContainer}>
-                <Text style={styles.flag}>🇳🇵</Text>
-                <Text style={styles.countryCode}>+977</Text>
-              </View>
-              <View style={styles.phoneDivider} />
-              <View style={styles.phoneInputFlex}>
-                <Text style={styles.phoneLabel}>Phone Number</Text>
-                <TextInput
-                  style={styles.phoneInput}
-                  value={phoneNumber}
-                  onChangeText={(text) => setPhoneNumber(text.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="e.g. 98XXXXXXXX"
-                  placeholderTextColor={colors.textTertiary}
-                  keyboardType="phone-pad"
-                  maxLength={10}
-                />
-              </View>
-            </View>
+          {route?.params?.registered && (
+            <AppText style={styles.successText}>
+              Account created. Sign in to continue.
+            </AppText>
+          )}
+          {formError && <AppText style={styles.errorText}>{formError}</AppText>}
+
+          <View style={styles.form}>
+            <Input
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="emailAddress"
+            />
+            <Input
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your password"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="password"
+              onSubmitEditing={() => void handleSignIn()}
+            />
           </View>
 
-          {/* Remember Me Checkbox */}
-          <TouchableOpacity
-            style={styles.checkboxContainer}
-            onPress={() => setRememberMe(!rememberMe)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-              {rememberMe && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.rememberText}>Remember me</Text>
-          </TouchableOpacity>
-
-          {/* Sign Up Link */}
-          <View style={styles.signUpContainer}>
-            <Text style={styles.signUpText}>Don&apos;t have an account? </Text>
-            <TouchableOpacity onPress={handleSignUp}>
-              <Text style={styles.signUpLink}>Sign up</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Social Login Row */}
-          <View style={styles.socialRow}>
+          {Platform.OS !== 'web' ? (
             <TouchableOpacity
-              style={styles.socialIconButton}
-              onPress={() => handleSocialLogin('Google')}
+              style={styles.checkboxContainer}
+              onPress={() => setRememberMe((current) => !current)}
               activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Google"
             >
-              <Text style={styles.socialIcon}>G</Text>
+              <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                {rememberMe && <AppText style={styles.checkmark}>✓</AppText>}
+              </View>
+              <AppText style={styles.rememberText}>Keep me signed in on this device</AppText>
             </TouchableOpacity>
-          </View>
-        </ScrollView>
+          ) : (
+            <AppText style={styles.webSessionNote}>Web sessions last only until this tab is closed.</AppText>
+          )}
 
-        {/* Sign In Button */}
-        <View style={styles.footer}>
           <Button
             title="Sign in"
-            onPress={handleSignIn}
+            onPress={() => void handleSignIn()}
             fullWidth
             size="lg"
-            disabled={!isValidNepaliPhone(phoneNumber)}
+            loading={isSubmitting}
+            disabled={isSubmitting || !email.trim() || !password}
           />
-        </View>
+
+          {canReactivate && (
+            <Button
+              title="Reactivate account"
+              variant="outline"
+              onPress={() => void handleReactivate()}
+              fullWidth
+              loading={isSubmitting}
+              style={styles.secondaryAction}
+            />
+          )}
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('RecoverPassword', { email: email.trim() })}
+            style={styles.forgotButton}
+          >
+            <AppText style={styles.signUpLink}>Use a recovery code</AppText>
+          </TouchableOpacity>
+
+          <View style={styles.signUpContainer}>
+            <AppText style={styles.signUpText}>Don&apos;t have an account? </AppText>
+            <TouchableOpacity onPress={() => navigation.navigate('PhoneRegistration')}>
+              <AppText style={styles.signUpLink}>Sign up</AppText>
+            </TouchableOpacity>
+          </View>
+
+          {isDemoMode() && (
+            <View style={styles.demoCard}>
+              <AppText style={styles.demoText}>
+                Demo mode is enabled. You can preview the original local OTP walkthrough without
+                creating a backend account.
+              </AppText>
+              <Button
+                title="Open demo OTP"
+                variant="outline"
+                fullWidth
+                onPress={() => navigation.navigate('OTP', { phone: '+9779800000000' })}
+              />
+            </View>
+          )}
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.surface,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: colors.surface },
+  keyboardView: { flex: 1 },
   backButton: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  backArrow: {
-    fontSize: 24,
-    color: colors.text,
-  },
+  backArrow: { fontSize: 24, color: colors.text },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
-  heading: {
-    ...typography.h2,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
+  heading: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.xxl,
     lineHeight: 22,
   },
-  phoneContainer: {
-    marginBottom: spacing.lg,
-  },
-  phoneInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.input,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  countryCodeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  flag: {
-    fontSize: 20,
-  },
-  countryCode: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  phoneDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-  },
-  phoneInputFlex: {
-    flex: 1,
-  },
-  phoneLabel: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  phoneInput: {
-    ...typography.body,
-    color: colors.text,
-    padding: 0,
-    marginTop: 2,
-  },
-  phoneHint: {
-    ...typography.caption,
-    color: colors.textTertiary,
-  },
+  form: { marginBottom: spacing.xs },
   checkboxContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
     gap: spacing.sm,
   },
   checkbox: {
@@ -225,58 +235,42 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
   },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  checkmark: {
-    color: colors.surface,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  rememberText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkmark: { color: colors.surface, fontSize: 14, fontWeight: '700' },
+  rememberText: { ...typography.bodySmall, color: colors.textSecondary },
+  webSessionNote: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.xl },
   signUpContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: spacing.xl,
+    marginTop: spacing.xl,
   },
-  signUpText: {
+  signUpText: { ...typography.bodySmall, color: colors.textSecondary },
+  signUpLink: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
+  secondaryAction: { marginTop: spacing.md },
+  forgotButton: { alignItems: 'center', marginTop: spacing.lg },
+  demoCard: {
+    marginTop: spacing.xxl,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.blueLight,
+  },
+  demoText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
+    lineHeight: 19,
+    marginBottom: spacing.md,
   },
-  signUpLink: {
+  successText: {
     ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '600',
+    color: colors.success,
+    marginBottom: spacing.md,
   },
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.md,
-  },
-  socialIconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  socialIcon: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.error,
+    marginBottom: spacing.md,
+    lineHeight: 19,
   },
 });
 

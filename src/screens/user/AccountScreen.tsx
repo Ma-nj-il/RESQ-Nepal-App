@@ -1,5 +1,6 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Avatar } from '../../components/ui';
@@ -11,6 +12,7 @@ import { authService } from '../../services/auth/authService';
 import { useTripCounts } from '../../hooks/useTripCounts';
 import { isDemoMode } from '../../utils/demoMode';
 import { isAuthorizedDriverStatus } from '../../utils/homeBooking';
+import { confirmAction } from '../../utils/confirmAction';
 
 interface AccountMenuItem {
   id: string;
@@ -43,23 +45,15 @@ export const AccountScreen: React.FC = () => {
   const { counts, loading: countsLoading, error: countsError, usingSampleData } = useTripCounts();
 
   const handleLogout = useCallback(() => {
-    Alert.alert('Logout', 'Sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Yes, Logout',
-        style: 'destructive',
-        onPress: async () => {
-          // End the real Supabase session (clears the persisted session),
-          // then clear local state so AppNavigator swaps to the auth stack.
-          try {
-            await authService.signOut();
-          } catch {
-            // Local sign-out still proceeds.
-          }
-          logout();
-        },
+    confirmAction(
+      'Logout',
+      'Sure you want to log out?',
+      async () => {
+        await authService.signOut();
+        logout();
       },
-    ]);
+      { confirmLabel: 'Yes, Logout', destructive: true },
+    );
   }, [logout]);
 
   const handleSwitchToDriver = useCallback(async () => {
@@ -103,9 +97,9 @@ export const AccountScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Text style={styles.backArrow}>←</Text>
+          <AppText style={styles.backArrow}>←</AppText>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Account</Text>
+        <AppText style={styles.headerTitle}>Account</AppText>
       </View>
 
       <ScrollView
@@ -121,10 +115,10 @@ export const AccountScreen: React.FC = () => {
         >
           <Avatar name={user?.full_name || 'User'} uri={user?.avatar_url} size="lg" />
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{user?.full_name || 'Guest User'}</Text>
-            <Text style={styles.profilePhone}>{user?.phone || '+977 XXX XXX XXX'}</Text>
+            <AppText style={styles.profileName}>{user?.full_name || 'Guest User'}</AppText>
+            <AppText style={styles.profilePhone}>{user?.phone || '+977 XXX XXX XXX'}</AppText>
           </View>
-          <Text style={styles.arrow}>›</Text>
+          <AppText style={styles.arrow}>›</AppText>
         </TouchableOpacity>
 
         {/* Wallet Card — the booking journey is cash-only in this version, so
@@ -132,58 +126,58 @@ export const AccountScreen: React.FC = () => {
         <Card elevation="md" style={styles.walletCard}>
           <View style={styles.walletContent}>
             <View style={styles.walletInfo}>
-              <Text style={styles.walletLabel}>Wallet Balance (demo)</Text>
-              <Text style={styles.walletBalance}>NPR {balance.toLocaleString('en-IN')}</Text>
-              <Text style={styles.walletNote}>
+              <AppText style={styles.walletLabel}>Wallet Balance (demo)</AppText>
+              <AppText style={styles.walletBalance}>NPR {balance.toLocaleString('en-IN')}</AppText>
+              <AppText style={styles.walletNote}>
                 Cash only in this version. Wallet top-up and online payments are not active.
-              </Text>
+              </AppText>
             </View>
           </View>
         </Card>
 
         {/* Trip summary — real counts from the user's booking records. */}
         <Card elevation="sm" style={styles.tripsCard}>
-          <Text style={styles.tripsTitle}>Your trips</Text>
+          <AppText style={styles.tripsTitle}>Your trips</AppText>
           {countsLoading ? (
             <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: spacing.md }} />
           ) : countsError ? (
-            <Text style={styles.tripsError}>{countsError}</Text>
+            <AppText style={styles.tripsError}>{countsError}</AppText>
           ) : (
             <View style={styles.tripsRow}>
               <View style={styles.tripsStat}>
-                <Text style={styles.tripsValue}>{counts.total}</Text>
-                <Text style={styles.tripsLabel}>Total</Text>
+                <AppText style={styles.tripsValue}>{counts.total}</AppText>
+                <AppText style={styles.tripsLabel}>Total</AppText>
               </View>
               <View style={styles.tripsStat}>
-                <Text style={styles.tripsValue}>{counts.completed}</Text>
-                <Text style={styles.tripsLabel}>Completed</Text>
+                <AppText style={styles.tripsValue}>{counts.completed}</AppText>
+                <AppText style={styles.tripsLabel}>Completed</AppText>
               </View>
               <View style={styles.tripsStat}>
-                <Text style={styles.tripsValue}>{counts.cancelled}</Text>
-                <Text style={styles.tripsLabel}>Cancelled</Text>
+                <AppText style={styles.tripsValue}>{counts.cancelled}</AppText>
+                <AppText style={styles.tripsLabel}>Cancelled</AppText>
               </View>
               <View style={styles.tripsStat}>
-                <Text style={styles.tripsValue}>{counts.active}</Text>
-                <Text style={styles.tripsLabel}>Active</Text>
+                <AppText style={styles.tripsValue}>{counts.active}</AppText>
+                <AppText style={styles.tripsLabel}>Active</AppText>
               </View>
             </View>
           )}
           {!countsLoading && !countsError && usingSampleData && (
-            <Text style={styles.tripsNote}>
+            <AppText style={styles.tripsNote}>
               Sample walkthrough data — your real counts appear when signed in.
-            </Text>
+            </AppText>
           )}
         </Card>
 
         {/* Driver Mode Switch */}
         <Card elevation="sm" style={styles.driverCard}>
           <View style={styles.driverRow}>
-            <Text style={styles.driverIcon}>🚑</Text>
+            <AppText style={styles.driverIcon}>🚑</AppText>
             <View style={styles.driverInfo}>
-              <Text style={styles.driverTitle}>Drive with RESQ Nepal</Text>
-              <Text style={styles.driverSubtitle}>
+              <AppText style={styles.driverTitle}>Drive with RESQ Nepal</AppText>
+              <AppText style={styles.driverSubtitle}>
                 Switch to Driver Mode to manage your ambulance and requests
-              </Text>
+              </AppText>
             </View>
           </View>
           <Button
@@ -206,17 +200,17 @@ export const AccountScreen: React.FC = () => {
               onPress={() => handleMenuPress(item.route, item.params)}
             >
               <View style={styles.menuItemLeft}>
-                <Text style={styles.menuIcon}>{item.icon}</Text>
-                <Text style={styles.menuLabel}>{item.label}</Text>
+                <AppText style={styles.menuIcon}>{item.icon}</AppText>
+                <AppText style={styles.menuLabel}>{item.label}</AppText>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <AppText style={styles.menuArrow}>›</AppText>
             </TouchableOpacity>
           ))}
         </Card>
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} activeOpacity={0.7} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
+          <AppText style={styles.logoutText}>Logout</AppText>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

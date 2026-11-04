@@ -14,45 +14,73 @@ import (
 )
 
 type Claims struct {
-	UserID uuid.UUID       `json:"user_id"`
-	Email  string          `json:"email"`
-	Role   models.UserRole `json:"role"`
+	UserID    uuid.UUID       `json:"user_id"`
+	SessionID uuid.UUID       `json:"sid"`
+	Email     string          `json:"email"`
+	Role      models.UserRole `json:"role"`
 	jwt.RegisteredClaims
 }
 
+const (
+	AccessTokenIssuer   = "resq-auth"
+	AccessTokenAudience = "resq-api"
+)
+
 func AuthMiddlewareWithProvider(provider jwtkeys.KeyProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var tokenString string
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" {
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				common.ErrorResponse(c, http.StatusUnauthorized, "invalid authorization header format")
-				c.Abort()
-				return
-			}
-			tokenString = parts[1]
-		} else if t := c.Query("token"); t != "" {
-			tokenString = t
-		} else {
-			common.ErrorResponse(c, http.StatusUnauthorized, "authorization required")
+		if c.Request.URL.Query().Has("token") {
+			common.AppErrorResponse(c, common.NewErrorWithCode(
+				http.StatusUnauthorized,
+				common.ErrCodeInvalidToken,
+				"query-string bearer tokens are not accepted",
+				common.ErrInvalidToken,
+			))
 			c.Abort()
 			return
 		}
 
+		authHeader := c.GetHeader("Authorization")
+		parts := strings.Fields(authHeader)
+		if len(parts) != 2 || parts[0] != "Bearer" || parts[1] == "" {
+			common.AppErrorResponse(c, common.NewErrorWithCode(
+				http.StatusUnauthorized,
+				common.ErrCodeUnauthorized,
+				"authorization requires a Bearer token",
+				common.ErrUnauthorized,
+			))
+			c.Abort()
+			return
+		}
+		tokenString := parts[1]
+
 		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 			return resolveSigningKey(provider, token)
-		})
+		},
+			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+			jwt.WithIssuer(AccessTokenIssuer),
+			jwt.WithAudience(AccessTokenAudience),
+			jwt.WithExpirationRequired(),
+		)
 
 		if err != nil || !token.Valid {
-			common.ErrorResponse(c, http.StatusUnauthorized, "invalid or expired token")
+			common.AppErrorResponse(c, common.NewErrorWithCode(
+				http.StatusUnauthorized,
+				common.ErrCodeInvalidToken,
+				"invalid or expired token",
+				common.ErrInvalidToken,
+			))
 			c.Abort()
 			return
 		}
 
 		claims, ok := token.Claims.(*Claims)
-		if !ok {
-			common.ErrorResponse(c, http.StatusUnauthorized, "invalid token claims")
+		if !ok || claims.UserID == uuid.Nil || claims.SessionID == uuid.Nil || claims.ID == "" || claims.Subject != claims.UserID.String() {
+			common.AppErrorResponse(c, common.NewErrorWithCode(
+				http.StatusUnauthorized,
+				common.ErrCodeInvalidToken,
+				"invalid token claims",
+				common.ErrInvalidToken,
+			))
 			c.Abort()
 			return
 		}
@@ -60,12 +88,17 @@ func AuthMiddlewareWithProvider(provider jwtkeys.KeyProvider) gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
 		c.Set("user_role", claims.Role)
+		c.Set("session_id", claims.SessionID)
+		c.Set("token_id", claims.ID)
 
 		c.Next()
 	}
 }
 
 func resolveSigningKey(provider jwtkeys.KeyProvider, token *jwt.Token) ([]byte, error) {
+	if token.Method != jwt.SigningMethodHS256 {
+		return nil, errors.New("unexpected JWT signing method")
+	}
 	if provider == nil {
 		return nil, errors.New("jwt provider is nil")
 	}
@@ -83,6 +116,18 @@ func resolveSigningKey(provider jwtkeys.KeyProvider, token *jwt.Token) ([]byte, 
 		return nil, jwtkeys.ErrKeyNotFound
 	}
 	return legacy, nil
+}
+
+func GetSessionID(c *gin.Context) (uuid.UUID, error) {
+	sessionID, exists := c.Get("session_id")
+	if !exists {
+		return uuid.Nil, common.ErrUnauthorized
+	}
+	id, ok := sessionID.(uuid.UUID)
+	if !ok || id == uuid.Nil {
+		return uuid.Nil, common.ErrUnauthorized
+	}
+	return id, nil
 }
 
 func RequireRole(roles ...models.UserRole) gin.HandlerFunc {

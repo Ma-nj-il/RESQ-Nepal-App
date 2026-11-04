@@ -1,10 +1,10 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -92,11 +92,10 @@ const ApplicationStatusScreen: React.FC = () => {
     try {
       await authService.signOut();
     } catch {
-      // Even if the remote sign-out fails, clear the local session so the
-      // user can authenticate again.
-    } finally {
-      logout();
+      setError('The saved session could not be removed. Please retry before signing in again.');
+      return;
     }
+    logout();
   }, [logout]);
 
   const application = bundle?.application ?? null;
@@ -140,14 +139,14 @@ const ApplicationStatusScreen: React.FC = () => {
     const uploaded = Boolean(current);
     return (
       <View key={documentType} style={styles.documentRow}>
-        <Text style={styles.documentIcon}>{meta.icon}</Text>
+        <AppText style={styles.documentIcon}>{meta.icon}</AppText>
         <View style={styles.documentInfo}>
-          <Text style={styles.documentTitle}>{meta.title}</Text>
-          <Text style={styles.documentSubtitle}>
+          <AppText style={styles.documentTitle}>{meta.title}</AppText>
+          <AppText style={styles.documentSubtitle}>
             {uploaded
               ? 'Stored privately — upload state is not verification'
               : 'Not uploaded'}
-          </Text>
+          </AppText>
         </View>
         <Badge
           label={uploaded ? documentUploadLabel('UPLOADED') : 'Not uploaded'}
@@ -159,25 +158,25 @@ const ApplicationStatusScreen: React.FC = () => {
 
   const renderDemoState = () => (
     <Card elevation="sm" style={styles.stateCard}>
-      <Text style={styles.stateIcon}>🔒</Text>
-      <Text style={styles.stateTitle}>No application in this mode</Text>
-      <Text style={styles.stateBody}>
+      <AppText style={styles.stateIcon}>🔒</AppText>
+      <AppText style={styles.stateTitle}>No application in this mode</AppText>
+      <AppText style={styles.stateBody}>
         {isDemoMode()
           ? 'Demo mode is local-only. No identity document is uploaded, no application is created and no application status is read from the server.'
           : 'The database is not configured, so no identity application can be stored or read. Nothing is simulated.'}
-      </Text>
+      </AppText>
     </Card>
   );
 
   const renderEmptyState = () => (
     <Card elevation="sm" style={styles.stateCard}>
-      <Text style={styles.stateIcon}>📄</Text>
-      <Text style={styles.stateTitle}>No application submitted yet</Text>
-      <Text style={styles.stateBody}>
+      <AppText style={styles.stateIcon}>📄</AppText>
+      <AppText style={styles.stateTitle}>No application submitted yet</AppText>
+      <AppText style={styles.stateBody}>
         {isDriver
           ? 'Complete the driver application with your citizenship, driving licence, vehicle and Blue Book details. The application is only submitted after every required document is stored privately.'
           : 'Add your citizenship number and a photo of your citizenship document. Your application is only marked submitted after the server confirms the document was stored.'}
-      </Text>
+      </AppText>
       <Button
         title={isDriver ? 'Open driver application' : 'Add citizenship details'}
         onPress={openUpdate}
@@ -210,13 +209,13 @@ const ApplicationStatusScreen: React.FC = () => {
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading application status…</Text>
+            <AppText style={styles.loadingText}>Loading application status…</AppText>
           </View>
         ) : error ? (
           <Card elevation="sm" style={styles.stateCard}>
-            <Text style={styles.stateIcon}>⚠️</Text>
-            <Text style={styles.stateTitle}>Status unavailable</Text>
-            <Text style={styles.stateBody}>{error}</Text>
+            <AppText style={styles.stateIcon}>⚠️</AppText>
+            <AppText style={styles.stateTitle}>Status unavailable</AppText>
+            <AppText style={styles.stateBody}>{error}</AppText>
             {sessionExpired ? (
               <Button
                 title="Sign in again"
@@ -242,81 +241,81 @@ const ApplicationStatusScreen: React.FC = () => {
           <>
             <Card elevation="sm" style={styles.statusCard}>
               <View style={styles.statusHeader}>
-                <Text style={styles.statusLabel}>
+                <AppText style={styles.statusLabel}>
                   {isDriver ? 'Driver application' : 'Patient application'}
-                </Text>
+                </AppText>
                 <Badge label={presentation.label} variant={presentation.variant} />
               </View>
-              <Text style={styles.reference}>{application.reference_id}</Text>
-              <Text style={styles.statusNote}>{presentation.note}</Text>
+              <AppText style={styles.reference}>{application.reference_id}</AppText>
+              <AppText style={styles.statusNote}>{presentation.note}</AppText>
               {application.status_reason ? (
                 <View style={styles.reasonBox}>
-                  <Text style={styles.reasonText}>{application.status_reason}</Text>
+                  <AppText style={styles.reasonText}>{application.status_reason}</AppText>
                 </View>
               ) : null}
               <View style={styles.metaRow}>
                 <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Submitted</Text>
-                  <Text style={styles.metaValue}>
+                  <AppText style={styles.metaLabel}>Submitted</AppText>
+                  <AppText style={styles.metaValue}>
                     {formatIdentityDate(application.submitted_at)}
-                  </Text>
+                  </AppText>
                 </View>
                 <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Last update</Text>
-                  <Text style={styles.metaValue}>
+                  <AppText style={styles.metaLabel}>Last update</AppText>
+                  <AppText style={styles.metaValue}>
                     {formatIdentityDate(application.last_status_update)}
-                  </Text>
+                  </AppText>
                 </View>
               </View>
             </Card>
 
             <Card elevation="sm" style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Documents</Text>
-              <Text style={styles.sectionHint}>
+              <AppText style={styles.sectionTitle}>Documents</AppText>
+              <AppText style={styles.sectionHint}>
                 Upload state is not verification state. Uploading a document does not approve it.
-              </Text>
+              </AppText>
               {REQUIRED_IDENTITY_DOCUMENTS[applicationType].map(renderDocumentRow)}
             </Card>
 
             <Card elevation="sm" style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Identity details</Text>
+              <AppText style={styles.sectionTitle}>Identity details</AppText>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Citizenship number</Text>
-                <Text style={styles.infoValue}>
+                <AppText style={styles.infoLabel}>Citizenship number</AppText>
+                <AppText style={styles.infoValue}>
                   {maskIdentifier(bundle?.profileCitizenshipNumber)}
-                </Text>
+                </AppText>
               </View>
               {isDriver && (
                 <>
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Licence number</Text>
-                    <Text style={styles.infoValue}>
+                    <AppText style={styles.infoLabel}>Licence number</AppText>
+                    <AppText style={styles.infoValue}>
                       {maskIdentifier(driver?.license_number)}
-                    </Text>
+                    </AppText>
                   </View>
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Vehicle plate</Text>
-                    <Text style={styles.infoValue}>{vehicle?.plate_number ?? 'Not recorded'}</Text>
+                    <AppText style={styles.infoLabel}>Vehicle plate</AppText>
+                    <AppText style={styles.infoValue}>{vehicle?.plate_number ?? 'Not recorded'}</AppText>
                   </View>
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Driver status</Text>
-                    <Text style={styles.infoValue}>
+                    <AppText style={styles.infoLabel}>Driver status</AppText>
+                    <AppText style={styles.infoValue}>
                       {driver?.status === 'verified'
                         ? 'Verified by RESQ Nepal'
                         : driver?.status === 'rejected'
                           ? 'Rejected'
                           : 'Pending verification'}
-                    </Text>
+                    </AppText>
                   </View>
                 </>
               )}
             </Card>
 
             <View style={styles.noticeBox}>
-              <Text style={styles.noticeText}>
+              <AppText style={styles.noticeText}>
                 Review is handled by an authorised RESQ Nepal reviewer. This screen does not
                 approve, reject or verify anything, and it does not invent review timelines.
-              </Text>
+              </AppText>
             </View>
 
             {effectiveStatus !== 'APPROVED' && (

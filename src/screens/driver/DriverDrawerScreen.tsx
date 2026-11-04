@@ -1,12 +1,11 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useCallback } from 'react';
 import {
-  Alert,
   Animated,
   Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/auth/authService';
 import { colors, radii, spacing, typography } from '../../constants/theme';
+import { confirmAction } from '../../utils/confirmAction';
 
 const DRAWER_WIDTH = Math.min(340, Math.round(Dimensions.get('window').width * 0.86));
 
@@ -52,20 +52,19 @@ const DriverDrawerScreen: React.FC = () => {
   }, [backdropOpacity, slideX]);
 
   const handleLogout = () => {
-    Alert.alert('Log out', 'Log out of Driver Mode?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log out',
-        style: 'destructive',
-        onPress: () => close(() => {
-          if (isDemoDriver) {
-            logout();
-            return;
-          }
-          void authService.signOut().catch(() => undefined).finally(logout);
-        }),
+    confirmAction(
+      'Log out',
+      'Log out of Driver Mode?',
+      async () => {
+        if (isDemoDriver) {
+          logout();
+          return;
+        }
+        await authService.signOut();
+        logout();
       },
-    ]);
+      { confirmLabel: 'Log out', destructive: true },
+    );
   };
 
   const openDestination = (
@@ -102,15 +101,15 @@ const DriverDrawerScreen: React.FC = () => {
       >
         <SafeAreaView style={styles.safe} edges={['bottom']}>
           <View style={[styles.top, { paddingTop: insets.top + spacing.sm }]}>
-            <View style={styles.brandMark}><Text style={styles.brandCross}>✚</Text></View>
-            <Text style={styles.brand}>RESQ Nepal</Text>
+            <View style={styles.brandMark}><AppText style={styles.brandCross}>✚</AppText></View>
+            <AppText style={styles.brand}>RESQ Nepal</AppText>
             <TouchableOpacity
               style={styles.close}
               onPress={() => close(() => navigation.goBack())}
               accessibilityRole="button"
               accessibilityLabel="Close driver menu"
             >
-              <Text style={styles.closeText}>✕</Text>
+              <AppText style={styles.closeText}>✕</AppText>
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.content}>
@@ -125,9 +124,9 @@ const DriverDrawerScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
               >
-                <Text style={styles.rowIcon}>{item.icon}</Text>
-                <Text style={styles.rowLabel}>{item.label}</Text>
-                <Text style={styles.chevron}>›</Text>
+                <AppText style={styles.rowIcon}>{item.icon}</AppText>
+                <AppText style={styles.rowLabel}>{item.label}</AppText>
+                <AppText style={styles.chevron}>›</AppText>
               </TouchableOpacity>
             ))}
             <View style={styles.divider} />
@@ -137,8 +136,8 @@ const DriverDrawerScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Switch to User Mode"
             >
-              <Text style={styles.rowIcon}>⇄</Text>
-              <Text style={styles.rowLabel}>Switch to User Mode</Text>
+              <AppText style={styles.rowIcon}>⇄</AppText>
+              <AppText style={styles.rowLabel}>Switch to User Mode</AppText>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.row}
@@ -146,8 +145,8 @@ const DriverDrawerScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Log out"
             >
-              <Text style={styles.rowIcon}>↪</Text>
-              <Text style={[styles.rowLabel, styles.danger]}>Log Out</Text>
+              <AppText style={styles.rowIcon}>↪</AppText>
+              <AppText style={[styles.rowLabel, styles.danger]}>Log Out</AppText>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>

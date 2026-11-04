@@ -1,3 +1,4 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -6,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   View,
-  Text,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -133,6 +133,13 @@ const ProcessingScreen: React.FC = () => {
       // Yield once so this function never calls setState synchronously from
       // the mount effect (avoids cascading renders).
       await Promise.resolve();
+
+      if (user?.auth_source === 'user-service') {
+        setError(
+          'Booking is unavailable for this account until the ambulance booking API is connected.',
+        );
+        return;
+      }
 
       // ── Demo mode / database not configured: walk through the flow without
       // persisting anything. The UI labels this clearly.
@@ -485,12 +492,12 @@ const ProcessingScreen: React.FC = () => {
           accessibilityLabel="Open menu"
           accessibilityHint="Opens the RESQ Nepal menu"
         >
-          <Text style={styles.menuButtonIcon}>☰</Text>
+          <AppText style={styles.menuButtonIcon}>☰</AppText>
         </TouchableOpacity>
         <View style={styles.topPill}>
-          <Text style={styles.topPillText}>
+          <AppText style={styles.topPillText}>
             {hasAssignment ? 'Ambulance tracking' : 'Ambulance search'}
-          </Text>
+          </AppText>
         </View>
       </View>
 
@@ -503,9 +510,9 @@ const ProcessingScreen: React.FC = () => {
 
         {error ? (
           <View style={styles.errorBody}>
-            <Text style={styles.errorIcon}>⚠️</Text>
-            <Text style={styles.title}>Booking not created</Text>
-            <Text style={styles.subtitle}>{error}</Text>
+            <AppText style={styles.errorIcon}>⚠️</AppText>
+            <AppText style={styles.title}>Booking not created</AppText>
+            <AppText style={styles.subtitle}>{error}</AppText>
             <Button title="Try again" onPress={handleRetry} fullWidth style={styles.retryButton} />
             <Button title="Go back" variant="ghost" onPress={handleGoBack} fullWidth />
           </View>
@@ -516,18 +523,18 @@ const ProcessingScreen: React.FC = () => {
                 {canShowRadar ? (
                   <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
-                  <Text style={styles.statusIconText}>
+                  <AppText style={styles.statusIconText}>
                     {bookingStatus === 'completed'
                       ? '✓'
                       : bookingStatus === 'cancelled' || bookingStatus === 'rejected'
                         ? '!'
                         : '🚑'}
-                  </Text>
+                  </AppText>
                 )}
               </View>
               <View style={styles.statusCopy}>
-                <Text style={styles.title}>{statusTitle}</Text>
-                <Text style={styles.subtitle}>
+                <AppText style={styles.title}>{statusTitle}</AppText>
+                <AppText style={styles.subtitle}>
                   {hasAssignment
                     ? demoAssigned
                       ? 'Local-only demo preview — no dispatch booking or driver data is connected.'
@@ -537,7 +544,7 @@ const ProcessingScreen: React.FC = () => {
                       : isSupabaseConfigured
                         ? 'Looking for a verified crew near your pickup.'
                         : 'Sample mode — the database is not configured, so nothing was saved.'}
-                </Text>
+                </AppText>
               </View>
             </View>
 
@@ -549,17 +556,17 @@ const ProcessingScreen: React.FC = () => {
                 <View style={[styles.routeDot, styles.routeDotDestination]} />
               </View>
               <View style={styles.routeCopy}>
-                <Text style={styles.routeText} numberOfLines={1}>
+                <AppText style={styles.routeText} numberOfLines={1}>
                   {booking?.pickup_address || pickup?.address || 'Pickup location'}
-                </Text>
-                <Text style={styles.routeText} numberOfLines={1}>
+                </AppText>
+                <AppText style={styles.routeText} numberOfLines={1}>
                   {booking?.destination_address || destination?.address || 'Destination'}
-                </Text>
+                </AppText>
               </View>
               </View>
             ) : null}
 
-            <Text style={styles.helper}>
+            <AppText style={styles.helper}>
               {demoAssigned
                 ? 'This preview uses simulated local coordinates and illustrative estimates only.'
                 : hasAssignment
@@ -571,9 +578,9 @@ const ProcessingScreen: React.FC = () => {
                   : isSupabaseConfigured
                     ? 'This may take a few moments. The radar is illustrative, not live GPS.'
                     : 'Sample mode — the database is not configured, so nothing is saved.'}
-            </Text>
+            </AppText>
 
-            {statusError ? <Text style={styles.statusError}>{statusError}</Text> : null}
+            {statusError ? <AppText style={styles.statusError}>{statusError}</AppText> : null}
 
             {demoRun && demoWaiting && !demoAssigned ? (
               <Button
@@ -588,23 +595,23 @@ const ProcessingScreen: React.FC = () => {
               <>
                 <Card style={styles.assignedCard} elevation="sm">
                   <View style={styles.assignedHeading}>
-                    <Text style={styles.assignedTitle}>Assigned ambulance</Text>
+                    <AppText style={styles.assignedTitle}>Assigned ambulance</AppText>
                     <Badge label="DEMO PREVIEW" variant="info" />
                   </View>
                   <View style={styles.driverRow}>
                     <Avatar name={demoPreview.driverName} size="lg" />
                     <View style={styles.driverCopy}>
-                      <Text style={styles.driverName}>{demoPreview.driverName}</Text>
-                      <Text style={styles.detailText}>Sample driver · fictitious</Text>
+                      <AppText style={styles.driverName}>{demoPreview.driverName}</AppText>
+                      <AppText style={styles.detailText}>Sample driver · fictitious</AppText>
                     </View>
                   </View>
                   <View style={styles.vehicleRow}>
-                    <Text style={styles.vehicleIcon}>🚑</Text>
+                    <AppText style={styles.vehicleIcon}>🚑</AppText>
                     <View style={styles.vehicleCopy}>
-                      <Text style={styles.vehiclePlate}>
+                      <AppText style={styles.vehiclePlate}>
                         {demoPreview.vehicleRegistration} · SAMPLE
-                      </Text>
-                      <Text style={styles.detailText}>{demoPreview.vehicleModel}</Text>
+                      </AppText>
+                      <AppText style={styles.detailText}>{demoPreview.vehicleModel}</AppText>
                     </View>
                   </View>
                   <Button
@@ -617,36 +624,36 @@ const ProcessingScreen: React.FC = () => {
                 </Card>
                 <Card style={styles.trackingCard} elevation="sm">
                   <View style={styles.assignedHeading}>
-                    <Text style={styles.assignedTitle}>Driver is on the way</Text>
+                    <AppText style={styles.assignedTitle}>Driver is on the way</AppText>
                     <Badge label="ILLUSTRATIVE" variant="warning" />
                   </View>
                   {trackingRoute.route ? (
                     <>
-                      <Text style={styles.etaText}>
+                      <AppText style={styles.etaText}>
                         Approx. {trackingRoute.route.durationMinutes} min to pickup
-                      </Text>
-                      <Text style={styles.distanceText}>
+                      </AppText>
+                      <AppText style={styles.distanceText}>
                         Approx. {trackingRoute.route.distanceKm.toFixed(1)} km to pickup
-                      </Text>
+                      </AppText>
                     </>
                   ) : (
                     <>
-                      <Text style={styles.etaText}>{demoPreview.etaLabel} to pickup</Text>
-                      <Text style={styles.distanceText}>{demoPreview.distanceLabel} to pickup</Text>
+                      <AppText style={styles.etaText}>{demoPreview.etaLabel} to pickup</AppText>
+                      <AppText style={styles.distanceText}>{demoPreview.distanceLabel} to pickup</AppText>
                     </>
                   )}
-                  <Text style={styles.routeDisclaimer}>
+                  <AppText style={styles.routeDisclaimer}>
                     Simulated demo location and illustrative route/ETA only. Not live GPS, dispatch,
                     traffic, or a real arrival prediction.
-                  </Text>
+                  </AppText>
                   {!demoPreview.ambulanceLocation ? (
-                    <Text style={styles.detailText}>
+                    <AppText style={styles.detailText}>
                       Add pickup coordinates to preview the simulated ambulance marker and route.
-                    </Text>
+                    </AppText>
                   ) : trackingRoute.unavailable ? (
-                    <Text style={styles.detailText}>
+                    <AppText style={styles.detailText}>
                       The road-route preview is unavailable; displayed sample estimates remain illustrative.
-                    </Text>
+                    </AppText>
                   ) : null}
                 </Card>
                 {demoRun && demoAssigned ? (
@@ -665,7 +672,7 @@ const ProcessingScreen: React.FC = () => {
               <>
                 <Card style={styles.assignedCard} elevation="sm">
                   <View style={styles.assignedHeading}>
-                    <Text style={styles.assignedTitle}>Assigned ambulance</Text>
+                    <AppText style={styles.assignedTitle}>Assigned ambulance</AppText>
                     <Badge label={booking.status.toUpperCase()} variant="info" />
                   </View>
                   {crew?.driverName ? (
@@ -677,31 +684,31 @@ const ProcessingScreen: React.FC = () => {
                       />
                       <View style={styles.driverCopy}>
                         <View style={styles.driverNameRow}>
-                          <Text style={styles.driverName} numberOfLines={1}>
+                          <AppText style={styles.driverName} numberOfLines={1}>
                             {crew.driverName}
-                          </Text>
+                          </AppText>
                           {crew.driverVerified === true ? (
                             <Badge label="VERIFIED" variant="success" />
                           ) : null}
                         </View>
-                        <Text style={styles.detailText}>Driver</Text>
+                        <AppText style={styles.detailText}>Driver</AppText>
                       </View>
                     </View>
                   ) : null}
 
                   <View style={styles.vehicleRow}>
-                    <Text style={styles.vehicleIcon}>🚑</Text>
+                    <AppText style={styles.vehicleIcon}>🚑</AppText>
                     <View style={styles.vehicleCopy}>
-                      <Text style={styles.vehiclePlate}>
+                      <AppText style={styles.vehiclePlate}>
                         {crew?.plateNumber ?? 'Vehicle registration unavailable'}
-                      </Text>
-                      {crew?.model ? <Text style={styles.detailText}>{crew.model}</Text> : null}
+                      </AppText>
+                      {crew?.model ? <AppText style={styles.detailText}>{crew.model}</AppText> : null}
                     </View>
                   </View>
                   {!crew?.driverName ? (
-                    <Text style={styles.detailText}>
+                    <AppText style={styles.detailText}>
                       Driver details are unavailable for this booking.
-                    </Text>
+                    </AppText>
                   ) : null}
 
                   {!isTerminal ? (
@@ -717,28 +724,28 @@ const ProcessingScreen: React.FC = () => {
                 </Card>
 
                 <Card style={styles.trackingCard} elevation="sm">
-                  <Text style={styles.assignedTitle}>
+                  <AppText style={styles.assignedTitle}>
                     {bookingStatus === 'started' ? 'Trip in progress' : 'Ambulance location'}
-                  </Text>
+                  </AppText>
                   {visibleLocation && trackingRoute.route ? (
                     <>
-                      <Text style={styles.etaText}>
+                      <AppText style={styles.etaText}>
                         {bookingStatus === 'arriving'
                           ? `Ambulance arriving in approximately ${trackingRoute.route.durationMinutes} min`
                           : bookingStatus === 'started'
                             ? `Estimated trip time: approximately ${trackingRoute.route.durationMinutes} min`
                             : `Estimated route to pickup: approximately ${trackingRoute.route.durationMinutes} min`}
-                      </Text>
-                      <Text style={styles.distanceText}>
+                      </AppText>
+                      <AppText style={styles.distanceText}>
                         {trackingRoute.route.distanceKm.toFixed(1)} km
                         {bookingStatus === 'started' ? ' to destination' : ' to pickup'}
-                      </Text>
-                      <Text style={styles.routeDisclaimer}>
+                      </AppText>
+                      <AppText style={styles.routeDisclaimer}>
                         Route estimate; traffic conditions are not verified.
-                      </Text>
+                      </AppText>
                     </>
                   ) : (
-                    <Text style={styles.detailText}>
+                    <AppText style={styles.detailText}>
                       {trackingError
                         ? 'Live location is temporarily unavailable. Waiting for a fresh GPS update.'
                         : !SECURE_TRIP_TRACKING_ENABLED
@@ -750,7 +757,7 @@ const ProcessingScreen: React.FC = () => {
                               : visibleLocation
                                 ? 'Live location is available. A valid road route and ETA are not available yet.'
                                 : 'Waiting for a fresh ambulance GPS location. Distance and ETA are unavailable.'}
-                    </Text>
+                    </AppText>
                   )}
                 </Card>
               </>

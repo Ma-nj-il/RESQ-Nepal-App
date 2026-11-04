@@ -8,26 +8,36 @@ import (
 
 type UserRole string
 
+type AccountStatus string
+
 const (
 	RoleRider  UserRole = "rider"
 	RoleDriver UserRole = "driver"
 	RoleAdmin  UserRole = "admin"
+
+	AccountStatusActive      AccountStatus = "active"
+	AccountStatusDeactivated AccountStatus = "deactivated"
+	AccountStatusDeleted     AccountStatus = "deleted"
 )
 
 type User struct {
-	ID           uuid.UUID  `json:"id" db:"id" gorm:"primaryKey;type:uuid"`
-	Email        string     `json:"email" db:"email" gorm:"uniqueIndex;not null"`
-	PhoneNumber  string     `json:"phone_number" db:"phone_number" gorm:"uniqueIndex"`
-	PasswordHash string     `json:"-" db:"password_hash" gorm:"not null"`
-	FirstName    string     `json:"first_name" db:"first_name"`
-	LastName     string     `json:"last_name" db:"last_name"`
-	Role         UserRole   `json:"role" db:"role" gorm:"type:string;not null"`
-	IsActive     bool       `json:"is_active" db:"is_active" gorm:"default:true"`
-	IsVerified   bool       `json:"is_verified" db:"is_verified" gorm:"default:false"`
-	ProfileImage *string    `json:"profile_image,omitempty" db:"profile_image"`
-	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty" db:"deleted_at" gorm:"index"`
+	ID              uuid.UUID     `json:"id" db:"id" gorm:"primaryKey;type:uuid"`
+	Email           string        `json:"email" db:"email" gorm:"uniqueIndex;not null"`
+	PhoneNumber     string        `json:"phone_number" db:"phone_number" gorm:"uniqueIndex"`
+	PasswordHash    string        `json:"-" db:"password_hash" gorm:"not null"`
+	FirstName       string        `json:"first_name" db:"first_name"`
+	LastName        string        `json:"last_name" db:"last_name"`
+	Role            UserRole      `json:"role" db:"role" gorm:"type:string;not null"`
+	IsActive        bool          `json:"is_active" db:"is_active" gorm:"default:true"`
+	IsVerified      bool          `json:"is_verified" db:"is_verified" gorm:"default:false"`
+	AccountStatus   AccountStatus `json:"account_status" db:"account_status" gorm:"type:string;not null;default:active"`
+	AuthVersion     int           `json:"-" db:"auth_version" gorm:"not null;default:1"`
+	TermsVersion    *string       `json:"terms_version,omitempty" db:"terms_version"`
+	TermsAcceptedAt *time.Time    `json:"terms_accepted_at,omitempty" db:"terms_accepted_at"`
+	ProfileImage    *string       `json:"profile_image,omitempty" db:"profile_image"`
+	CreatedAt       time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at" db:"updated_at"`
+	DeletedAt       *time.Time    `json:"deleted_at,omitempty" db:"deleted_at" gorm:"index"`
 }
 
 type Driver struct {
@@ -55,20 +65,18 @@ type Driver struct {
 }
 
 type RegisterRequest struct {
-	Email       string   `json:"email" binding:"required,email"`
-	Password    string   `json:"password" binding:"required,min=8"`
-	PhoneNumber string   `json:"phone_number" binding:"required"`
-	FirstName   string   `json:"first_name" binding:"required"`
-	LastName    string   `json:"last_name" binding:"required"`
-	Role        UserRole `json:"role" binding:"required,oneof=rider driver"`
+	Email        string   `json:"email" binding:"required"`
+	Password     string   `json:"password" binding:"required"`
+	PhoneNumber  string   `json:"phone_number" binding:"required"`
+	FirstName    string   `json:"first_name" binding:"required"`
+	LastName     string   `json:"last_name" binding:"required"`
+	Role         UserRole `json:"role" binding:"required,oneof=rider"`
+	TermsVersion string   `json:"terms_version" binding:"required"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
-}
-
-type LoginResponse struct {
-	User  *User  `json:"user"`
-	Token string `json:"token"`
+	Email      string `json:"email" binding:"required"`
+	Password   string `json:"password" binding:"required"`
+	RememberMe bool   `json:"remember_me"`
+	DeviceName string `json:"device_name"`
 }

@@ -69,7 +69,7 @@ func main() {
 	}
 	keyManager.StartAutoRotation(rootCtx)
 
-	service := auth.NewService(repo, keyManager, cfg.JWT.Expiration, appLogger)
+	service := auth.NewService(repo, keyManager, appLogger)
 
 	handler := auth.NewHandler(service)
 
@@ -91,6 +91,15 @@ func main() {
 	router.Use(middleware.SanitizeRequest())
 	router.Use(middleware.ErrorHandler())
 
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"service":  serviceName,
+			"version":  version,
+			"status":   "running",
+			"health":   "/healthz",
+			"api_base": "/api/v1/auth",
+		})
+	})
 	router.GET("/healthz", common.HealthCheck(serviceName, version))
 	router.GET("/health/live", common.LivenessProbe(serviceName, version))
 

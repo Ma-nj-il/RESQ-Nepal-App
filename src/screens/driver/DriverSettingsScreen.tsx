@@ -1,7 +1,7 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -16,6 +16,7 @@ import { authService } from '../../services/auth/authService';
 import { supportRequestsService } from '../../services/database/supportRequests';
 import { isSupabaseConfigured } from '../../services/database/client';
 import DriverNavigationHeader from '../../components/driver/DriverNavigationHeader';
+import { confirmAction } from '../../utils/confirmAction';
 
 interface SettingsItem {
   id: string;
@@ -42,29 +43,18 @@ const DriverSettingsScreen: React.FC = () => {
   const [language, ] = useState('English');
 
   const handleLogout = () => {
-    Alert.alert(
+    confirmAction(
       'Logout',
       'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            if (isDemoDriver) {
-              returnToUserMode();
-              return;
-            }
-            // End the real Supabase session, then clear local state.
-            try {
-              await authService.signOut();
-            } catch {
-              // Local sign-out still proceeds.
-            }
-            logout();
-          },
-        },
-      ]
+      async () => {
+        if (isDemoDriver) {
+          returnToUserMode();
+          return;
+        }
+        await authService.signOut();
+        logout();
+      },
+      { confirmLabel: 'Logout', destructive: true },
     );
   };
 
@@ -258,7 +248,7 @@ const DriverSettingsScreen: React.FC = () => {
 
   const renderSection = (title: string, items: SettingsItem[]) => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <AppText style={styles.sectionTitle}>{title}</AppText>
       <Card elevation="sm" style={styles.sectionCard}>
         {items.map((item, index) => (
           <TouchableOpacity
@@ -268,11 +258,11 @@ const DriverSettingsScreen: React.FC = () => {
             disabled={item.type === 'toggle'}
             activeOpacity={item.type === 'toggle' ? 1 : 0.7}
           >
-            <Text style={styles.settingsIcon}>{item.icon}</Text>
+            <AppText style={styles.settingsIcon}>{item.icon}</AppText>
             <View style={styles.settingsContent}>
-              <Text style={styles.settingsTitle}>{item.title}</Text>
+              <AppText style={styles.settingsTitle}>{item.title}</AppText>
               {item.subtitle && (
-                <Text style={styles.settingsSubtitle}>{item.subtitle}</Text>
+                <AppText style={styles.settingsSubtitle}>{item.subtitle}</AppText>
               )}
             </View>
             {item.type === 'toggle' && (
@@ -282,10 +272,10 @@ const DriverSettingsScreen: React.FC = () => {
               />
             )}
             {item.type === 'link' && (
-              <Text style={styles.chevron}>›</Text>
+              <AppText style={styles.chevron}>›</AppText>
             )}
             {item.type === 'action' && (
-              <Text style={[styles.chevron, { color: colors.error }]}>›</Text>
+              <AppText style={[styles.chevron, { color: colors.error }]}>›</AppText>
             )}
           </TouchableOpacity>
         ))}
@@ -326,7 +316,7 @@ const DriverSettingsScreen: React.FC = () => {
         />
 
         {/* App Version */}
-        <Text style={styles.versionText}>RESQ Nepal v1.0.0</Text>
+        <AppText style={styles.versionText}>RESQ Nepal v1.0.0</AppText>
       </ScrollView>
     </SafeAreaView>
   );

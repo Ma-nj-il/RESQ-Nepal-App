@@ -1,9 +1,12 @@
-import React, { useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { AppText } from '../../components/ui/AppText';
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography, radii } from '../../constants/theme';
+import { Button } from '../../components/ui';
 import { ONBOARDING_SEEN_KEY } from '../../constants/storage';
+import { UserServiceError } from '../../services/api/userService';
 import { authService } from '../../services/auth/authService';
 import { useAuthStore } from '../../store/authStore';
 
@@ -13,6 +16,8 @@ interface SplashScreenProps {
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
   const { setUser, setMode, setAuthenticated } = useAuthStore();
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -20,8 +25,19 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
     const boot = async () => {
       const startedAt = Date.now();
 
-      // Restore a persisted Supabase session, if one exists.
-      const restored = await authService.restoreSession();
+      let restored;
+      try {
+        // A stored token is accepted only after the user service validates it.
+        restored = await authService.restoreSession();
+      } catch (error) {
+        if (!active) return;
+        setRestoreError(
+          error instanceof UserServiceError
+            ? error.message
+            : 'Could not validate your saved session. Check your connection and retry.',
+        );
+        return;
+      }
       if (!active) return;
       if (restored) {
         setUser(restored.user);
@@ -46,7 +62,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
     return () => {
       active = false;
     };
-  }, [navigation, setAuthenticated, setMode, setUser]);
+  }, [navigation, restoreAttempt, setAuthenticated, setMode, setUser]);
+
+  const continueSignedOut = async () => {
+    try {
+      await authService.signOut();
+    } catch {
+      setRestoreError('The saved session could not be removed from this device. Please retry.');
+      return;
+    }
+    const seen = await AsyncStorage.getItem(ONBOARDING_SEEN_KEY).catch(() => null);
+    navigation.replace(seen ? 'Welcome' : 'Onboarding');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -58,13 +85,34 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
         </View>
 
         {/* App Name */}
-        <Text style={styles.appName}>RESQ Nepal</Text>
-        <Text style={styles.tagline}>Emergency Ambulance Booking</Text>
+        <AppText style={styles.appName}>RESQ Nepal</AppText>
+        <AppText style={styles.tagline}>Emergency Ambulance Booking</AppText>
+
+        {restoreError && (
+          <View style={styles.errorCard}>
+            <AppText style={styles.errorText}>{restoreError}</AppText>
+            <Button
+              title="Retry"
+              variant="secondary"
+              fullWidth
+              onPress={() => {
+                setRestoreError(null);
+                setRestoreAttempt((attempt) => attempt + 1);
+              }}
+            />
+            <Button
+              title="Sign in again"
+              variant="ghost"
+              fullWidth
+              onPress={() => void continueSignedOut()}
+            />
+          </View>
+        )}
       </View>
 
       {/* Loading Indicator */}
       <View style={styles.footer}>
-        <ActivityIndicator size="small" color={colors.surface} />
+        {!restoreError && <ActivityIndicator size="small" color={colors.surface} />}
       </View>
     </SafeAreaView>
   );
@@ -111,6 +159,22 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: 'rgba(255,255,255,0.8)',
     marginTop: spacing.sm,
+  },
+  errorCard: {
+    width: '86%',
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    marginTop: spacing.xxl,
+    gap: spacing.sm,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.error,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: spacing.xs,
   },
   footer: {
     paddingBottom: spacing.xxxl,

@@ -1,5 +1,6 @@
+import { AppText } from '../../components/ui/AppText';
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radii } from '../../constants/theme';
 import { Button } from '../../components/ui';
@@ -20,7 +21,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   const handleSocialLogin = (provider: string) => {
     Alert.alert(
       `${provider} sign-in`,
-      `${provider} sign-in is not available in this build. Please continue with your phone number.`,
+      `${provider} sign-in is not available in this build. Please continue with email and password.`,
     );
   };
 
@@ -33,13 +34,13 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
             <View style={styles.crossHorizontal} />
             <View style={styles.crossVertical} />
           </View>
-          <Text style={styles.logoText}>RESQ Nepal</Text>
+          <AppText style={styles.logoText}>RESQ Nepal</AppText>
         </View>
 
         {/* Heading */}
         <View style={styles.headingSection}>
-          <Text style={styles.heading}>Let&apos;s Get Started!</Text>
-          <Text style={styles.subheading}>Let&apos;s dive in to your account</Text>
+          <AppText style={styles.heading}>Let&apos;s Get Started!</AppText>
+          <AppText style={styles.subheading}>Let&apos;s dive in to your account</AppText>
         </View>
 
         {/* Google is shown as an option but reports that OAuth is not configured. */}
@@ -49,8 +50,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
             onPress={() => handleSocialLogin('Google')}
             activeOpacity={0.7}
           >
-            <Text style={styles.socialIcon}>G</Text>
-            <Text style={styles.socialText}>Continue with Google</Text>
+            <AppText style={styles.socialIcon}>G</AppText>
+            <AppText style={styles.socialText}>Continue with Google</AppText>
           </TouchableOpacity>
 
         </View>
@@ -58,7 +59,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
         {/* Or Divider */}
         <View style={styles.dividerContainer}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
+          <AppText style={styles.dividerText}>or</AppText>
           <View style={styles.dividerLine} />
         </View>
 
@@ -70,24 +71,24 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
         </View>
 
         <View style={styles.driverEntry}>
-          <Text style={styles.driverPrompt}>Are you an ambulance driver?</Text>
+          <AppText style={styles.driverPrompt}>Are you an ambulance driver?</AppText>
           <TouchableOpacity
             onPress={() => navigation.navigate('DriverLogin')}
             accessibilityRole="button"
             accessibilityLabel="Driver Login"
           >
-            <Text style={styles.driverLink}>🚑  Driver Login</Text>
+            <AppText style={styles.driverLink}>🚑  Driver Login</AppText>
           </TouchableOpacity>
         </View>
 
         {/* Footer Links */}
         <View style={styles.footer}>
           <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
-            <Text style={styles.footerLink}>Privacy Policy</Text>
+            <AppText style={styles.footerLink}>Privacy Policy</AppText>
           </TouchableOpacity>
-          <Text style={styles.footerSeparator}>•</Text>
+          <AppText style={styles.footerSeparator}>•</AppText>
           <TouchableOpacity onPress={() => navigation.navigate('TermsOfService')}>
-            <Text style={styles.footerLink}>Terms of Service</Text>
+            <AppText style={styles.footerLink}>Terms of Service</AppText>
           </TouchableOpacity>
         </View>
       </ScrollView>

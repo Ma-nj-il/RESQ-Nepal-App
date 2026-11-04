@@ -1,43 +1,110 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, TextInput, Alert } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, typography, radii } from '../../constants/theme';
-import { Button} from '../../components/ui';
-import { isValidNepaliPhone } from '../../utils/format';
+import { Button, Input } from '../../components/ui';
+import { colors, radii, spacing, typography } from '../../constants/theme';
+import { UserServiceError } from '../../services/api/userService';
+import { authService } from '../../services/auth/authService';
+import { useAuthStore } from '../../store/authStore';
+import { isDemoMode } from '../../utils/demoMode';
+import { isValidNepaliPhone, normalizeNepaliPhoneInput } from '../../utils/format';
+
+const TERMS_VERSION = '2026-11-04';
 
 interface PhoneRegistrationScreenProps {
   navigation: any;
 }
 
 const PhoneRegistrationScreen: React.FC<PhoneRegistrationScreenProps> = ({ navigation }) => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const handleBack = () => {
-    navigation.goBack();
+  const clearValidation = () => {
+    setFieldErrors({});
+    setFormError(null);
   };
 
-  const handleSignUp = () => {
-    if (!agreedToTerms) {
-      Alert.alert('Terms required', 'Please agree to the RESQ Nepal Terms & Conditions to continue.');
-      return;
-    }
+  const handleSignUp = async () => {
+    const nextErrors: Record<string, string> = {};
+    if (!firstName.trim()) nextErrors.firstName = 'First name is required';
+    if (!lastName.trim()) nextErrors.lastName = 'Last name is required';
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Enter a valid email address';
     if (!isValidNepaliPhone(phoneNumber)) {
-      Alert.alert('Check phone number', 'Enter a valid 10-digit Nepali mobile number (starting 96/97/98).');
+      nextErrors.phone = 'Use a 10-digit number starting with 96, 97, or 98';
+    }
+    if (password.length < 8) nextErrors.password = 'Use at least 8 characters';
+    if (password !== confirmPassword) nextErrors.confirmPassword = 'Passwords do not match';
+    if (!agreedToTerms) nextErrors.terms = 'You must agree before creating an account';
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setFormError('Please correct the highlighted fields.');
       return;
     }
-    navigation.navigate('OTP', { phone: `+977${phoneNumber}` });
-  };
 
-  const handleSignIn = () => {
-    navigation.navigate('Login');
-  };
+    const normalizedEmail = email.trim().toLowerCase();
+    const phone = `+977${phoneNumber}`;
 
-  const handleSocialLogin = (provider: string) => {
-    Alert.alert(
-      `${provider} sign-up`,
-      `${provider} sign-up is not available in this build. Please continue with your phone number.`,
-    );
+    if (isDemoMode()) {
+      const now = new Date().toISOString();
+      const store = useAuthStore.getState();
+      store.setUser({
+        id: 'demo-user',
+        auth_source: 'demo',
+        full_name: `${firstName.trim()} ${lastName.trim()}`,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: normalizedEmail,
+        phone,
+        mode: 'user',
+        created_at: now,
+        updated_at: now,
+      });
+      store.setMode('user');
+      navigation.navigate('LocationPermission');
+      return;
+    }
+
+    setFormError(null);
+    setIsSubmitting(true);
+    try {
+      await authService.register({
+        email: normalizedEmail,
+        password,
+        phone_number: phone,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        role: 'rider',
+        terms_version: TERMS_VERSION,
+      });
+      navigation.replace('Login', { email: normalizedEmail, registered: true });
+    } catch (error) {
+      const message =
+        error instanceof UserServiceError
+          ? error.message
+          : 'Check your connection and try again.';
+      setFormError(message);
+      if (Platform.OS !== 'web') Alert.alert('Could not create account', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -46,9 +113,8 @@ const PhoneRegistrationScreen: React.FC<PhoneRegistrationScreenProps> = ({ navig
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* Back Arrow */}
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Text style={styles.backArrow}>←</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <AppText style={styles.backArrow}>←</AppText>
         </TouchableOpacity>
 
         <ScrollView
@@ -56,177 +122,156 @@ const PhoneRegistrationScreen: React.FC<PhoneRegistrationScreenProps> = ({ navig
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Heading */}
-          <Text style={styles.heading}>Join Nepal Today ✨</Text>
-          <Text style={styles.subtitle}>Enter your phone number to create your RESQ Nepal account.</Text>
+          <AppText style={styles.heading}>Create Your Account</AppText>
+          <AppText style={styles.subtitle}>
+            These details are sent securely to the RESQ Nepal user service.
+          </AppText>
+          {formError && <AppText style={styles.errorText}>{formError}</AppText>}
 
-          {/* Phone Input */}
-          <View style={styles.phoneContainer}>
-            <View style={styles.phoneInputWrapper}>
-              <View style={styles.countryCodeContainer}>
-                <Text style={styles.flag}>🇳🇵</Text>
-                <Text style={styles.countryCode}>+977</Text>
-              </View>
-              <View style={styles.phoneDivider} />
-              <View style={styles.phoneInputFlex}>
-                <View style={styles.phoneInputRow}>
-                  <Text style={styles.phoneLabel}>Phone Number</Text>
-                  <Text style={styles.phoneHint}>e.g. 98XXXXXXXX</Text>
-                </View>
-                <TextInput
-                  style={styles.phoneInput}
-                  value={phoneNumber}
-                  onChangeText={(text) => setPhoneNumber(text.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="98XXXXXXXX"
-                  placeholderTextColor={colors.textTertiary}
-                  keyboardType="phone-pad"
-                  maxLength={10}
-                />
-              </View>
+          <View style={styles.nameRow}>
+            <View style={styles.nameField}>
+              <Input
+                label="First name"
+                value={firstName}
+                onChangeText={(value) => {
+                  clearValidation();
+                  setFirstName(value);
+                }}
+                placeholder="First name"
+                autoCapitalize="words"
+                textContentType="givenName"
+                error={fieldErrors.firstName}
+              />
+            </View>
+            <View style={styles.nameField}>
+              <Input
+                label="Last name"
+                value={lastName}
+                onChangeText={(value) => {
+                  clearValidation();
+                  setLastName(value);
+                }}
+                placeholder="Last name"
+                autoCapitalize="words"
+                textContentType="familyName"
+                error={fieldErrors.lastName}
+              />
             </View>
           </View>
 
-          {/* Terms Checkbox */}
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={(value) => {
+              clearValidation();
+              setEmail(value);
+            }}
+            placeholder="you@example.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="emailAddress"
+            error={fieldErrors.email}
+          />
+          <Input
+            label="Nepali phone number"
+            value={phoneNumber}
+            onChangeText={(value) => {
+              clearValidation();
+              setPhoneNumber(normalizeNepaliPhoneInput(value));
+            }}
+            placeholder="98XXXXXXXX"
+            keyboardType="phone-pad"
+            icon={<AppText style={styles.countryCode}>+977</AppText>}
+            error={fieldErrors.phone}
+          />
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={(value) => {
+              clearValidation();
+              setPassword(value);
+            }}
+            placeholder="At least 8 characters"
+            secureTextEntry
+            autoCapitalize="none"
+            textContentType="newPassword"
+            error={fieldErrors.password}
+          />
+          <Input
+            label="Confirm password"
+            value={confirmPassword}
+            onChangeText={(value) => {
+              clearValidation();
+              setConfirmPassword(value);
+            }}
+            placeholder="Repeat your password"
+            secureTextEntry
+            autoCapitalize="none"
+            textContentType="newPassword"
+            error={fieldErrors.confirmPassword}
+          />
+
           <TouchableOpacity
             style={styles.checkboxContainer}
-            onPress={() => setAgreedToTerms(!agreedToTerms)}
+            onPress={() => {
+              clearValidation();
+              setAgreedToTerms((current) => !current);
+            }}
             activeOpacity={0.7}
           >
             <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
-              {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
+              {agreedToTerms && <AppText style={styles.checkmark}>✓</AppText>}
             </View>
-            <Text style={styles.termsText}>I agree to RESQ Nepal Terms & Conditions.</Text>
+            <AppText style={styles.termsText}>I agree to the Terms & Conditions.</AppText>
           </TouchableOpacity>
+          {fieldErrors.terms && <AppText style={styles.termsError}>{fieldErrors.terms}</AppText>}
 
-          {/* Sign In Link */}
+          <Button
+            title={isDemoMode() ? 'Continue in demo mode' : 'Create account'}
+            onPress={() => void handleSignUp()}
+            fullWidth
+            size="lg"
+            loading={isSubmitting}
+            disabled={isSubmitting}
+          />
+
           <View style={styles.signInContainer}>
-            <Text style={styles.signInText}>Already have an account? </Text>
-            <TouchableOpacity onPress={handleSignIn}>
-              <Text style={styles.signInLink}>Sign in</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Social Login Row */}
-          <View style={styles.socialRow}>
-            <TouchableOpacity
-              style={styles.socialIconButton}
-              onPress={() => handleSocialLogin('Google')}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Google"
-            >
-              <Text style={styles.socialIcon}>G</Text>
+            <AppText style={styles.signInText}>Already have an account? </AppText>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <AppText style={styles.signInLink}>Sign in</AppText>
             </TouchableOpacity>
           </View>
         </ScrollView>
-
-        {/* Sign Up Button */}
-        <View style={styles.footer}>
-          <Button
-            title="Sign up"
-            onPress={handleSignUp}
-            fullWidth
-            size="lg"
-            disabled={!agreedToTerms || !isValidNepaliPhone(phoneNumber)}
-          />
-        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.surface,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: colors.surface },
+  keyboardView: { flex: 1 },
   backButton: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  backArrow: {
-    fontSize: 24,
-    color: colors.text,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-  },
-  heading: {
-    ...typography.h2,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
+  backArrow: { fontSize: 24, color: colors.text },
+  scrollContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
+  heading: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
     marginBottom: spacing.xl,
     lineHeight: 22,
   },
-  phoneContainer: {
-    marginBottom: spacing.lg,
-  },
-  phoneInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.input,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  countryCodeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  flag: {
-    fontSize: 20,
-  },
-  countryCode: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  phoneDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-  },
-  phoneInputFlex: {
-    flex: 1,
-  },
-  phoneInputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  phoneLabel: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  phoneInput: {
-    ...typography.body,
-    color: colors.text,
-    padding: 0,
-    marginTop: 2,
-  },
-  phoneHint: {
-    ...typography.caption,
-    color: colors.textTertiary,
-  },
+  nameRow: { flexDirection: 'row', gap: spacing.sm },
+  nameField: { flex: 1 },
+  countryCode: { ...typography.bodySmall, color: colors.text, fontWeight: '600' },
   checkboxContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.lg,
+    alignItems: 'center',
+    marginVertical: spacing.md,
     gap: spacing.sm,
   },
   checkbox: {
@@ -237,60 +282,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
   },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  checkmark: {
-    color: colors.surface,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  termsText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    flex: 1,
-    lineHeight: 20,
-  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkmark: { color: colors.surface, fontSize: 14, fontWeight: '700' },
+  termsText: { ...typography.bodySmall, color: colors.textSecondary, flex: 1 },
+  termsError: { ...typography.caption, color: colors.error, marginTop: -spacing.sm, marginBottom: spacing.md },
   signInContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: spacing.xl,
+    marginTop: spacing.xl,
   },
-  signInText: {
+  signInText: { ...typography.bodySmall, color: colors.textSecondary },
+  signInLink: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
+  errorText: {
     ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  signInLink: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.md,
-  },
-  socialIconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  socialIcon: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
+    color: colors.error,
+    marginBottom: spacing.md,
+    lineHeight: 19,
   },
 });
 

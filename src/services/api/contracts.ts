@@ -1,14 +1,11 @@
 import { BookingStatus, Hospital, SosLocationStatus } from '../../types';
 
 /**
- * Typed contracts for the future RESQ Nepal backend API.
+ * Typed contracts for RESQ Nepal domain APIs that are not implemented yet.
  *
- * The mobile app talks to Supabase directly today (see src/services/database).
- * These types describe the request/response shapes a future HTTP API must
- * expose so the UI can migrate without changing its screens. They are
- * documentation-as-types: nothing in this file performs network calls and no
- * endpoint is implemented yet. Route sketches, authorization rules and the
- * error format are in docs/future-api-contracts.md.
+ * User registration, login and profile requests are implemented separately in
+ * userService.ts against the Go auth-service contract. The remaining types in
+ * this file are documentation-as-types for future booking and domain APIs.
  */
 
 export interface ApiError {
@@ -21,15 +18,6 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError 
 export interface Page<T> {
   items: T[];
   nextCursor: string | null;
-}
-
-/* ---------- auth & profile ---------- */
-
-export interface ProfileUpdateRequest {
-  full_name?: string;
-  email?: string;
-  gender?: string | null;
-  avatar_url?: string | null;
 }
 
 /* ---------- bookings ---------- */

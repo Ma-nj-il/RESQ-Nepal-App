@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const colors = {
   primary: '#E53935', // Emergency red
   primaryDark: '#C62828',
@@ -28,16 +30,22 @@ export const colors = {
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
 
+export const fontFamily = Platform.select({
+  ios: 'System',
+  android: 'sans-serif',
+  default: 'sans-serif',
+}) as string;
+
 export const typography = {
-  h1: { fontSize: 28, fontWeight: '700' as const, lineHeight: 36 },
-  h2: { fontSize: 24, fontWeight: '700' as const, lineHeight: 32 },
-  h3: { fontSize: 20, fontWeight: '600' as const, lineHeight: 28 },
-  h4: { fontSize: 18, fontWeight: '600' as const, lineHeight: 24 },
-  body: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
-  bodySmall: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-  caption: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
-  button: { fontSize: 16, fontWeight: '600' as const, lineHeight: 24 },
-  buttonSmall: { fontSize: 14, fontWeight: '600' as const, lineHeight: 20 },
+  h1: { fontFamily, fontSize: 28, fontWeight: '700' as const, lineHeight: 36 },
+  h2: { fontFamily, fontSize: 24, fontWeight: '700' as const, lineHeight: 32 },
+  h3: { fontFamily, fontSize: 20, fontWeight: '600' as const, lineHeight: 28 },
+  h4: { fontFamily, fontSize: 18, fontWeight: '600' as const, lineHeight: 24 },
+  body: { fontFamily, fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
+  bodySmall: { fontFamily, fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
+  caption: { fontFamily, fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
+  button: { fontFamily, fontSize: 16, fontWeight: '600' as const, lineHeight: 24 },
+  buttonSmall: { fontFamily, fontSize: 14, fontWeight: '600' as const, lineHeight: 20 },
 };
 
 export const radii = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, full: 9999 };

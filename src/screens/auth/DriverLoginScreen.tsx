@@ -1,5 +1,6 @@
+import { AppText } from '../../components/ui/AppText';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,18 +15,18 @@ const DriverLoginScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const { user, loginDemoDriver, returnToUserMode, setMode } = useAuthStore();
   const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const canContinueAsVerifiedDriver = Boolean(user?.id && isSupabaseConfigured && !isDemoMode());
 
   const handleDemoLogin = () => {
     if (!isDemoMode()) {
-      Alert.alert(
-        'Demo access unavailable',
-        'Driver demo login is available only when EXPO_PUBLIC_DEMO_MODE=true.',
-      );
+      setError('Driver demo login is available only when EXPO_PUBLIC_DEMO_MODE=true.');
       return;
     }
     if (!loginDemoDriver()) {
-      Alert.alert('Demo access unavailable', 'Enable demo mode to preview Driver Mode.');
+      setError('Enable demo mode to preview Driver Mode.');
+    } else {
+      setError(null);
     }
   };
 
@@ -35,15 +36,13 @@ const DriverLoginScreen: React.FC = () => {
     try {
       const driver = await driversService.getByUserId(user.id);
       if (isAuthorizedDriverStatus(driver?.status)) {
+        setError(null);
         setMode('driver');
       } else {
-        Alert.alert(
-          'Driver access unavailable',
-          'This account does not have an approved driver profile. Driver applications require review.',
-        );
+        setError('This account does not have an approved driver profile. Driver applications require review.');
       }
     } catch {
-      Alert.alert('Driver access unavailable', 'We could not verify this driver account. Try again.');
+      setError('We could not verify this driver account. Try again.');
     } finally {
       setVerifying(false);
     }
@@ -54,18 +53,19 @@ const DriverLoginScreen: React.FC = () => {
       <Header title="Driver Login" showBack />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.brand}>
-          <Text style={styles.icon}>🚑</Text>
-          <Text style={styles.title}>Driver Mode</Text>
-          <Text style={styles.subtitle}>
+          <AppText style={styles.icon}>🚑</AppText>
+          <AppText style={styles.title}>Driver Mode</AppText>
+          <AppText style={styles.subtitle}>
             Preview the RESQ Nepal driver experience. Demo mode only.
-          </Text>
+          </AppText>
+          {error && <AppText style={styles.error}>{error}</AppText>}
         </View>
         <Card elevation="sm" style={styles.card}>
-          <Text style={styles.demoLabel}>DEMO DRIVER</Text>
-          <Text style={styles.note}>
+          <AppText style={styles.demoLabel}>DEMO DRIVER</AppText>
+          <AppText style={styles.note}>
             This local walkthrough uses fictional sample information. It does not sign in a real
             driver or update any server records.
-          </Text>
+          </AppText>
           <Button
             title="Login via Demo"
             onPress={handleDemoLogin}
@@ -107,6 +107,7 @@ const styles = StyleSheet.create({
   icon: { fontSize: 48, marginBottom: spacing.md },
   title: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
   subtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
+  error: { ...typography.bodySmall, color: colors.error, textAlign: 'center', marginTop: spacing.md },
   card: { padding: spacing.lg },
   demoLabel: { ...typography.h4, color: colors.primary, marginBottom: spacing.sm },
   note: { ...typography.bodySmall, color: colors.textSecondary, lineHeight: 20 },

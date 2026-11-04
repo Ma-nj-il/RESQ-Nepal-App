@@ -1,0 +1,1860 @@
+{
+  "info": {
+    "_postman_id": "2673efc4-df8e-49cb-a198-0379b5a588ec",
+    "name": "RESQ User Service",
+    "description": "Sequential, repeatable contract verification for the RESQ auth service. Run the complete collection from top to bottom against http://localhost:8081. The collection creates unique primary and disposable rider accounts and carries credentials between requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let parsedBody = null;",
+          "try { parsedBody = pm.response.json(); } catch (error) { parsedBody = null; }",
+          "",
+          "if (parsedBody && typeof parsedBody === 'object') {",
+          "  pm.test('Response omits passwords and stored credential hashes', function () {",
+          "    const forbidden = ['password', 'password_hash', 'refresh_token_hash', 'refresh_hash', 'refreshtokenhash', 'auth_version', 'code_hash'];",
+          "    const leaked = [];",
+          "    const visit = function (value, path) {",
+          "      if (!value || typeof value !== 'object') return;",
+          "      if (Array.isArray(value)) {",
+          "        value.forEach(function (entry, index) { visit(entry, `${path}[${index}]`); });",
+          "        return;",
+          "      }",
+          "      Object.keys(value).forEach(function (key) {",
+          "        const normalized = key.toLowerCase();",
+          "        if (forbidden.includes(normalized)) leaked.push(`${path}.${key}`);",
+          "        visit(value[key], `${path}.${key}`);",
+          "      });",
+          "    };",
+          "    visit(parsedBody, 'response');",
+          "    pm.expect(leaked, `sensitive response fields: ${leaked.join(', ')}`).to.eql([]);",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health and Metadata",
+      "item": [
+        {
+          "name": "Root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Root reports the running auth service', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.service).to.eql('auth-service');",
+                  "  pm.expect(response.status).to.eql('running');",
+                  "  pm.expect(response.version).to.be.a('string').and.not.empty;",
+                  "  pm.expect(response.health).to.eql('/healthz');",
+                  "  pm.expect(response.api_base).to.eql('/api/v1/auth');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/"
+          },
+          "response": []
+        },
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health endpoint is healthy', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.status).to.eql('healthy');",
+                  "  pm.expect(response.service).to.eql('auth-service');",
+                  "  pm.expect(response.version).to.be.a('string').and.not.empty;",
+                  "  pm.expect(response.timestamp).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz"
+          },
+          "response": []
+        },
+        {
+          "name": "Liveness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Liveness endpoint reports alive', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.status).to.eql('alive');",
+                  "  pm.expect(response.service).to.eql('auth-service');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/live"
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Readiness includes a healthy database', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.status).to.eql('ready');",
+                  "  pm.expect(response.service).to.eql('auth-service');",
+                  "  pm.expect(response.checks.database.status).to.eql('healthy');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/ready"
+          },
+          "response": []
+        },
+        {
+          "name": "Version",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Version metadata is present', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.service).to.eql('auth-service');",
+                  "  pm.expect(response.version).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/version"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Registration, Profile, and Sessions",
+      "item": [
+        {
+          "name": "Register Unique Rider",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const now = Date.now();",
+                  "const randomPart = String(Math.floor(Math.random() * 10000000)).padStart(7, '0');",
+                  "const nonce = `${now}-${randomPart}`;",
+                  "const phoneStem = String((Number(String(now).slice(-7)) + Number(randomPart)) % 10000000).padStart(7, '0');",
+                  "const phone = function (lastDigit) { return `+97798${phoneStem}${lastDigit}`; };",
+                  "",
+                  "pm.collectionVariables.set('testEmail', `postman.rider.${nonce}@resq.test`);",
+                  "pm.collectionVariables.set('testPhone', phone('0'));",
+                  "pm.collectionVariables.set('updatedPhone', phone('1'));",
+                  "pm.collectionVariables.set('duplicateAttemptPhone', phone('2'));",
+                  "pm.collectionVariables.set('driverAttemptEmail', `postman.driver.${nonce}@resq.test`);",
+                  "pm.collectionVariables.set('driverAttemptPhone', phone('3'));",
+                  "pm.collectionVariables.set('invalidPhoneEmail', `postman.invalid-phone.${nonce}@resq.test`);",
+                  "pm.collectionVariables.set('termsVersion', `postman-terms-${nonce}`);",
+                  "pm.collectionVariables.set('deleteEmail', `postman.delete.${nonce}@resq.test`);",
+                  "pm.collectionVariables.set('deletePhone', phone('4'));",
+                  "pm.collectionVariables.set('deleteTermsVersion', `postman-delete-terms-${nonce}`);",
+                  "",
+                  "['userId', 'accessToken', 'refreshToken', 'currentSessionId', 'originalPassword', 'secondAccessToken', 'secondRefreshToken', 'secondSessionId', 'oldAccessToken', 'oldRefreshToken', 'recoveryCode', 'changedLoginAccessToken', 'changedLoginRefreshToken', 'changedLoginSessionId', 'deleteUserId', 'deleteAccessToken', 'deleteRefreshToken', 'deleteSessionId'].forEach(function (key) {",
+                  "  pm.collectionVariables.unset(key);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Unique rider is registered with terms acceptance', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const response = pm.response.json();",
+                  "  const user = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(user.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);",
+                  "  pm.expect(user.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "  pm.expect(user.phone_number).to.eql(pm.collectionVariables.get('testPhone'));",
+                  "  pm.expect(user.role).to.eql('rider');",
+                  "  pm.expect(user.is_active).to.eql(true);",
+                  "  pm.expect(user.account_status).to.eql('active');",
+                  "  pm.expect(user.terms_version).to.eql(pm.collectionVariables.get('termsVersion'));",
+                  "  pm.expect(user.terms_accepted_at).to.be.a('string').and.not.empty;",
+                  "  pm.collectionVariables.set('userId', user.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"phone_number\": \"{{testPhone}}\",\n  \"first_name\": \"Postman\",\n  \"last_name\": \"Rider\",\n  \"role\": \"rider\",\n  \"terms_version\": \"{{termsVersion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Duplicate Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Duplicate email returns the stable conflict', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(409);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_EMAIL_EXISTS');",
+                  "  pm.expect(response.error.message).to.be.a('string').and.not.empty;",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"phone_number\": \"{{duplicateAttemptPhone}}\",\n  \"first_name\": \"Duplicate\",\n  \"last_name\": \"Email\",\n  \"role\": \"rider\",\n  \"terms_version\": \"{{termsVersion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Malicious Driver Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Public registration rejects driver role escalation', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(400);",
+                  "  pm.expect(response.error.error_code).to.eql('VALIDATION_ERROR');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{driverAttemptEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"phone_number\": \"{{driverAttemptPhone}}\",\n  \"first_name\": \"Malicious\",\n  \"last_name\": \"Driver\",\n  \"role\": \"driver\",\n  \"terms_version\": \"{{termsVersion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Invalid Phone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Non-Nepali phone is rejected', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(400);",
+                  "  pm.expect(response.error.error_code).to.eql('VALIDATION_ERROR');",
+                  "  pm.expect(response.error.message).to.include('phone_number');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{invalidPhoneEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"phone_number\": \"+15551234567\",\n  \"first_name\": \"Invalid\",\n  \"last_name\": \"Phone\",\n  \"role\": \"rider\",\n  \"terms_version\": \"{{termsVersion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Login Current Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login returns complete access, refresh, user, and session data', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.user.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(data.user.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "  pm.expect(data.token).to.be.a('string').and.not.empty;",
+                  "  pm.expect(data.access_token).to.eql(data.token);",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.token_type).to.eql('Bearer');",
+                  "  pm.expect(data.expires_in).to.eql(900);",
+                  "  pm.expect(data.session.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(data.session.remember_me).to.eql(true);",
+                  "  pm.expect(data.session.device_name).to.eql('Postman primary device');",
+                  "  pm.expect(data.session.current).to.eql(true);",
+                  "  pm.expect(data.session.created_at).to.be.a('string').and.not.empty;",
+                  "  pm.expect(data.session.expires_at).to.be.a('string').and.not.empty;",
+                  "  pm.collectionVariables.set('accessToken', data.access_token);",
+                  "  pm.collectionVariables.set('refreshToken', data.refresh_token);",
+                  "  pm.collectionVariables.set('currentSessionId', data.session.id);",
+                  "  pm.collectionVariables.set('originalPassword', pm.collectionVariables.get('testPassword'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"remember_me\": true,\n  \"device_name\": \"Postman primary device\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Authenticated profile is returned and sanitized', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(response.data.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "  pm.expect(response.data.phone_number).to.eql(pm.collectionVariables.get('testPhone'));",
+                  "  pm.expect(response.data.account_status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Patch Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PATCH updates only supported profile fields', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const user = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(user.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(user.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "  pm.expect(user.first_name).to.eql('Postman Updated');",
+                  "  pm.expect(user.last_name).to.eql('Rider');",
+                  "  pm.expect(user.phone_number).to.eql(pm.collectionVariables.get('updatedPhone'));",
+                  "  pm.expect(user.profile_image).to.eql('https://example.test/postman-avatar.png');",
+                  "  pm.expect(user.role).to.eql('rider');",
+                  "  pm.expect(user.account_status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Postman Updated\",\n  \"last_name\": \"Rider\",\n  \"phone_number\": \"{{updatedPhone}}\",\n  \"profile_image\": \"https://example.test/postman-avatar.png\",\n  \"current_password\": \"{{originalPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Second Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Second login creates a distinct non-remembered session', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.user.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(data.token).to.eql(data.access_token);",
+                  "  pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.session.id).to.not.eql(pm.collectionVariables.get('currentSessionId'));",
+                  "  pm.expect(data.session.remember_me).to.eql(false);",
+                  "  pm.expect(data.session.device_name).to.eql('Postman secondary device');",
+                  "  pm.expect(data.session.current).to.eql(true);",
+                  "  pm.collectionVariables.set('secondAccessToken', data.access_token);",
+                  "  pm.collectionVariables.set('secondRefreshToken', data.refresh_token);",
+                  "  pm.collectionVariables.set('secondSessionId', data.session.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{originalPassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Postman secondary device\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "List Sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Session list identifies current and secondary sessions without credentials', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const sessions = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(sessions).to.be.an('array').with.lengthOf(2);",
+                  "  const current = sessions.find(function (session) { return session.id === pm.collectionVariables.get('currentSessionId'); });",
+                  "  const secondary = sessions.find(function (session) { return session.id === pm.collectionVariables.get('secondSessionId'); });",
+                  "  pm.expect(current).to.be.an('object');",
+                  "  pm.expect(current.current).to.eql(true);",
+                  "  pm.expect(current.remember_me).to.eql(true);",
+                  "  pm.expect(current.device_name).to.eql('Postman primary device');",
+                  "  pm.expect(secondary).to.be.an('object');",
+                  "  pm.expect(secondary.current).to.eql(false);",
+                  "  pm.expect(secondary.remember_me).to.eql(false);",
+                  "  sessions.forEach(function (session) {",
+                  "    pm.expect(session.created_at).to.be.a('string').and.not.empty;",
+                  "    pm.expect(session.last_used_at).to.be.a('string').and.not.empty;",
+                  "    pm.expect(session.expires_at).to.be.a('string').and.not.empty;",
+                  "    pm.expect(session.user_agent).to.be.a('string').and.not.empty;",
+                  "    pm.expect(session).to.not.have.property('token');",
+                  "    pm.expect(session).to.not.have.property('access_token');",
+                  "    pm.expect(session).to.not.have.property('refresh_token');",
+                  "    pm.expect(session).to.not.have.property('refresh_token_hash');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/sessions"
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Second Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Current session can revoke the second session', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.message).to.eql('session revoked');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/sessions/{{secondSessionId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Revoked Second Access Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Revoked session access token is immediately rejected', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_SESSION_INVALID');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{secondAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Current Session Remains Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Revoking another session preserves the current session', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(response.data.phone_number).to.eql(pm.collectionVariables.get('updatedPhone'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Current Session",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('oldAccessToken', pm.collectionVariables.get('accessToken'));",
+                  "pm.collectionVariables.set('oldRefreshToken', pm.collectionVariables.get('refreshToken'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refresh rotates credentials in the same session', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.token).to.eql(data.access_token);",
+                  "  pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "  pm.expect(data.access_token).to.not.eql(pm.collectionVariables.get('oldAccessToken'));",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.refresh_token).to.not.eql(pm.collectionVariables.get('oldRefreshToken'));",
+                  "  pm.expect(data.token_type).to.eql('Bearer');",
+                  "  pm.expect(data.expires_in).to.eql(900);",
+                  "  pm.expect(data.session.id).to.eql(pm.collectionVariables.get('currentSessionId'));",
+                  "  pm.expect(data.session.current).to.eql(true);",
+                  "  pm.collectionVariables.set('accessToken', data.access_token);",
+                  "  pm.collectionVariables.set('refreshToken', data.refresh_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/token/refresh"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Reused Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('A rotated refresh token cannot be reused', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_SESSION_INVALID');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{oldRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/token/refresh"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Password, Recovery, and Lifecycle",
+      "item": [
+        {
+          "name": "Generate Recovery Codes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Current password generates ten one-time recovery codes', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const codes = response.data.recovery_codes;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(codes).to.be.an('array').with.lengthOf(10);",
+                  "  pm.expect(new Set(codes).size).to.eql(10);",
+                  "  codes.forEach(function (code) {",
+                  "    pm.expect(code).to.match(/^[A-Z2-7]{4}(?:-[A-Z2-7]{4}){3}$/);",
+                  "  });",
+                  "  pm.collectionVariables.set('recoveryCode', codes[0]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{originalPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/recovery-codes/regenerate"
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Password changes with current-password confirmation', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.message).to.eql('password changed');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{originalPassword}}\",\n  \"new_password\": \"{{changedPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/password/change"
+          },
+          "response": []
+        },
+        {
+          "name": "Current Session Valid After Password Change",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Password change preserves the current authenticated session', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Original Password Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Original password no longer authenticates', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_INVALID_CREDENTIALS');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{originalPassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Rejected old password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Login With Changed Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Changed password authenticates without replacing current credentials', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.user.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(data.token).to.eql(data.access_token);",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.session.current).to.eql(true);",
+                  "  pm.expect(data.session.device_name).to.eql('Postman changed-password check');",
+                  "  pm.collectionVariables.set('changedLoginAccessToken', data.access_token);",
+                  "  pm.collectionVariables.set('changedLoginRefreshToken', data.refresh_token);",
+                  "  pm.collectionVariables.set('changedLoginSessionId', data.session.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{changedPassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Postman changed-password check\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password With Recovery Code",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Recovery code resets password and revokes all sessions', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.message).to.eql('password reset; all sessions revoked');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"recovery_code\": \"{{recoveryCode}}\",\n  \"new_password\": \"{{resetPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/password/reset/recovery-code"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Recovery Code Replay",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consumed recovery code cannot be replayed', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_INVALID_RECOVERY_CODE');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"recovery_code\": \"{{recoveryCode}}\",\n  \"new_password\": \"{{replayPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/password/reset/recovery-code"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Changed Password After Reset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pre-reset password no longer authenticates', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_INVALID_CREDENTIALS');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{changedPassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Rejected pre-reset password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Login With Reset Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reset password creates fresh primary credentials', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.user.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(data.token).to.eql(data.access_token);",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.session.current).to.eql(true);",
+                  "  pm.expect(data.session.device_name).to.eql('Postman recovered device');",
+                  "  pm.collectionVariables.set('accessToken', data.access_token);",
+                  "  pm.collectionVariables.set('refreshToken', data.refresh_token);",
+                  "  pm.collectionVariables.set('currentSessionId', data.session.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{resetPassword}}\",\n  \"remember_me\": true,\n  \"device_name\": \"Postman recovered device\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Account is deactivated with current-password confirmation', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.message).to.eql('account deactivated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{resetPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/account/deactivate"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Login While Deactivated",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Deactivated account returns its stable lifecycle error', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(403);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_ACCOUNT_DEACTIVATED');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{resetPassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Deactivated login attempt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Reactivate Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Deactivated rider is reactivated with fresh credentials', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.user.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(data.user.account_status).to.eql('active');",
+                  "  pm.expect(data.user.is_active).to.eql(true);",
+                  "  pm.expect(data.token).to.eql(data.access_token);",
+                  "  pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.session.remember_me).to.eql(true);",
+                  "  pm.expect(data.session.device_name).to.eql('Postman reactivated device');",
+                  "  pm.expect(data.session.current).to.eql(true);",
+                  "  pm.collectionVariables.set('accessToken', data.access_token);",
+                  "  pm.collectionVariables.set('refreshToken', data.refresh_token);",
+                  "  pm.collectionVariables.set('currentSessionId', data.session.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{resetPassword}}\",\n  \"remember_me\": true,\n  \"device_name\": \"Postman reactivated device\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/account/reactivate"
+          },
+          "response": []
+        },
+        {
+          "name": "Profile After Reactivation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reactivated credentials authorize protected profile', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.id).to.eql(pm.collectionVariables.get('userId'));",
+                  "  pm.expect(response.data.account_status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Logout revokes the server-side current session', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.message).to.eql('logged out');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/logout"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Profile After Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Logged-out access token cannot use protected profile', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_SESSION_INVALID');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/profile"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Disposable Account Deletion",
+      "item": [
+        {
+          "name": "Register Disposable Rider",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Separate disposable rider is registered', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.email).to.eql(pm.collectionVariables.get('deleteEmail'));",
+                  "  pm.expect(response.data.phone_number).to.eql(pm.collectionVariables.get('deletePhone'));",
+                  "  pm.expect(response.data.terms_version).to.eql(pm.collectionVariables.get('deleteTermsVersion'));",
+                  "  pm.collectionVariables.set('deleteUserId', response.data.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{deleteEmail}}\",\n  \"password\": \"{{deletePassword}}\",\n  \"phone_number\": \"{{deletePhone}}\",\n  \"first_name\": \"Disposable\",\n  \"last_name\": \"Rider\",\n  \"role\": \"rider\",\n  \"terms_version\": \"{{deleteTermsVersion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Login Disposable Rider",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Disposable rider receives its own credentials', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  const data = response.data;",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(data.user.id).to.eql(pm.collectionVariables.get('deleteUserId'));",
+                  "  pm.expect(data.token).to.eql(data.access_token);",
+                  "  pm.expect(data.refresh_token).to.be.a('string').and.have.lengthOf.at.least(32);",
+                  "  pm.expect(data.session.device_name).to.eql('Postman disposable device');",
+                  "  pm.collectionVariables.set('deleteAccessToken', data.access_token);",
+                  "  pm.collectionVariables.set('deleteRefreshToken', data.refresh_token);",
+                  "  pm.collectionVariables.set('deleteSessionId', data.session.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{deleteEmail}}\",\n  \"password\": \"{{deletePassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Postman disposable device\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Disposable Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Disposable account is permanently deleted', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(true);",
+                  "  pm.expect(response.data.message).to.eql('account deleted');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{deleteAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{deletePassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/account"
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Login After Account Deletion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Deleted account cannot authenticate again', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.eql(false);",
+                  "  pm.expect(response.error.code).to.eql(401);",
+                  "  pm.expect(response.error.error_code).to.eql('AUTH_INVALID_CREDENTIALS');",
+                  "  pm.expect(response.correlation_id).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{deleteEmail}}\",\n  \"password\": \"{{deletePassword}}\",\n  \"remember_me\": false,\n  \"device_name\": \"Deleted login attempt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "testPassword",
+      "value": "ResqOriginal123!",
+      "type": "string"
+    },
+    {
+      "key": "changedPassword",
+      "value": "ResqChanged456!",
+      "type": "string"
+    },
+    {
+      "key": "resetPassword",
+      "value": "ResqReset789!",
+      "type": "string"
+    },
+    {
+      "key": "replayPassword",
+      "value": "ResqReplay321!",
+      "type": "string"
+    },
+    {
+      "key": "deletePassword",
+      "value": "ResqDelete654!",
+      "type": "string"
+    },
+    {
+      "key": "testEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testPhone",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "updatedPhone",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "duplicateAttemptPhone",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driverAttemptEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driverAttemptPhone",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "invalidPhoneEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "termsVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "originalPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentSessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "secondAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "secondRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "secondSessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oldAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oldRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "recoveryCode",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "changedLoginAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "changedLoginRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "changedLoginSessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deleteEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deletePhone",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deleteTermsVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deleteUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deleteAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deleteRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deleteSessionId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
